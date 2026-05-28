@@ -26,11 +26,27 @@ Google Calendar の予定に連動し、Google Meet を専用 Mac デスクト�
 
 - `pnpm dev`: Electron/Vite の開発起動
 - `pnpm build`: Electron/Vite の production build
+- `pnpm dist:mac`: Apple Silicon Mac 配布用の `.dmg` と `.zip` をローカル生成
+- `pnpm release:mac`: GitHub Release へ Apple Silicon Mac 配布物を公開
 - `pnpm test`: Vitest test suite
 - `pnpm lint`: Oxlint と arrow-only 検査
 - `pnpm format`: Biome formatter
 - `pnpm check`: Biome、Oxlint、arrow-only、Vitest、TypeScript をまとめて検証
 - `pnpm ci`: `pnpm check` と production build をまとめて検証
+
+## Release
+
+GitHub Releases を公式配布元にする。`v0.1.0` のような `v*` タグを push すると、`.github/workflows/release.yml` が Apple Silicon Mac 用の `.dmg` と `.zip` を作成し、GitHub Release に添付する。Intel Mac は配布対象外とする。
+
+公開前に GitHub repository secrets へ以下を設定する。
+
+- `MACOS_CERTIFICATE`: Developer ID Application 証明書の `.p12` を base64 化した値
+- `MACOS_CERTIFICATE_PASSWORD`: `.p12` のパスワード
+- `APPLE_API_KEY`: App Store Connect API key の `.p8` 内容
+- `APPLE_API_KEY_ID`: App Store Connect API key ID
+- `APPLE_API_ISSUER`: App Store Connect issuer ID
+
+`package.json` の `build.appId` は署名、Keychain、将来の自動更新に影響するため、公開後は変更しない。所有ドメインに基づく Bundle ID に変える場合は、初回の一般公開前に行う。
 
 ## Key Product Decision
 

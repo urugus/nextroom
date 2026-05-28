@@ -9,6 +9,8 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "package": "electron-builder",
+    "dist:mac": "pnpm run build && electron-builder --mac dmg zip --arm64 --publish never -c.mac.notarize=false",
+    "release:mac": "pnpm run build && electron-builder --mac dmg zip --arm64 --publish always",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "pnpm exec oxlint . && pnpm run lint:arrows",
@@ -21,16 +23,29 @@
     "check": "pnpm exec biome check . && pnpm exec oxlint . && pnpm run lint:arrows && pnpm exec vitest run && pnpm exec tsc --noEmit"
   },
   "build": {
-    "appId": "com.local.nextroom",
+    "appId": "com.urugus.nextroom",
     "productName": "NextRoom",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "icon": "assets/nextroom-logo.png",
     "files": [
       "out/**",
       "package.json"
     ],
     "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.productivity",
-      "hardenedRuntime": true
-    }
+      "hardenedRuntime": true,
+      "notarize": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "releaseType": "release"
+      }
+    ]
   },
   "dependencies": {
     "neverthrow": "^8.2.0",
