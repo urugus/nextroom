@@ -26,8 +26,8 @@ Google Calendar の予定に連動し、Google Meet を専用 Mac デスクト�
 
 - `pnpm dev`: Electron/Vite の開発起動
 - `pnpm build`: Electron/Vite の production build
-- `pnpm dist:mac`: macOS 配布用の `.dmg` と `.zip` をローカル生成
-- `pnpm release:mac`: GitHub Release へ macOS 配布物を公開
+- `pnpm dist:mac`: Apple Silicon Mac 配布用の `.dmg` と `.zip` をローカル生成
+- `pnpm release:mac`: GitHub Release へ Apple Silicon Mac 配布物を公開
 - `pnpm test`: Vitest test suite
 - `pnpm lint`: Oxlint と arrow-only 検査
 - `pnpm format`: Biome formatter
@@ -36,7 +36,7 @@ Google Calendar の予定に連動し、Google Meet を専用 Mac デスクト�
 
 ## Release
 
-GitHub Releases を公式配布元にする。`v0.1.0` のような `v*` タグを push すると、`.github/workflows/release.yml` が macOS 用の `.dmg` と `.zip` を作成し、GitHub Release に添付する。
+GitHub Releases を公式配布元にする。`v0.1.0` のような `v*` タグを push すると、`.github/workflows/release.yml` が Apple Silicon Mac 用の `.dmg` と `.zip` を作成し、GitHub Release に添付する。Intel Mac は配布対象外とする。
 
 公開前に GitHub repository secrets へ以下を設定する。
 
