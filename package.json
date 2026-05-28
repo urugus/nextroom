@@ -17,6 +17,7 @@
     "format": "pnpm exec biome format --write .",
     "format:check": "pnpm exec biome format .",
     "typecheck": "pnpm exec tsc --noEmit",
+    "ci": "pnpm run check && pnpm run build",
     "check": "pnpm exec biome check . && pnpm exec oxlint . && pnpm run lint:arrows && pnpm exec vitest run && pnpm exec tsc --noEmit"
   },
   "build": {

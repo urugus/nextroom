@@ -30,6 +30,7 @@ Google Calendar の予定に連動し、Google Meet を専用 Mac デスクト�
 - `pnpm lint`: Oxlint と arrow-only 検査
 - `pnpm format`: Biome formatter
 - `pnpm check`: Biome、Oxlint、arrow-only、Vitest、TypeScript をまとめて検証
+- `pnpm ci`: `pnpm check` と production build をまとめて検証
 
 ## Key Product Decision
 
