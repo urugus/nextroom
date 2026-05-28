@@ -36,7 +36,17 @@ Google Calendar の予定に連動し、Google Meet を専用 Mac デスクト�
 
 ## Release
 
-GitHub Releases を公式配布元にする。`v0.1.0` のような `v*` タグを push すると、`.github/workflows/release.yml` が Apple Silicon Mac 用の `.dmg` と `.zip` を作成し、GitHub Release に添付する。Intel Mac は配布対象外とする。
+GitHub Releases を公式配布元にする。`package.json` の `version` を唯一のバージョン元にし、Git タグは必ず `v${version}` 形式にする。`v0.1.0` のような `v*` タグを push すると、`.github/workflows/release.yml` が Apple Silicon Mac 用の `.dmg` と `.zip` を作成し、GitHub Release に添付する。Intel Mac は配布対象外とする。
+
+リリース手順:
+
+1. `package.json` の `version` を次の配布バージョンへ更新する。
+2. `pnpm run check` と `pnpm run build` を通す。
+3. バージョン更新を commit する。
+4. `git tag -a v0.1.0 -m "Release v0.1.0"` のように annotated tag を作成する。
+5. `git push origin main` と `git push origin v0.1.0` を実行する。
+
+タグ名と `package.json` の `version` が一致しない場合、release workflow は失敗する。
 
 公開前に GitHub repository secrets へ以下を設定する。
 
