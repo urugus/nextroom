@@ -1,0 +1,57 @@
+{
+  "name": "nextroom",
+  "version": "0.1.0",
+  "description": "Google Calendar linked Google Meet launcher for macOS.",
+  "type": "module",
+  "main": "out/main/index.js",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "package": "electron-builder",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "pnpm exec oxlint . && pnpm run lint:arrows",
+    "lint:fix": "pnpm exec oxlint . --fix && pnpm exec biome check --write .",
+    "lint:arrows": "node scripts/assert-arrow-functions.mjs",
+    "format": "pnpm exec biome format --write .",
+    "format:check": "pnpm exec biome format .",
+    "typecheck": "pnpm exec tsc --noEmit",
+    "check": "pnpm exec biome check . && pnpm exec oxlint . && pnpm run lint:arrows && pnpm exec vitest run && pnpm exec tsc --noEmit"
+  },
+  "build": {
+    "appId": "com.local.nextroom",
+    "productName": "NextRoom",
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true
+    }
+  },
+  "dependencies": {
+    "neverthrow": "^8.2.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^42.3.0",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^5.0.0",
+    "jsdom": "^29.1.1",
+    "oxlint": "^1.67.0",
+    "typescript": "^6.0.3",
+    "vite": "^7.3.3",
+    "vitest": "^4.1.7"
+  }
+}
