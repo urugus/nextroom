@@ -24,6 +24,15 @@ const updateAvailable: AppUpdateStatus = {
   status: "available",
 };
 
+const updateError: AppUpdateStatus = {
+  canCheck: true,
+  canDownload: false,
+  canInstall: false,
+  currentVersion: "0.1.0",
+  errorMessage: "GitHub Releases request failed",
+  status: "error",
+};
+
 describe("Dashboard", () => {
   it("renders disconnected state and upcoming meetings", () => {
     const onOpenMeeting = vi.fn();
@@ -76,5 +85,20 @@ describe("Dashboard", () => {
     expect(onCheckForUpdates).toHaveBeenCalledTimes(1);
     expect(onDownloadUpdate).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "Restart to update" })).toBeDisabled();
+  });
+
+  it("renders update errors once in the dedicated error area", () => {
+    render(
+      <Dashboard
+        accountConnected={false}
+        meetings={[]}
+        onOpenMeeting={vi.fn()}
+        updateStatus={updateError}
+      />,
+    );
+
+    expect(screen.getByText("Update check failed.")).toBeInTheDocument();
+    expect(screen.getByText("GitHub Releases request failed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check for updates" })).toBeDisabled();
   });
 });
