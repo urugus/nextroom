@@ -1,13 +1,16 @@
+import { createRequire } from "node:module";
 import type { AppError } from "@shared/errors";
 import type { AppUpdateProgress, AppUpdateStatus } from "@shared/types";
-import { app, BrowserWindow } from "electron";
-import { autoUpdater } from "electron-updater";
 import { err, ok, type Result } from "neverthrow";
 
 type UpdaterState = Omit<
   AppUpdateStatus,
   "canCheck" | "canDownload" | "canInstall" | "currentVersion"
 >;
+
+const nodeRequire = createRequire(import.meta.url);
+const { app, BrowserWindow } = nodeRequire("electron") as typeof import("electron");
+const { autoUpdater } = nodeRequire("electron-updater") as typeof import("electron-updater");
 
 const statusChangedChannel = "updates:status-changed";
 
@@ -43,6 +46,24 @@ const updateState = (nextState: UpdaterState) => {
 };
 
 const errorFrom = (cause: unknown): AppError => ({ type: "UpdateFailed", cause });
+
+const updateErrorMessageFrom = (cause: unknown) => {
+  const message = cause instanceof Error ? cause.message : String(cause);
+
+  if (message.includes("app-update.yml")) {
+    return "Update metadata is missing from this build.";
+  }
+
+  if (message.includes("Unable to find latest version on GitHub")) {
+    return "No compatible GitHub release metadata was found.";
+  }
+
+  if (message.trim().length === 0) {
+    return "Update check failed.";
+  }
+
+  return message.split("\n")[0] ?? "Update check failed.";
+};
 
 const progressFrom = (progress: AppUpdateProgress): AppUpdateProgress => ({
   bytesPerSecond: progress.bytesPerSecond,
@@ -97,7 +118,7 @@ export const configureAppUpdater = () => {
 
   autoUpdater.on("error", (cause) => {
     updateState({
-      errorMessage: cause.message,
+      errorMessage: updateErrorMessageFrom(cause),
       status: "error",
     });
   });
@@ -113,7 +134,7 @@ export const checkForAppUpdates = async (): Promise<Result<AppUpdateStatus, AppE
     return ok(currentStatus());
   } catch (cause) {
     updateState({
-      errorMessage: cause instanceof Error ? cause.message : "Unknown update error",
+      errorMessage: updateErrorMessageFrom(cause),
       status: "error",
     });
     return err(errorFrom(cause));
@@ -135,7 +156,7 @@ export const downloadAppUpdate = async (): Promise<Result<AppUpdateStatus, AppEr
     return ok(currentStatus());
   } catch (cause) {
     updateState({
-      errorMessage: cause instanceof Error ? cause.message : "Unknown download error",
+      errorMessage: updateErrorMessageFrom(cause),
       status: "error",
     });
     return err(errorFrom(cause));
