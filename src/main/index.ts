@@ -1,5 +1,12 @@
 import { join } from "node:path";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
+import {
+  checkForAppUpdates,
+  configureAppUpdater,
+  downloadAppUpdate,
+  getAppUpdateStatus,
+  installAppUpdate,
+} from "@main/updater/appUpdater";
 import type { AppError } from "@shared/errors";
 import { app, BrowserWindow, ipcMain, session } from "electron";
 import { err, fromThrowable, ok, type Result } from "neverthrow";
@@ -108,16 +115,27 @@ const registerIpc = () => {
   ipcMain.handle("meet:open", async (_event, meetUrl: string) =>
     serializeResultForRenderer(await openMeetUrl(meetUrl)),
   );
+  ipcMain.handle("updates:getStatus", () => serializeResultForRenderer(ok(getAppUpdateStatus())));
+  ipcMain.handle("updates:check", async () =>
+    serializeResultForRenderer(await checkForAppUpdates()),
+  );
+  ipcMain.handle("updates:download", async () =>
+    serializeResultForRenderer(await downloadAppUpdate()),
+  );
+  ipcMain.handle("updates:install", () => serializeResultForRenderer(installAppUpdate()));
 };
 
 void app.whenReady().then(() => {
   configureMeetSessionPermissions();
+  configureAppUpdater();
   registerIpc();
   const created = createMainWindow();
 
   if (created.isErr()) {
     throw new Error(created.error.type);
   }
+
+  void checkForAppUpdates();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

@@ -7,7 +7,8 @@ export type AppError =
   | { type: "DatabaseFailed"; cause: unknown }
   | { type: "PermissionDenied"; permission: "camera" | "microphone" | "screen"; cause?: unknown }
   | { type: "MainWindowFailed"; cause: unknown }
-  | { type: "MeetWindowFailed"; cause: unknown };
+  | { type: "MeetWindowFailed"; cause: unknown }
+  | { type: "UpdateFailed"; cause: unknown };
 
 export type SerializedAppError = {
   type: AppError["type"];
@@ -25,6 +26,7 @@ const recoverableByType = {
   PermissionDenied: true,
   MainWindowFailed: true,
   MeetWindowFailed: true,
+  UpdateFailed: true,
 } satisfies Record<AppError["type"], boolean>;
 
 export const unknownToMessage = (cause: unknown): string => {
@@ -53,6 +55,8 @@ export const appErrorMessage = (error: AppError): string => {
       return `NextRoom window failed: ${unknownToMessage(error.cause)}`;
     case "MeetWindowFailed":
       return `Google Meet window failed: ${unknownToMessage(error.cause)}`;
+    case "UpdateFailed":
+      return `App update failed: ${unknownToMessage(error.cause)}`;
   }
 };
 
