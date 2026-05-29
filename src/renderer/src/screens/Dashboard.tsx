@@ -1,4 +1,4 @@
-import type { MeetEvent } from "@shared/types";
+import type { AppUpdateStatus, MeetEvent } from "@shared/types";
 
 type DashboardProps = {
   accountConnected: boolean;
@@ -6,6 +6,11 @@ type DashboardProps = {
   meetings: MeetEvent[];
   openingMeetUrl?: string;
   onOpenMeeting: (meetUrl: string) => Promise<unknown>;
+  onCheckForUpdates?: () => Promise<unknown>;
+  onDownloadUpdate?: () => Promise<unknown>;
+  onInstallUpdate?: () => Promise<unknown>;
+  updateErrorMessage?: string;
+  updateStatus?: AppUpdateStatus;
 };
 
 const formatMeetingTime = (value: string) =>
@@ -14,12 +19,45 @@ const formatMeetingTime = (value: string) =>
     minute: "2-digit",
   }).format(new Date(value));
 
+const formatUpdateSummary = (updateStatus?: AppUpdateStatus) => {
+  if (updateStatus === undefined) return "Loading update status.";
+
+  switch (updateStatus.status) {
+    case "unsupported":
+      return "Updates are available in installed app builds.";
+    case "idle":
+      return "No update check has run yet.";
+    case "checking":
+      return "Checking for updates.";
+    case "not-available":
+      return "You are on the latest version.";
+    case "available":
+      return `Version ${updateStatus.availableVersion ?? "unknown"} is available.`;
+    case "downloading":
+      return `Downloading version ${updateStatus.availableVersion ?? "unknown"}.`;
+    case "downloaded":
+      return `Version ${updateStatus.downloadedVersion ?? updateStatus.availableVersion ?? "unknown"} is ready to install.`;
+    case "error":
+      return updateStatus.errorMessage ?? "Update check failed.";
+  }
+};
+
+const formatProgress = (updateStatus?: AppUpdateStatus) => {
+  if (updateStatus?.progress === undefined) return undefined;
+  return `${Math.round(updateStatus.progress.percent)}%`;
+};
+
 export const Dashboard = ({
   accountConnected,
   errorMessage,
   meetings,
+  onCheckForUpdates,
+  onDownloadUpdate,
+  onInstallUpdate,
   openingMeetUrl,
   onOpenMeeting,
+  updateErrorMessage,
+  updateStatus,
 }: DashboardProps) => (
   <main className="app-shell">
     <section className="toolbar" aria-label="Account status">
@@ -38,6 +76,43 @@ export const Dashboard = ({
     </section>
 
     {errorMessage !== undefined ? <p className="error-banner">{errorMessage}</p> : null}
+
+    <section className="update-panel" aria-labelledby="updates-title">
+      <div>
+        <h2 id="updates-title">App updates</h2>
+        <p>{formatUpdateSummary(updateStatus)}</p>
+        <span>Current version {updateStatus?.currentVersion ?? "unknown"}</span>
+      </div>
+      <div className="update-controls">
+        {formatProgress(updateStatus) !== undefined ? (
+          <span className="update-progress">{formatProgress(updateStatus)}</span>
+        ) : null}
+        <button
+          type="button"
+          disabled={!updateStatus?.canCheck}
+          onClick={() => void onCheckForUpdates?.()}
+        >
+          Check for updates
+        </button>
+        <button
+          type="button"
+          disabled={!updateStatus?.canDownload}
+          onClick={() => void onDownloadUpdate?.()}
+        >
+          Download update
+        </button>
+        <button
+          type="button"
+          disabled={!updateStatus?.canInstall}
+          onClick={() => void onInstallUpdate?.()}
+        >
+          Restart to update
+        </button>
+      </div>
+      {updateErrorMessage !== undefined ? (
+        <p className="update-error">{updateErrorMessage}</p>
+      ) : null}
+    </section>
 
     <section className="meeting-panel" aria-labelledby="upcoming-title">
       <h2 id="upcoming-title">Upcoming Meet meetings</h2>

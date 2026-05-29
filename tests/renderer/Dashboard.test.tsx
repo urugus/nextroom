@@ -1,5 +1,5 @@
 import { Dashboard } from "@renderer/screens/Dashboard";
-import type { MeetEvent } from "@shared/types";
+import type { AppUpdateStatus, MeetEvent } from "@shared/types";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -13,6 +13,15 @@ const meeting: MeetEvent = {
   updatedAt: "2026-05-28T09:00:00+09:00",
   meetUrl: "https://meet.google.com/abc-defg-hij",
   status: "confirmed",
+};
+
+const updateAvailable: AppUpdateStatus = {
+  availableVersion: "0.2.0",
+  canCheck: true,
+  canDownload: true,
+  canInstall: false,
+  currentVersion: "0.1.0",
+  status: "available",
 };
 
 describe("Dashboard", () => {
@@ -44,5 +53,28 @@ describe("Dashboard", () => {
 
     expect(screen.getByText("Calendar API failed")).toBeInTheDocument();
     expect(screen.getByText("No upcoming Google Meet meetings.")).toBeInTheDocument();
+  });
+
+  it("renders update controls", () => {
+    const onCheckForUpdates = vi.fn();
+    const onDownloadUpdate = vi.fn();
+    render(
+      <Dashboard
+        accountConnected={false}
+        meetings={[]}
+        onCheckForUpdates={onCheckForUpdates}
+        onDownloadUpdate={onDownloadUpdate}
+        onOpenMeeting={vi.fn()}
+        updateStatus={updateAvailable}
+      />,
+    );
+
+    expect(screen.getByText("Version 0.2.0 is available.")).toBeInTheDocument();
+    expect(screen.getByText("Current version 0.1.0")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+    fireEvent.click(screen.getByRole("button", { name: "Download update" }));
+    expect(onCheckForUpdates).toHaveBeenCalledTimes(1);
+    expect(onDownloadUpdate).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Restart to update" })).toBeDisabled();
   });
 });

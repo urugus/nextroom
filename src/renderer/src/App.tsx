@@ -1,5 +1,5 @@
-import type { MeetEvent } from "@shared/types";
-import { useRef, useState } from "react";
+import type { AppUpdateStatus, MeetEvent } from "@shared/types";
+import { useEffect, useRef, useState } from "react";
 import { Dashboard } from "./screens/Dashboard";
 import "./styles.css";
 
@@ -22,7 +22,44 @@ const sampleMeetings: MeetEvent[] = [
 export const App = () => {
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
   const [openingMeetUrl, setOpeningMeetUrl] = useState<string | undefined>(undefined);
+  const [updateErrorMessage, setUpdateErrorMessage] = useState<string | undefined>(undefined);
+  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | undefined>(undefined);
   const openingMeetingRef = useRef(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadUpdateStatus = async () => {
+      try {
+        const result = await window.meetLauncher.getUpdateStatus();
+        if (!mounted) return;
+
+        if (result.ok) {
+          setUpdateStatus(result.value);
+        } else {
+          setUpdateErrorMessage(result.error.message);
+        }
+      } catch (cause) {
+        if (!mounted) return;
+        const message = cause instanceof Error ? cause.message : "Update status is unavailable.";
+        setUpdateErrorMessage(message);
+      }
+    };
+
+    void loadUpdateStatus();
+
+    const unsubscribe = window.meetLauncher.onUpdateStatusChanged((status) => {
+      setUpdateStatus(status);
+      if (status.status !== "error") {
+        setUpdateErrorMessage(undefined);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
 
   const openMeeting = async (meetUrl: string) => {
     if (openingMeetingRef.current) return;
@@ -45,6 +82,43 @@ export const App = () => {
     }
   };
 
+  const runUpdateAction = async (
+    action: () => Promise<
+      { ok: true; value: AppUpdateStatus } | { ok: false; error: { message: string } }
+    >,
+  ) => {
+    setUpdateErrorMessage(undefined);
+
+    try {
+      const result = await action();
+      if (result.ok) {
+        setUpdateStatus(result.value);
+      } else {
+        setUpdateErrorMessage(result.error.message);
+      }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "App update failed.";
+      setUpdateErrorMessage(message);
+    }
+  };
+
+  const checkForUpdates = () => runUpdateAction(window.meetLauncher.checkForUpdates);
+  const downloadUpdate = () => runUpdateAction(window.meetLauncher.downloadUpdate);
+
+  const installUpdate = async () => {
+    setUpdateErrorMessage(undefined);
+
+    try {
+      const result = await window.meetLauncher.installUpdate();
+      if (!result.ok) {
+        setUpdateErrorMessage(result.error.message);
+      }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "App update failed.";
+      setUpdateErrorMessage(message);
+    }
+  };
+
   return (
     <Dashboard
       accountConnected={false}
@@ -52,6 +126,11 @@ export const App = () => {
       meetings={sampleMeetings}
       openingMeetUrl={openingMeetUrl}
       onOpenMeeting={openMeeting}
+      onCheckForUpdates={checkForUpdates}
+      onDownloadUpdate={downloadUpdate}
+      onInstallUpdate={installUpdate}
+      updateErrorMessage={updateErrorMessage}
+      updateStatus={updateStatus}
     />
   );
 };

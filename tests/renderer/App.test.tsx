@@ -1,14 +1,28 @@
 import { App } from "@renderer/App";
 import type { ApiResult } from "@shared/ipc";
+import type { AppUpdateStatus } from "@shared/types";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const installMeetLauncher = (openMeetUrl: ReturnType<typeof vi.fn>) => {
+  const updateStatus: AppUpdateStatus = {
+    canCheck: false,
+    canDownload: false,
+    canInstall: false,
+    currentVersion: "0.1.0",
+    status: "unsupported",
+  };
+
   Object.defineProperty(window, "meetLauncher", {
     configurable: true,
     value: {
+      checkForUpdates: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+      downloadUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       getAccountStatus: vi.fn(),
+      getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+      installUpdate: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
+      onUpdateStatusChanged: vi.fn(() => vi.fn()),
       openMeetUrl,
       versions: {
         chrome: "test-chrome",
