@@ -6,6 +6,7 @@ export type AppError =
   | { type: "KeychainUnavailable"; cause: unknown }
   | { type: "DatabaseFailed"; cause: unknown }
   | { type: "PermissionDenied"; permission: "camera" | "microphone" | "screen"; cause?: unknown }
+  | { type: "MainWindowFailed"; cause: unknown }
   | { type: "MeetWindowFailed"; cause: unknown };
 
 export type SerializedAppError = {
@@ -22,6 +23,7 @@ const recoverableByType = {
   KeychainUnavailable: true,
   DatabaseFailed: true,
   PermissionDenied: true,
+  MainWindowFailed: true,
   MeetWindowFailed: true,
 } satisfies Record<AppError["type"], boolean>;
 
@@ -47,6 +49,8 @@ export const appErrorMessage = (error: AppError): string => {
       return `Local database operation failed: ${unknownToMessage(error.cause)}`;
     case "PermissionDenied":
       return `Permission denied for ${error.permission}.`;
+    case "MainWindowFailed":
+      return `NextRoom window failed: ${unknownToMessage(error.cause)}`;
     case "MeetWindowFailed":
       return `Google Meet window failed: ${unknownToMessage(error.cause)}`;
   }

@@ -26,8 +26,13 @@ export const Dashboard = ({
       <div>
         <h1>NextRoom</h1>
         <p>{accountConnected ? "Google Calendar connected" : "Google Calendar not connected"}</p>
+        <p id="calendar-action-help" className="helper-text">
+          {accountConnected
+            ? "Calendar sync is not configured yet."
+            : "Google Calendar connection is not configured yet."}
+        </p>
       </div>
-      <button type="button" disabled title="Google Calendar connection is not configured yet">
+      <button type="button" disabled aria-describedby="calendar-action-help">
         {accountConnected ? "Sync" : "Connect"}
       </button>
     </section>
@@ -50,7 +55,7 @@ export const Dashboard = ({
               </div>
               <button
                 type="button"
-                disabled={openingMeetUrl === meeting.meetUrl}
+                disabled={openingMeetUrl !== undefined}
                 onClick={() => void onOpenMeeting(meeting.meetUrl)}
               >
                 {openingMeetUrl === meeting.meetUrl ? "Opening" : "Join"}

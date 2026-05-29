@@ -23,6 +23,9 @@ describe("Dashboard", () => {
     );
 
     expect(screen.getByText("Google Calendar not connected")).toBeInTheDocument();
+    expect(
+      screen.getByText("Google Calendar connection is not configured yet."),
+    ).toBeInTheDocument();
     expect(screen.getByText("Product sync")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Join" }));
     expect(onOpenMeeting).toHaveBeenCalledWith("https://meet.google.com/abc-defg-hij");

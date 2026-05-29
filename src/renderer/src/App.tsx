@@ -1,5 +1,5 @@
 import type { MeetEvent } from "@shared/types";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Dashboard } from "./screens/Dashboard";
 import "./styles.css";
 
@@ -22,8 +22,12 @@ const sampleMeetings: MeetEvent[] = [
 export const App = () => {
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
   const [openingMeetUrl, setOpeningMeetUrl] = useState<string | undefined>(undefined);
+  const openingMeetingRef = useRef(false);
 
   const openMeeting = async (meetUrl: string) => {
+    if (openingMeetingRef.current) return;
+
+    openingMeetingRef.current = true;
     setErrorMessage(undefined);
     setOpeningMeetUrl(meetUrl);
 
@@ -36,6 +40,7 @@ export const App = () => {
       const message = cause instanceof Error ? cause.message : "Google Meet window failed.";
       setErrorMessage(message);
     } finally {
+      openingMeetingRef.current = false;
       setOpeningMeetUrl(undefined);
     }
   };

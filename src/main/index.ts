@@ -1,13 +1,13 @@
 import { join } from "node:path";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
 import type { AppError } from "@shared/errors";
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, session } from "electron";
 import { err, fromThrowable, ok, type Result } from "neverthrow";
 import { serializeResultForRenderer } from "./ipc/result";
 
 const meetWindows = new Set<BrowserWindow>();
 
-const createBrowserWindow = (title: string) =>
+const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "MeetWindowFailed") =>
   fromThrowable(
     () =>
       new BrowserWindow({
@@ -23,7 +23,7 @@ const createBrowserWindow = (title: string) =>
           nodeIntegration: false,
         },
       }),
-    (cause): AppError => ({ type: "MeetWindowFailed", cause }),
+    (cause): AppError => ({ type: errorType, cause }),
   )();
 
 const createMeetWindow = fromThrowable(
@@ -45,7 +45,7 @@ const createMeetWindow = fromThrowable(
 );
 
 const createMainWindow = () =>
-  createBrowserWindow("NextRoom").map((window) => {
+  createBrowserWindow("NextRoom", "MainWindowFailed").map((window) => {
     window.webContents.setWindowOpenHandler(({ url }) => {
       if (isMeetUrl(url)) {
         void openMeetUrl(url);
@@ -62,6 +62,18 @@ const createMainWindow = () =>
 
     return window;
   });
+
+const configureMeetSessionPermissions = () => {
+  session
+    .fromPartition("persist:meet")
+    .setPermissionRequestHandler((webContents, permission, callback) => {
+      const currentUrl = webContents.getURL();
+      const allowed =
+        currentUrl.startsWith("https://meet.google.com/") &&
+        (permission === "media" || permission === "notifications");
+      callback(allowed);
+    });
+};
 
 const openMeetUrl = async (value: string): Promise<Result<void, AppError>> => {
   const canonicalized = canonicalizeMeetUrl(value);
@@ -80,20 +92,13 @@ const openMeetUrl = async (value: string): Promise<Result<void, AppError>> => {
     meetWindows.delete(meetWindow);
   });
 
-  meetWindow.webContents.session.setPermissionRequestHandler(
-    (webContents, permission, callback) => {
-      const currentUrl = webContents.getURL();
-      const allowed =
-        currentUrl.startsWith("https://meet.google.com/") &&
-        (permission === "media" || permission === "notifications");
-      callback(allowed);
-    },
-  );
-
   try {
     await meetWindow.loadURL(canonicalized.value);
     return ok(undefined);
   } catch (cause) {
+    if (!meetWindow.isDestroyed()) {
+      meetWindow.destroy();
+    }
     return err({ type: "MeetWindowFailed", cause });
   }
 };
@@ -106,6 +111,7 @@ const registerIpc = () => {
 };
 
 void app.whenReady().then(() => {
+  configureMeetSessionPermissions();
   registerIpc();
   const created = createMainWindow();
 
