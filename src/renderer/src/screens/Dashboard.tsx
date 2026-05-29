@@ -4,6 +4,8 @@ type DashboardProps = {
   accountConnected: boolean;
   errorMessage?: string;
   meetings: MeetEvent[];
+  openingMeetUrl?: string;
+  onOpenMeeting: (meetUrl: string) => Promise<unknown>;
 };
 
 const formatMeetingTime = (value: string) =>
@@ -12,14 +14,22 @@ const formatMeetingTime = (value: string) =>
     minute: "2-digit",
   }).format(new Date(value));
 
-export const Dashboard = ({ accountConnected, errorMessage, meetings }: DashboardProps) => (
+export const Dashboard = ({
+  accountConnected,
+  errorMessage,
+  meetings,
+  openingMeetUrl,
+  onOpenMeeting,
+}: DashboardProps) => (
   <main className="app-shell">
     <section className="toolbar" aria-label="Account status">
       <div>
         <h1>NextRoom</h1>
         <p>{accountConnected ? "Google Calendar connected" : "Google Calendar not connected"}</p>
       </div>
-      <button type="button">{accountConnected ? "Sync" : "Connect"}</button>
+      <button type="button" disabled title="Google Calendar connection is not configured yet">
+        {accountConnected ? "Sync" : "Connect"}
+      </button>
     </section>
 
     {errorMessage !== undefined ? <p className="error-banner">{errorMessage}</p> : null}
@@ -38,7 +48,13 @@ export const Dashboard = ({ accountConnected, errorMessage, meetings }: Dashboar
                   {formatMeetingTime(meeting.startAt)} - {formatMeetingTime(meeting.endAt)}
                 </span>
               </div>
-              <a href={meeting.meetUrl}>Join</a>
+              <button
+                type="button"
+                disabled={openingMeetUrl === meeting.meetUrl}
+                onClick={() => void onOpenMeeting(meeting.meetUrl)}
+              >
+                {openingMeetUrl === meeting.meetUrl ? "Opening" : "Join"}
+              </button>
             </li>
           ))}
         </ul>
