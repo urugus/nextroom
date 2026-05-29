@@ -1,7 +1,7 @@
 import { Dashboard } from "@renderer/screens/Dashboard";
 import type { MeetEvent } from "@shared/types";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 const meeting: MeetEvent = {
   eventId: "event-1",
@@ -17,18 +17,30 @@ const meeting: MeetEvent = {
 
 describe("Dashboard", () => {
   it("renders disconnected state and upcoming meetings", () => {
-    render(<Dashboard accountConnected={false} meetings={[meeting]} />);
+    const onOpenMeeting = vi.fn();
+    render(
+      <Dashboard accountConnected={false} meetings={[meeting]} onOpenMeeting={onOpenMeeting} />,
+    );
 
     expect(screen.getByText("Google Calendar not connected")).toBeInTheDocument();
+    expect(
+      screen.getByText("Google Calendar connection is not configured yet."),
+    ).toBeInTheDocument();
     expect(screen.getByText("Product sync")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Join" })).toHaveAttribute(
-      "href",
-      "https://meet.google.com/abc-defg-hij",
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Join" }));
+    expect(onOpenMeeting).toHaveBeenCalledWith("https://meet.google.com/abc-defg-hij");
+    expect(screen.getByRole("button", { name: "Connect" })).toBeDisabled();
   });
 
   it("renders an error message", () => {
-    render(<Dashboard accountConnected={false} errorMessage="Calendar API failed" meetings={[]} />);
+    render(
+      <Dashboard
+        accountConnected={false}
+        errorMessage="Calendar API failed"
+        meetings={[]}
+        onOpenMeeting={vi.fn()}
+      />,
+    );
 
     expect(screen.getByText("Calendar API failed")).toBeInTheDocument();
     expect(screen.getByText("No upcoming Google Meet meetings.")).toBeInTheDocument();

@@ -52,6 +52,10 @@ a {
   color: #52616f;
 }
 
+.toolbar .helper-text {
+  font-size: 13px;
+}
+
 .toolbar button {
   min-width: 112px;
   border: 0;
@@ -59,6 +63,11 @@ a {
   background: #1267d8;
   color: #ffffff;
   padding: 10px 16px;
+}
+
+.toolbar button:disabled {
+  background: #9aa8b6;
+  cursor: not-allowed;
 }
 
 .error-banner {
@@ -98,8 +107,16 @@ a {
   color: #607080;
 }
 
-.meeting-row a {
+.meeting-row button {
+  border: 0;
+  background: transparent;
   color: #1267d8;
+  cursor: pointer;
   font-weight: 700;
   text-decoration: none;
+}
+
+.meeting-row button:disabled {
+  color: #607080;
+  cursor: progress;
 }
