@@ -58,7 +58,13 @@ a {
   font-size: 13px;
 }
 
-.toolbar button {
+.toolbar-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.toolbar button,
+.toolbar-actions button {
   min-width: 112px;
   border: 0;
   border-radius: 6px;
@@ -67,8 +73,17 @@ a {
   padding: 10px 16px;
 }
 
-.toolbar button:disabled {
+.toolbar .secondary-button {
+  border: 1px solid #c7d1dd;
+  background: #ffffff;
+  color: #27384a;
+}
+
+.toolbar button:disabled,
+.toolbar .secondary-button:disabled {
   background: #9aa8b6;
+  border-color: #9aa8b6;
+  color: #ffffff;
   cursor: not-allowed;
 }
 

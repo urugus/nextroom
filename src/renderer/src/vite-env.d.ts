@@ -1,10 +1,15 @@
 /// <reference types="vite/client" />
 
 import type { ApiResult } from "@shared/ipc";
-import type { AppUpdateStatus } from "@shared/types";
+import type { AccountStatus, AppUpdateStatus, MeetEventsSnapshot } from "@shared/types";
 
 export type MeetLauncherApi = {
-  getAccountStatus: () => Promise<unknown>;
+  getAccountStatus: () => Promise<ApiResult<AccountStatus>>;
+  connectGoogleAccount: () => Promise<ApiResult<AccountStatus>>;
+  disconnectGoogleAccount: () => Promise<ApiResult<AccountStatus>>;
+  syncCalendarNow: () => Promise<ApiResult<MeetEventsSnapshot>>;
+  listUpcomingMeetings: () => Promise<ApiResult<MeetEventsSnapshot>>;
+  onCalendarUpdated: (handler: (result: ApiResult<MeetEventsSnapshot>) => void) => () => void;
   openMeetUrl: (meetUrl: string) => Promise<ApiResult<void>>;
   getUpdateStatus: () => Promise<ApiResult<AppUpdateStatus>>;
   checkForUpdates: () => Promise<ApiResult<AppUpdateStatus>>;

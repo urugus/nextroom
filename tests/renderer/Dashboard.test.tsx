@@ -37,26 +37,36 @@ describe("Dashboard", () => {
   it("renders disconnected state and upcoming meetings", () => {
     const onOpenMeeting = vi.fn();
     render(
-      <Dashboard accountConnected={false} meetings={[meeting]} onOpenMeeting={onOpenMeeting} />,
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        meetings={[meeting]}
+        onConnectAccount={vi.fn()}
+        onDisconnectAccount={vi.fn()}
+        onOpenMeeting={onOpenMeeting}
+        onSyncCalendar={vi.fn()}
+      />,
     );
 
     expect(screen.getByText("Google Calendar not connected")).toBeInTheDocument();
     expect(
-      screen.getByText("Google Calendar connection is not configured yet."),
+      screen.getByText("Connect Google Calendar to load upcoming meetings."),
     ).toBeInTheDocument();
     expect(screen.getByText("Product sync")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Join" }));
     expect(onOpenMeeting).toHaveBeenCalledWith("https://meet.google.com/abc-defg-hij");
-    expect(screen.getByRole("button", { name: "Connect" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Connect" })).toBeEnabled();
   });
 
   it("renders an error message", () => {
     render(
       <Dashboard
-        accountConnected={false}
+        accountStatus={{ connected: false, syncing: false }}
         errorMessage="Calendar API failed"
         meetings={[]}
+        onConnectAccount={vi.fn()}
+        onDisconnectAccount={vi.fn()}
         onOpenMeeting={vi.fn()}
+        onSyncCalendar={vi.fn()}
       />,
     );
 
@@ -69,11 +79,14 @@ describe("Dashboard", () => {
     const onDownloadUpdate = vi.fn();
     render(
       <Dashboard
-        accountConnected={false}
+        accountStatus={{ connected: false, syncing: false }}
         meetings={[]}
         onCheckForUpdates={onCheckForUpdates}
+        onConnectAccount={vi.fn()}
+        onDisconnectAccount={vi.fn()}
         onDownloadUpdate={onDownloadUpdate}
         onOpenMeeting={vi.fn()}
+        onSyncCalendar={vi.fn()}
         updateStatus={updateAvailable}
       />,
     );
@@ -90,9 +103,12 @@ describe("Dashboard", () => {
   it("renders update errors once in the dedicated error area", () => {
     render(
       <Dashboard
-        accountConnected={false}
+        accountStatus={{ connected: false, syncing: false }}
         meetings={[]}
+        onConnectAccount={vi.fn()}
+        onDisconnectAccount={vi.fn()}
         onOpenMeeting={vi.fn()}
+        onSyncCalendar={vi.fn()}
         updateStatus={updateError}
       />,
     );
