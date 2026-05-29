@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
 import {
@@ -8,11 +9,17 @@ import {
   installAppUpdate,
 } from "@main/updater/appUpdater";
 import type { AppError } from "@shared/errors";
-import { app, BrowserWindow, ipcMain, session } from "electron";
+import type { BrowserWindow as ElectronBrowserWindow } from "electron";
 import { err, fromThrowable, ok, type Result } from "neverthrow";
 import { serializeResultForRenderer } from "./ipc/result";
 
-const meetWindows = new Set<BrowserWindow>();
+const nodeRequire = createRequire(import.meta.url);
+const { app, BrowserWindow, ipcMain, session } = nodeRequire(
+  "electron",
+) as typeof import("electron");
+
+let mainWindow: ElectronBrowserWindow | undefined;
+const meetWindows = new Set<ElectronBrowserWindow>();
 
 const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "MeetWindowFailed") =>
   fromThrowable(
@@ -66,6 +73,12 @@ const createMainWindow = () =>
     } else {
       void window.loadFile(join(__dirname, "../renderer/index.html"));
     }
+
+    window.on("closed", () => {
+      if (mainWindow === window) {
+        mainWindow = undefined;
+      }
+    });
 
     return window;
   });
@@ -135,11 +148,16 @@ void app.whenReady().then(() => {
     throw new Error(created.error.type);
   }
 
+  mainWindow = created.value;
+
   void checkForAppUpdates();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
+      const activated = createMainWindow();
+      if (activated.isOk()) {
+        mainWindow = activated.value;
+      }
     }
   });
 });
