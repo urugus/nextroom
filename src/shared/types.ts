@@ -1,3 +1,5 @@
+import type { SerializedAppError } from "./errors";
+
 export type CalendarDateTime = {
   date?: string;
   dateTime?: string;
@@ -47,6 +49,18 @@ export type MeetEvent = {
   meetCode?: string;
   responseStatus?: "accepted" | "tentative" | "declined" | "needsAction";
   status: "confirmed" | "cancelled";
+};
+
+export type AccountStatus = {
+  connected: boolean;
+  syncing: boolean;
+  lastSyncedAt?: string;
+  error?: SerializedAppError;
+};
+
+export type MeetEventsSnapshot = {
+  meetings: MeetEvent[];
+  syncedAt?: string;
 };
 
 export type AppSettings = {

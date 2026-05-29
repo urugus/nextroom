@@ -1,29 +1,88 @@
 import { App } from "@renderer/App";
 import type { ApiResult } from "@shared/ipc";
-import type { AppUpdateStatus } from "@shared/types";
+import type { AccountStatus, AppUpdateStatus, MeetEventsSnapshot } from "@shared/types";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const updateStatus: AppUpdateStatus = {
+  canCheck: false,
+  canDownload: false,
+  canInstall: false,
+  currentVersion: "0.1.0",
+  status: "unsupported",
+};
+
+const meetings: ApiResult<MeetEventsSnapshot> = {
+  ok: true,
+  value: {
+    meetings: [
+      {
+        eventId: "event-1",
+        occurrenceKey: "primary:event-1:2026-05-28T10:00:00+09:00",
+        calendarId: "primary",
+        summary: "Product sync",
+        startAt: "2026-05-28T10:00:00+09:00",
+        endAt: "2026-05-28T10:30:00+09:00",
+        updatedAt: "2026-05-28T09:00:00+09:00",
+        meetUrl: "https://meet.google.com/abc-defg-hij",
+        meetCode: "abc-defg-hij",
+        responseStatus: "accepted",
+        status: "confirmed",
+      },
+    ],
+  },
+};
+
 const installMeetLauncher = (openMeetUrl: ReturnType<typeof vi.fn>) => {
-  const updateStatus: AppUpdateStatus = {
-    canCheck: false,
-    canDownload: false,
-    canInstall: false,
-    currentVersion: "0.1.0",
-    status: "unsupported",
+  const status: ApiResult<AccountStatus> = {
+    ok: true,
+    value: { connected: true, syncing: false },
   };
 
   Object.defineProperty(window, "meetLauncher", {
     configurable: true,
     value: {
       checkForUpdates: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+      connectGoogleAccount: vi.fn(() => Promise.resolve(status)),
+      disconnectGoogleAccount: vi.fn(() =>
+        Promise.resolve({ ok: true, value: { connected: false, syncing: false } }),
+      ),
       downloadUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
-      getAccountStatus: vi.fn(),
+      getAccountStatus: vi.fn(() => Promise.resolve(status)),
       getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       installUpdate: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
+      listUpcomingMeetings: vi.fn(() => Promise.resolve(meetings)),
+      onCalendarUpdated: vi.fn(() => vi.fn()),
       onUpdateStatusChanged: vi.fn(() => vi.fn()),
       openMeetUrl,
+      syncCalendarNow: vi.fn(() => Promise.resolve(meetings)),
+      versions: {
+        chrome: "test-chrome",
+        electron: "test-electron",
+      },
+    },
+  });
+};
+
+const installMeetLauncherWithStatus = (status: ApiResult<AccountStatus>) => {
+  Object.defineProperty(window, "meetLauncher", {
+    configurable: true,
+    value: {
+      checkForUpdates: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+      connectGoogleAccount: vi.fn(() => Promise.resolve(status)),
+      disconnectGoogleAccount: vi.fn(),
+      downloadUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+      getAccountStatus: vi.fn(() =>
+        Promise.resolve({ ok: true, value: { connected: false, syncing: false } }),
+      ),
+      getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+      installUpdate: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
+      listUpcomingMeetings: vi.fn(() => Promise.resolve({ ok: true, value: { meetings: [] } })),
+      onCalendarUpdated: vi.fn(() => vi.fn()),
+      onUpdateStatusChanged: vi.fn(() => vi.fn()),
+      openMeetUrl: vi.fn(),
+      syncCalendarNow: vi.fn(),
       versions: {
         chrome: "test-chrome",
         electron: "test-electron",
@@ -49,7 +108,7 @@ describe("App", () => {
 
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Join" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Join" }));
 
     const openingButton = await screen.findByRole("button", { name: "Opening" });
     expect(openingButton).toBeDisabled();
@@ -81,7 +140,7 @@ describe("App", () => {
 
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Join" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Join" }));
 
     expect(await screen.findByText("Google Meet window failed: network error")).toBeInTheDocument();
   });
@@ -94,8 +153,84 @@ describe("App", () => {
 
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Join" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Join" }));
 
     expect(await screen.findByText("preload bridge unavailable")).toBeInTheDocument();
+  });
+
+  it("renders account status errors returned after connect", async () => {
+    installMeetLauncherWithStatus({
+      ok: true,
+      value: {
+        connected: true,
+        syncing: false,
+        error: {
+          message: "Google Calendar API failed: unavailable",
+          recoverable: true,
+          type: "CalendarApiFailed",
+        },
+      },
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Connect" }));
+
+    expect(await screen.findByText("Google Calendar API failed: unavailable")).toBeInTheDocument();
+  });
+
+  it("clears account status errors after a later successful status", async () => {
+    let calendarUpdatedHandler!: (result: ApiResult<MeetEventsSnapshot>) => void;
+    Object.defineProperty(window, "meetLauncher", {
+      configurable: true,
+      value: {
+        checkForUpdates: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+        connectGoogleAccount: vi.fn(),
+        disconnectGoogleAccount: vi.fn(),
+        downloadUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+        getAccountStatus: vi
+          .fn()
+          .mockResolvedValueOnce({
+            ok: true,
+            value: {
+              connected: true,
+              syncing: false,
+              error: {
+                message: "Google Calendar API failed: unavailable",
+                recoverable: true,
+                type: "CalendarApiFailed",
+              },
+            },
+          })
+          .mockResolvedValue({
+            ok: true,
+            value: { connected: true, syncing: false },
+          }),
+        getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+        installUpdate: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
+        listUpcomingMeetings: vi.fn(() => Promise.resolve({ ok: true, value: { meetings: [] } })),
+        onCalendarUpdated: vi.fn((handler: (result: ApiResult<MeetEventsSnapshot>) => void) => {
+          calendarUpdatedHandler = handler;
+          return vi.fn();
+        }),
+        onUpdateStatusChanged: vi.fn(() => vi.fn()),
+        openMeetUrl: vi.fn(),
+        syncCalendarNow: vi.fn(),
+        versions: {
+          chrome: "test-chrome",
+          electron: "test-electron",
+        },
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Google Calendar API failed: unavailable")).toBeInTheDocument();
+    act(() => {
+      calendarUpdatedHandler({ ok: true, value: { meetings: [] } });
+    });
+    await waitFor(() =>
+      expect(screen.queryByText("Google Calendar API failed: unavailable")).not.toBeInTheDocument(),
+    );
   });
 });

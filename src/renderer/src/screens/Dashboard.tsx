@@ -1,14 +1,19 @@
-import type { AppUpdateStatus, MeetEvent } from "@shared/types";
+import type { AccountStatus, AppUpdateStatus, MeetEvent } from "@shared/types";
 
 type DashboardProps = {
-  accountConnected: boolean;
+  accountStatus: AccountStatus;
   errorMessage?: string;
   meetings: MeetEvent[];
   openingMeetUrl?: string;
-  onOpenMeeting: (meetUrl: string) => Promise<unknown>;
+  pendingAction?: "connect" | "disconnect" | "sync";
+  syncedAt?: string;
   onCheckForUpdates?: () => Promise<unknown>;
+  onConnectAccount: () => Promise<unknown>;
+  onDisconnectAccount: () => Promise<unknown>;
   onDownloadUpdate?: () => Promise<unknown>;
   onInstallUpdate?: () => Promise<unknown>;
+  onOpenMeeting: (meetUrl: string) => Promise<unknown>;
+  onSyncCalendar: () => Promise<unknown>;
   updateErrorMessage?: string;
   updateStatus?: AppUpdateStatus;
 };
@@ -51,17 +56,35 @@ const updateErrorTextFor = (updateStatus?: AppUpdateStatus, updateErrorMessage?:
   updateErrorMessage ?? updateStatus?.errorMessage;
 
 export const Dashboard = ({
-  accountConnected,
+  accountStatus,
   errorMessage,
   meetings,
   onCheckForUpdates,
+  onConnectAccount,
+  onDisconnectAccount,
   onDownloadUpdate,
   onInstallUpdate,
-  openingMeetUrl,
   onOpenMeeting,
+  onSyncCalendar,
+  openingMeetUrl,
+  pendingAction,
+  syncedAt,
   updateErrorMessage,
   updateStatus,
 }: DashboardProps) => {
+  const actionInProgress = pendingAction !== undefined || accountStatus.syncing;
+  const statusText = accountStatus.connected
+    ? "Google Calendar connected"
+    : "Google Calendar not connected";
+  const helperText =
+    syncedAt !== undefined
+      ? `Last synced ${new Intl.DateTimeFormat("ja-JP", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }).format(new Date(syncedAt))}`
+      : accountStatus.connected
+        ? "Calendar sync is ready."
+        : "Connect Google Calendar to load upcoming meetings.";
   const updateErrorText = updateErrorTextFor(updateStatus, updateErrorMessage);
 
   return (
@@ -69,16 +92,42 @@ export const Dashboard = ({
       <section className="toolbar" aria-label="Account status">
         <div>
           <h1>NextRoom</h1>
-          <p>{accountConnected ? "Google Calendar connected" : "Google Calendar not connected"}</p>
+          <p>{statusText}</p>
           <p id="calendar-action-help" className="helper-text">
-            {accountConnected
-              ? "Calendar sync is not configured yet."
-              : "Google Calendar connection is not configured yet."}
+            {helperText}
           </p>
         </div>
-        <button type="button" disabled aria-describedby="calendar-action-help">
-          {accountConnected ? "Sync" : "Connect"}
-        </button>
+        <div className="toolbar-actions">
+          {accountStatus.connected ? (
+            <>
+              <button
+                type="button"
+                disabled={actionInProgress}
+                aria-describedby="calendar-action-help"
+                onClick={() => void onSyncCalendar()}
+              >
+                {pendingAction === "sync" || accountStatus.syncing ? "Syncing" : "Sync"}
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={actionInProgress}
+                onClick={() => void onDisconnectAccount()}
+              >
+                {pendingAction === "disconnect" ? "Disconnecting" : "Disconnect"}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={actionInProgress}
+              aria-describedby="calendar-action-help"
+              onClick={() => void onConnectAccount()}
+            >
+              {pendingAction === "connect" ? "Connecting" : "Connect"}
+            </button>
+          )}
+        </div>
       </section>
 
       {errorMessage !== undefined ? <p className="error-banner">{errorMessage}</p> : null}

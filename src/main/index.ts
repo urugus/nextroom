@@ -1,6 +1,11 @@
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { createKeychainTokenStore } from "@main/adapters/keychainTokenStore";
+import { createGoogleCalendarClient } from "@main/calendar/calendarClient";
+import { createCalendarSyncService } from "@main/calendar/calendarSyncService";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
+import { createGoogleAuthService } from "@main/oauth/googleAuthService";
+import { createOAuthClient } from "@main/oauth/oauthClient";
 import {
   checkForAppUpdates,
   configureAppUpdater,
@@ -10,16 +15,31 @@ import {
 } from "@main/updater/appUpdater";
 import type { AppError } from "@shared/errors";
 import type { BrowserWindow as ElectronBrowserWindow } from "electron";
+import * as keytar from "keytar";
 import { err, fromThrowable, ok, type Result } from "neverthrow";
+import { z } from "zod";
 import { serializeResultForRenderer } from "./ipc/result";
 
 const nodeRequire = createRequire(import.meta.url);
-const { app, BrowserWindow, ipcMain, session } = nodeRequire(
+const { app, BrowserWindow, ipcMain, session, shell } = nodeRequire(
   "electron",
 ) as typeof import("electron");
 
 let mainWindow: ElectronBrowserWindow | undefined;
 const meetWindows = new Set<ElectronBrowserWindow>();
+const meetUrlSchema = z.string().url();
+const tokenStore = createKeychainTokenStore(keytar);
+const oauthClient = createOAuthClient();
+const authService = createGoogleAuthService({
+  clientId: process.env.NEXTROOM_GOOGLE_CLIENT_ID,
+  tokenStore,
+  oauthClient,
+  openExternal: (url) => shell.openExternal(url).then(() => undefined),
+});
+const calendarSyncService = createCalendarSyncService({
+  authService,
+  calendarClient: createGoogleCalendarClient(),
+});
 
 const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "MeetWindowFailed") =>
   fromThrowable(
@@ -124,9 +144,34 @@ const openMeetUrl = async (value: string): Promise<Result<void, AppError>> => {
 };
 
 const registerIpc = () => {
-  ipcMain.handle("account:getStatus", () => serializeResultForRenderer(ok({ connected: false })));
+  calendarSyncService.subscribe((snapshot) => {
+    const result = serializeResultForRenderer(ok(snapshot));
+    if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("calendar:updated", result);
+    }
+  });
+
+  ipcMain.handle("account:getStatus", async () =>
+    serializeResultForRenderer(await calendarSyncService.getAccountStatus()),
+  );
+  ipcMain.handle("account:connect", async () =>
+    serializeResultForRenderer(await calendarSyncService.connectAccount()),
+  );
+  ipcMain.handle("account:disconnect", async () =>
+    serializeResultForRenderer(await calendarSyncService.disconnectAccount()),
+  );
+  ipcMain.handle("calendar:syncNow", async () =>
+    serializeResultForRenderer(await calendarSyncService.syncNow()),
+  );
+  ipcMain.handle("meet:listUpcoming", () =>
+    serializeResultForRenderer(calendarSyncService.listUpcomingMeetings()),
+  );
   ipcMain.handle("meet:open", async (_event, meetUrl: string) =>
-    serializeResultForRenderer(await openMeetUrl(meetUrl)),
+    serializeResultForRenderer(
+      meetUrlSchema.safeParse(meetUrl).success
+        ? await openMeetUrl(meetUrl)
+        : err({ type: "MeetUrlNotFound", eventId: "unknown" }),
+    ),
   );
   ipcMain.handle("updates:getStatus", () => serializeResultForRenderer(ok(getAppUpdateStatus())));
   ipcMain.handle("updates:check", async () =>
@@ -142,6 +187,7 @@ void app.whenReady().then(() => {
   configureMeetSessionPermissions();
   configureAppUpdater();
   registerIpc();
+  calendarSyncService.startPolling();
   const created = createMainWindow();
 
   if (created.isErr()) {

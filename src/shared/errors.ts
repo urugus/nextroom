@@ -1,5 +1,6 @@
 export type AppError =
   | { type: "OAuthDenied"; cause?: unknown }
+  | { type: "OAuthFailed"; cause: unknown }
   | { type: "TokenRefreshFailed"; cause: unknown }
   | { type: "CalendarApiFailed"; status?: number; cause: unknown }
   | { type: "MeetUrlNotFound"; eventId: string }
@@ -18,6 +19,7 @@ export type SerializedAppError = {
 
 const recoverableByType = {
   OAuthDenied: true,
+  OAuthFailed: true,
   TokenRefreshFailed: true,
   CalendarApiFailed: true,
   MeetUrlNotFound: false,
@@ -32,6 +34,14 @@ const recoverableByType = {
 export const unknownToMessage = (cause: unknown): string => {
   if (cause instanceof Error) return cause.message;
   if (typeof cause === "string") return cause;
+  if (
+    typeof cause === "object" &&
+    cause !== null &&
+    "message" in cause &&
+    typeof cause.message === "string"
+  ) {
+    return cause.message;
+  }
   return "Unknown error";
 };
 
@@ -39,6 +49,8 @@ export const appErrorMessage = (error: AppError): string => {
   switch (error.type) {
     case "OAuthDenied":
       return "Google authorization was denied.";
+    case "OAuthFailed":
+      return `Google authorization failed: ${unknownToMessage(error.cause)}`;
     case "TokenRefreshFailed":
       return `Google token refresh failed: ${unknownToMessage(error.cause)}`;
     case "CalendarApiFailed":
