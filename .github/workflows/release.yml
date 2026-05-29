@@ -55,21 +55,8 @@ jobs:
       - name: Run checks
         run: pnpm run check
 
-      - name: Prepare App Store Connect API key
-        env:
-          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/notarization"
-          printf '%s' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/notarization/AuthKey_${APPLE_API_KEY_ID}.p8"
-          echo "APPLE_API_KEY=$RUNNER_TEMP/notarization/AuthKey_${APPLE_API_KEY_ID}.p8" >> "$GITHUB_ENV"
-
       - name: Build and publish macOS artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: pnpm run release:mac
