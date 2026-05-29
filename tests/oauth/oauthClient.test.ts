@@ -1,4 +1,5 @@
 import { createOAuthClient, GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE } from "@main/oauth/oauthClient";
+import { appErrorMessage } from "@shared/errors";
 import { describe, expect, it, vi } from "vitest";
 
 describe("createOAuthClient", () => {
@@ -48,6 +49,30 @@ describe("createOAuthClient", () => {
     expect(fetchImpl).toHaveBeenCalledWith(
       "https://oauth2.googleapis.com/token",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("keeps refresh token failure messages user-visible", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            error: "invalid_grant",
+            error_description: "Token has been expired or revoked.",
+          }),
+          { status: 400 },
+        ),
+      ),
+    );
+    const client = createOAuthClient(fetchImpl);
+
+    const result = await client.refreshAccessToken({
+      clientId: "client-id",
+      refreshToken: "refresh-token",
+    });
+
+    expect(appErrorMessage(result._unsafeUnwrapErr())).toBe(
+      "Google token refresh failed: Token has been expired or revoked.",
     );
   });
 });

@@ -26,7 +26,7 @@ export const App = () => {
 
   const applyAccountStatus = useCallback((status: AccountStatus) => {
     setAccountStatus(status);
-    if (status.error !== undefined) setErrorMessage(status.error.message);
+    setErrorMessage(status.error?.message);
   }, []);
 
   const refreshStatus = useCallback(async () => {

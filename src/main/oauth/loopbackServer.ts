@@ -64,15 +64,15 @@ export const createOAuthCallbackReceiver = (
           const state = requestUrl.searchParams.get("state");
           const code = requestUrl.searchParams.get("code");
 
-          if (oauthError !== null) {
-            return complete(err({ type: "OAuthDenied", cause: oauthError }), failureHtml);
-          }
-
           if (state !== expectedState) {
             return complete(
               err({ type: "OAuthFailed", cause: "OAuth state mismatch." }),
               failureHtml,
             );
+          }
+
+          if (oauthError !== null) {
+            return complete(err({ type: "OAuthDenied", cause: oauthError }), failureHtml);
           }
 
           if (code === null || code.length === 0) {

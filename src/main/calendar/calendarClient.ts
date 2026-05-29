@@ -30,6 +30,25 @@ const toCalendarApiError = (cause: unknown): AppError =>
     ? { type: "CalendarApiFailed", status: cause.status, cause: cause.cause }
     : { type: "CalendarApiFailed", cause };
 
+const calendarApiFailureMessage = (responseBody: unknown): string | unknown => {
+  const parsedError = z
+    .object({
+      error: z
+        .object({
+          message: z.string().optional(),
+          status: z.string().optional(),
+        })
+        .optional(),
+    })
+    .passthrough()
+    .safeParse(responseBody);
+
+  if (!parsedError.success) return responseBody;
+
+  const googleError = parsedError.data.error;
+  return googleError?.message ?? googleError?.status ?? responseBody;
+};
+
 const buildEventsUrl = (now: Date): URL => {
   const timeMin = new Date(now.getTime() - 5 * 60 * 1000);
   const timeMax = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -61,7 +80,7 @@ export const createGoogleCalendarClient = (
           throw {
             kind: "calendar-api-failure",
             status: response.status,
-            cause: responseBody,
+            cause: calendarApiFailureMessage(responseBody),
           } satisfies CalendarApiFailure;
         }
 

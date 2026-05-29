@@ -34,6 +34,14 @@ const recoverableByType = {
 export const unknownToMessage = (cause: unknown): string => {
   if (cause instanceof Error) return cause.message;
   if (typeof cause === "string") return cause;
+  if (
+    typeof cause === "object" &&
+    cause !== null &&
+    "message" in cause &&
+    typeof cause.message === "string"
+  ) {
+    return cause.message;
+  }
   return "Unknown error";
 };
 

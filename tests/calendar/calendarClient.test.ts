@@ -1,4 +1,5 @@
 import { createGoogleCalendarClient } from "@main/calendar/calendarClient";
+import { appErrorMessage } from "@shared/errors";
 import { describe, expect, it, vi } from "vitest";
 
 describe("createGoogleCalendarClient", () => {
@@ -27,7 +28,12 @@ describe("createGoogleCalendarClient", () => {
 
   it("maps failed responses into CalendarApiFailed", async () => {
     const fetchImpl = vi.fn<typeof fetch>(() =>
-      Promise.resolve(new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 })),
+      Promise.resolve(
+        new Response(
+          JSON.stringify({ error: { message: "Request had invalid authentication credentials." } }),
+          { status: 401 },
+        ),
+      ),
     );
     const client = createGoogleCalendarClient(fetchImpl);
 
@@ -37,5 +43,8 @@ describe("createGoogleCalendarClient", () => {
     );
 
     expect(result._unsafeUnwrapErr()).toMatchObject({ type: "CalendarApiFailed", status: 401 });
+    expect(appErrorMessage(result._unsafeUnwrapErr())).toBe(
+      "Google Calendar API failed: Request had invalid authentication credentials.",
+    );
   });
 });

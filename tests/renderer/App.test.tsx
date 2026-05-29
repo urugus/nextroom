@@ -178,4 +178,59 @@ describe("App", () => {
 
     expect(await screen.findByText("Google Calendar API failed: unavailable")).toBeInTheDocument();
   });
+
+  it("clears account status errors after a later successful status", async () => {
+    let calendarUpdatedHandler!: (result: ApiResult<MeetEventsSnapshot>) => void;
+    Object.defineProperty(window, "meetLauncher", {
+      configurable: true,
+      value: {
+        checkForUpdates: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+        connectGoogleAccount: vi.fn(),
+        disconnectGoogleAccount: vi.fn(),
+        downloadUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+        getAccountStatus: vi
+          .fn()
+          .mockResolvedValueOnce({
+            ok: true,
+            value: {
+              connected: true,
+              syncing: false,
+              error: {
+                message: "Google Calendar API failed: unavailable",
+                recoverable: true,
+                type: "CalendarApiFailed",
+              },
+            },
+          })
+          .mockResolvedValue({
+            ok: true,
+            value: { connected: true, syncing: false },
+          }),
+        getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+        installUpdate: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
+        listUpcomingMeetings: vi.fn(() => Promise.resolve({ ok: true, value: { meetings: [] } })),
+        onCalendarUpdated: vi.fn((handler: (result: ApiResult<MeetEventsSnapshot>) => void) => {
+          calendarUpdatedHandler = handler;
+          return vi.fn();
+        }),
+        onUpdateStatusChanged: vi.fn(() => vi.fn()),
+        openMeetUrl: vi.fn(),
+        syncCalendarNow: vi.fn(),
+        versions: {
+          chrome: "test-chrome",
+          electron: "test-electron",
+        },
+      },
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Google Calendar API failed: unavailable")).toBeInTheDocument();
+    act(() => {
+      calendarUpdatedHandler({ ok: true, value: { meetings: [] } });
+    });
+    await waitFor(() =>
+      expect(screen.queryByText("Google Calendar API failed: unavailable")).not.toBeInTheDocument(),
+    );
+  });
 });

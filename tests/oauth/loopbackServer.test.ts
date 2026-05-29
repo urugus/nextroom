@@ -23,4 +23,15 @@ describe("createOAuthCallbackReceiver", () => {
 
     expect(code._unsafeUnwrapErr().type).toBe("OAuthFailed");
   });
+
+  it("rejects error callbacks with mismatched state", async () => {
+    const receiver = await createOAuthCallbackReceiver("state", 1_000);
+    expect(receiver.isOk()).toBe(true);
+    const created = receiver._unsafeUnwrap();
+
+    await fetch(`${created.redirectUri}?state=other&error=access_denied`);
+    const code = await created.waitForCode();
+
+    expect(code._unsafeUnwrapErr().type).toBe("OAuthFailed");
+  });
 });
