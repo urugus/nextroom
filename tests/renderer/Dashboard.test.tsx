@@ -51,7 +51,7 @@ describe("Dashboard", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Product sync")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Join" }));
-    expect(onOpenMeeting).toHaveBeenCalledWith("https://meet.google.com/abc-defg-hij");
+    expect(onOpenMeeting).toHaveBeenCalledWith(meeting);
     expect(screen.getByRole("button", { name: "Connect" })).toBeEnabled();
   });
 

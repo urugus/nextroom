@@ -96,6 +96,37 @@ a {
   padding: 12px 16px;
 }
 
+.meeting-notification {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  border: 1px solid #9ec5fe;
+  border-radius: 8px;
+  background: #eaf4ff;
+  color: #163d63;
+  cursor: pointer;
+  padding: 14px 16px;
+  text-align: left;
+}
+
+.meeting-notification > span:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.meeting-notification > span:last-child {
+  flex: 0 0 auto;
+  color: #1267d8;
+  font-weight: 700;
+}
+
+.meeting-notification:disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
+
 .update-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -198,6 +229,11 @@ a {
 
   .toolbar,
   .meeting-row {
+    flex-direction: column;
+  }
+
+  .meeting-notification {
+    align-items: stretch;
     flex-direction: column;
   }
 
