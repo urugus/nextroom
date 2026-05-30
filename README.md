@@ -57,10 +57,11 @@ NextRoom のアプリ内更新は macOS の自己置換 updater ではなく、H
 ```sh
 brew update
 brew upgrade --cask --appdir="$HOME/Applications" nextroom
-open "$HOME/Applications/NextRoom.app"
+osascript -e 'quit app "NextRoom"' >/dev/null 2>&1 || true
+open -n "$HOME/Applications/NextRoom.app"
 ```
 
-このため、NextRoom は Homebrew cask として `~/Applications` にインストールされている必要がある。未インストールの場合、アプリ内更新は `Homebrew was not found` または cask 未導入のエラーを表示する。更新ログは `~/Library/Application Support/nextroom/homebrew-update.log` に出力する。
+このため、NextRoom は Homebrew cask として `~/Applications` にインストールされている必要がある。未インストールの場合、アプリ内更新は `Homebrew was not found` または cask 未導入のエラーを表示する。更新ログは `~/Library/Application Support/NextRoom/homebrew-update.log` に出力する。
 
 tap は別リポジトリ `urugus/homebrew-tap` で管理する想定。
 

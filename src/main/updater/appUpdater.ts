@@ -1,18 +1,15 @@
 import { execFile, spawn } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { AppError } from "@shared/errors";
 import type { AppUpdateStatus } from "@shared/types";
+import { app, BrowserWindow } from "electron";
+import { autoUpdater } from "electron-updater";
 import { err, ok, type Result } from "neverthrow";
 
 type UpdaterState = Omit<AppUpdateStatus, "canCheck" | "canRunHomebrewUpdate" | "currentVersion">;
-
-const nodeRequire = createRequire(import.meta.url);
-const { app, BrowserWindow } = nodeRequire("electron") as typeof import("electron");
-const { autoUpdater } = nodeRequire("electron-updater") as typeof import("electron-updater");
 
 const execFileAsync = promisify(execFile);
 const brewCandidates = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"];
@@ -122,7 +119,11 @@ mkdir -p "$NEXTROOM_APPDIR"
 "$NEXTROOM_BREW_PATH" update
 "$NEXTROOM_BREW_PATH" upgrade --cask --appdir "$NEXTROOM_APPDIR" nextroom
 echo "__NEXTROOM_HOMEBREW_UPDATE_SUCCESS__ $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-open "$NEXTROOM_APP_PATH"
+osascript -e 'quit app "NextRoom"' >/dev/null 2>&1 || true
+sleep 1
+if ! open -n "$NEXTROOM_APP_PATH"; then
+  echo "__NEXTROOM_HOMEBREW_REOPEN_FAILED__"
+fi
 `;
 
 const spawnDetachedHomebrewUpdate = async (brewPath: string) => {
@@ -135,6 +136,7 @@ const spawnDetachedHomebrewUpdate = async (brewPath: string) => {
       env: {
         ...process.env,
         HOMEBREW_NO_ANALYTICS: "1",
+        HOMEBREW_NO_AUTO_UPDATE: "1",
         NEXTROOM_APPDIR: homebrewAppDir(),
         NEXTROOM_APP_PATH: homebrewAppPath(),
         NEXTROOM_BREW_PATH: brewPath,

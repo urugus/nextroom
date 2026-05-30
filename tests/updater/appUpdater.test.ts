@@ -1,0 +1,235 @@
+import { describe, expect, it, vi } from "vitest";
+
+type AutoUpdaterHandler = (...args: unknown[]) => void;
+
+type AppUpdaterTestContext = {
+  accessMock: ReturnType<typeof vi.fn>;
+  autoUpdaterHandlers: Map<string, AutoUpdaterHandler>;
+  closeSyncMock: ReturnType<typeof vi.fn>;
+  execFileMock: ReturnType<typeof vi.fn>;
+  module: typeof import("@main/updater/appUpdater");
+  openSyncMock: ReturnType<typeof vi.fn>;
+  sendMock: ReturnType<typeof vi.fn>;
+  spawnHandlers: Map<string, AutoUpdaterHandler>;
+  spawnMock: ReturnType<typeof vi.fn>;
+};
+
+const createAppUpdaterTestContext = async (
+  accessImpl: (path: string) => Promise<void> = () => Promise.resolve(),
+): Promise<AppUpdaterTestContext> => {
+  vi.resetModules();
+
+  const sendMock = vi.fn();
+  const appMock = {
+    getPath: vi.fn((name: string) => {
+      if (name === "home") return "/Users/tester";
+      if (name === "userData") return "/Users/tester/Library/Application Support/NextRoom";
+      return `/mock/${name}`;
+    }),
+    getVersion: vi.fn(() => "0.1.3"),
+    isPackaged: true,
+  };
+  const browserWindowMock = {
+    getAllWindows: vi.fn(() => [{ webContents: { send: sendMock } }]),
+  };
+  const autoUpdaterHandlers = new Map<string, AutoUpdaterHandler>();
+  const autoUpdaterMock = {
+    autoDownload: true,
+    autoInstallOnAppQuit: true,
+    checkForUpdates: vi.fn(() => Promise.resolve()),
+    on: vi.fn((event: string, handler: AutoUpdaterHandler) => {
+      autoUpdaterHandlers.set(event, handler);
+    }),
+  };
+  const execFileMock = vi.fn(
+    (
+      _file: string,
+      _args: string[],
+      _options: unknown,
+      callback: (error: Error | null) => void,
+    ) => {
+      callback(null);
+    },
+  );
+  const spawnHandlers = new Map<string, AutoUpdaterHandler>();
+  const childMock = {
+    on: vi.fn((event: string, handler: AutoUpdaterHandler) => {
+      spawnHandlers.set(event, handler);
+      return childMock;
+    }),
+    unref: vi.fn(),
+  };
+  const spawnMock = vi.fn(() => childMock);
+  const accessMock = vi.fn(accessImpl);
+  const mkdirMock = vi.fn(() => Promise.resolve());
+  const openSyncMock = vi.fn(() => 42);
+  const closeSyncMock = vi.fn();
+
+  vi.doMock("node:child_process", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:child_process")>();
+
+    return {
+      ...actual,
+      default: {
+        ...actual,
+        execFile: execFileMock,
+        spawn: spawnMock,
+      },
+      execFile: execFileMock,
+      spawn: spawnMock,
+    };
+  });
+  vi.doMock("node:fs", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:fs")>();
+
+    return {
+      ...actual,
+      closeSync: closeSyncMock,
+      default: {
+        ...actual,
+        closeSync: closeSyncMock,
+        openSync: openSyncMock,
+      },
+      openSync: openSyncMock,
+    };
+  });
+  vi.doMock("node:fs/promises", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:fs/promises")>();
+
+    return {
+      ...actual,
+      access: accessMock,
+      default: {
+        ...actual,
+        access: accessMock,
+        mkdir: mkdirMock,
+      },
+      mkdir: mkdirMock,
+    };
+  });
+  vi.doMock("electron", () => ({
+    BrowserWindow: browserWindowMock,
+    app: appMock,
+    default: { app: appMock, BrowserWindow: browserWindowMock },
+  }));
+  vi.doMock("electron-updater", () => {
+    const mockedModule = { autoUpdater: autoUpdaterMock };
+
+    return {
+      ...mockedModule,
+      default: mockedModule,
+    };
+  });
+
+  const module = await import("@main/updater/appUpdater");
+
+  return {
+    accessMock,
+    autoUpdaterHandlers,
+    closeSyncMock,
+    execFileMock,
+    module,
+    openSyncMock,
+    sendMock,
+    spawnHandlers,
+    spawnMock,
+  };
+};
+
+const prepareAvailableUpdate = (context: AppUpdaterTestContext) => {
+  context.module.configureAppUpdater();
+  context.autoUpdaterHandlers.get("update-available")?.({
+    releaseDate: "2026-05-30T00:00:00Z",
+    releaseName: "v0.1.4",
+    version: "0.1.4",
+  });
+};
+
+describe("appUpdater Homebrew updates", () => {
+  it("starts the detached Homebrew update with stable appdir, log path, and env", async () => {
+    const context = await createAppUpdaterTestContext();
+    prepareAvailableUpdate(context);
+
+    const result = await context.module.runHomebrewAppUpdate();
+
+    expect(result._unsafeUnwrap()).toMatchObject({
+      status: "homebrew-updating",
+      updateMessage: "Starting Homebrew update in the background.",
+    });
+    expect(context.execFileMock).toHaveBeenCalledWith(
+      "/opt/homebrew/bin/brew",
+      ["list", "--cask", "nextroom"],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          HOMEBREW_NO_ANALYTICS: "1",
+          HOMEBREW_NO_AUTO_UPDATE: "1",
+        }),
+      }),
+      expect.any(Function),
+    );
+
+    const spawnCall = context.spawnMock.mock.calls[0] ?? [];
+    const script = (spawnCall[1] as string[])[1] ?? "";
+    const spawnOptions = spawnCall[2] as {
+      detached: boolean;
+      env: Record<string, string>;
+      stdio: unknown[];
+    };
+
+    expect(context.openSyncMock).toHaveBeenCalledWith(
+      "/Users/tester/Library/Application Support/NextRoom/homebrew-update.log",
+      "a",
+    );
+    expect(context.closeSyncMock).toHaveBeenCalledWith(42);
+    expect(context.spawnMock).toHaveBeenCalledWith(
+      "/bin/zsh",
+      ["-lc", expect.any(String)],
+      expect.objectContaining({ detached: true }),
+    );
+    expect(script).toContain("osascript -e 'quit app \"NextRoom\"'");
+    expect(script).toContain('if ! open -n "$NEXTROOM_APP_PATH"; then');
+    expect(spawnOptions.env).toMatchObject({
+      HOMEBREW_NO_ANALYTICS: "1",
+      HOMEBREW_NO_AUTO_UPDATE: "1",
+      NEXTROOM_APPDIR: "/Users/tester/Applications",
+      NEXTROOM_APP_PATH: "/Users/tester/Applications/NextRoom.app",
+      NEXTROOM_BREW_PATH: "/opt/homebrew/bin/brew",
+    });
+    expect(spawnOptions.stdio).toEqual(["ignore", 42, 42]);
+  });
+
+  it("publishes homebrew-updated when the detached update exits successfully", async () => {
+    const context = await createAppUpdaterTestContext();
+    prepareAvailableUpdate(context);
+    await context.module.runHomebrewAppUpdate();
+
+    context.spawnHandlers.get("exit")?.(0);
+
+    expect(context.module.getAppUpdateStatus()).toMatchObject({
+      status: "homebrew-updated",
+      updateMessage: "Homebrew update completed. NextRoom was reopened from ~/Applications.",
+    });
+    expect(context.sendMock).toHaveBeenLastCalledWith(
+      "updates:status-changed",
+      expect.objectContaining({ status: "homebrew-updated" }),
+    );
+  });
+
+  it("publishes an error with the Homebrew log path when the detached update fails", async () => {
+    const context = await createAppUpdaterTestContext();
+    prepareAvailableUpdate(context);
+    await context.module.runHomebrewAppUpdate();
+
+    context.spawnHandlers.get("exit")?.(1);
+
+    expect(context.module.getAppUpdateStatus()).toMatchObject({
+      errorMessage:
+        "Homebrew update failed. See /Users/tester/Library/Application Support/NextRoom/homebrew-update.log.",
+      status: "error",
+    });
+    expect(context.sendMock).toHaveBeenLastCalledWith(
+      "updates:status-changed",
+      expect.objectContaining({ status: "error" }),
+    );
+  });
+});
