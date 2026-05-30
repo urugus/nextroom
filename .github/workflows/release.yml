@@ -60,3 +60,37 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: pnpm run release:mac
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v6
+        with:
+          repository: urugus/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update Homebrew cask
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          artifact="dist/NextRoom-${version}-mac-arm64.zip"
+
+          if [ ! -f "$artifact" ]; then
+            echo "Release artifact not found: $artifact"
+            exit 1
+          fi
+
+          sha256="$(shasum -a 256 "$artifact" | awk '{print $1}')"
+          cask_path="homebrew-tap/Casks/nextroom.rb"
+
+          ruby -0pi -e "gsub(/version \".*\"/, \"version \\\"${version}\\\"\"); gsub(/sha256 \".*\"/, \"sha256 \\\"${sha256}\\\"\")" "$cask_path"
+
+          cd homebrew-tap
+          if git diff --quiet -- Casks/nextroom.rb; then
+            echo "Homebrew cask is already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/nextroom.rb
+          git commit -m "Update NextRoom to ${version}"
+          git push

@@ -154,7 +154,7 @@ describe("appUpdater Homebrew updates", () => {
 
     expect(result._unsafeUnwrap()).toMatchObject({
       status: "homebrew-updating",
-      updateMessage: "Starting Homebrew update in the background.",
+      updateMessage: "Updating with Homebrew. A restart prompt will appear when it is ready.",
     });
     expect(context.execFileMock).toHaveBeenCalledWith(
       "/opt/homebrew/bin/brew",
@@ -187,6 +187,11 @@ describe("appUpdater Homebrew updates", () => {
       expect.objectContaining({ detached: true }),
     );
     expect(script).toContain("osascript -e 'quit app \"NextRoom\"'");
+    expect(script).toContain("CFBundleShortVersionString");
+    expect(script).toContain("__NEXTROOM_HOMEBREW_UPDATE_VERSION_MISMATCH__");
+    expect(script).toContain(
+      'display dialog "NextRoom was updated. Restart now to use the new version."',
+    );
     expect(script).toContain('if ! open -n "$NEXTROOM_APP_PATH"; then');
     expect(spawnOptions.env).toMatchObject({
       HOMEBREW_NO_ANALYTICS: "1",
@@ -194,6 +199,7 @@ describe("appUpdater Homebrew updates", () => {
       NEXTROOM_APPDIR: "/Users/tester/Applications",
       NEXTROOM_APP_PATH: "/Users/tester/Applications/NextRoom.app",
       NEXTROOM_BREW_PATH: "/opt/homebrew/bin/brew",
+      NEXTROOM_EXPECTED_VERSION: "0.1.4",
     });
     expect(spawnOptions.stdio).toEqual(["ignore", 42, 42]);
   });
@@ -207,7 +213,7 @@ describe("appUpdater Homebrew updates", () => {
 
     expect(context.module.getAppUpdateStatus()).toMatchObject({
       status: "homebrew-updated",
-      updateMessage: "Homebrew update completed. NextRoom was reopened from ~/Applications.",
+      updateMessage: "Homebrew update completed. NextRoom is restarting.",
     });
     expect(context.sendMock).toHaveBeenLastCalledWith(
       "updates:status-changed",
@@ -225,6 +231,24 @@ describe("appUpdater Homebrew updates", () => {
     expect(context.module.getAppUpdateStatus()).toMatchObject({
       errorMessage:
         "Homebrew update failed. See /Users/tester/Library/Application Support/NextRoom/homebrew-update.log.",
+      status: "error",
+    });
+    expect(context.sendMock).toHaveBeenLastCalledWith(
+      "updates:status-changed",
+      expect.objectContaining({ status: "error" }),
+    );
+  });
+
+  it("publishes a cask version error when Homebrew did not install the available version", async () => {
+    const context = await createAppUpdaterTestContext();
+    prepareAvailableUpdate(context);
+    await context.module.runHomebrewAppUpdate();
+
+    context.spawnHandlers.get("exit")?.(20);
+
+    expect(context.module.getAppUpdateStatus()).toMatchObject({
+      errorMessage:
+        "Homebrew did not install NextRoom 0.1.4. Check that the Homebrew cask has been updated. See /Users/tester/Library/Application Support/NextRoom/homebrew-update.log.",
       status: "error",
     });
     expect(context.sendMock).toHaveBeenLastCalledWith(

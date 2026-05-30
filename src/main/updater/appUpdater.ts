@@ -118,7 +118,14 @@ trap 'status=$?; if [ "$status" -ne 0 ]; then echo "__NEXTROOM_HOMEBREW_UPDATE_F
 mkdir -p "$NEXTROOM_APPDIR"
 "$NEXTROOM_BREW_PATH" update
 "$NEXTROOM_BREW_PATH" upgrade --cask --appdir "$NEXTROOM_APPDIR" nextroom
+installed_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$NEXTROOM_APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+echo "Installed NextRoom version: \${installed_version:-unknown}"
+if [ "$installed_version" != "$NEXTROOM_EXPECTED_VERSION" ]; then
+  echo "__NEXTROOM_HOMEBREW_UPDATE_VERSION_MISMATCH__ expected=$NEXTROOM_EXPECTED_VERSION actual=\${installed_version:-unknown}"
+  exit 20
+fi
 echo "__NEXTROOM_HOMEBREW_UPDATE_SUCCESS__ $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+osascript -e 'display dialog "NextRoom was updated. Restart now to use the new version." buttons {"Restart"} default button "Restart" with title "NextRoom update"' >/dev/null 2>&1 || true
 osascript -e 'quit app "NextRoom"' >/dev/null 2>&1 || true
 sleep 1
 if ! open -n "$NEXTROOM_APP_PATH"; then
@@ -126,7 +133,17 @@ if ! open -n "$NEXTROOM_APP_PATH"; then
 fi
 `;
 
-const spawnDetachedHomebrewUpdate = async (brewPath: string) => {
+const updateFailedMessageForExit = (code: number | null) => {
+  if (code === 20) {
+    return `Homebrew did not install NextRoom ${
+      updaterState.availableVersion ?? "update"
+    }. Check that the Homebrew cask has been updated. See ${homebrewUpdateLogPath()}.`;
+  }
+
+  return `Homebrew update failed. See ${homebrewUpdateLogPath()}.`;
+};
+
+const spawnDetachedHomebrewUpdate = async (brewPath: string, expectedVersion: string) => {
   await mkdir(app.getPath("userData"), { recursive: true });
   const logFd = openSync(homebrewUpdateLogPath(), "a");
 
@@ -140,6 +157,7 @@ const spawnDetachedHomebrewUpdate = async (brewPath: string) => {
         NEXTROOM_APPDIR: homebrewAppDir(),
         NEXTROOM_APP_PATH: homebrewAppPath(),
         NEXTROOM_BREW_PATH: brewPath,
+        NEXTROOM_EXPECTED_VERSION: expectedVersion,
       },
       stdio: ["ignore", logFd, logFd],
     });
@@ -156,13 +174,13 @@ const spawnDetachedHomebrewUpdate = async (brewPath: string) => {
         updateState({
           ...updaterState,
           status: "homebrew-updated",
-          updateMessage: "Homebrew update completed. NextRoom was reopened from ~/Applications.",
+          updateMessage: "Homebrew update completed. NextRoom is restarting.",
         });
         return;
       }
 
       updateState({
-        errorMessage: `Homebrew update failed. See ${homebrewUpdateLogPath()}.`,
+        errorMessage: updateFailedMessageForExit(code),
         status: "error",
       });
     });
@@ -233,6 +251,11 @@ export const runHomebrewAppUpdate = async (): Promise<Result<AppUpdateStatus, Ap
     return err(errorFrom("No Homebrew update is ready to run."));
   }
 
+  const expectedVersion = updaterState.availableVersion;
+  if (expectedVersion === undefined) {
+    return err(errorFrom("No target Homebrew update version is available."));
+  }
+
   const brewPath = await findBrewExecutable();
   if (brewPath.isErr()) {
     updateState({
@@ -252,9 +275,9 @@ export const runHomebrewAppUpdate = async (): Promise<Result<AppUpdateStatus, Ap
     updateState({
       ...updaterState,
       status: "homebrew-updating",
-      updateMessage: "Starting Homebrew update in the background.",
+      updateMessage: "Updating with Homebrew. A restart prompt will appear when it is ready.",
     });
-    await spawnDetachedHomebrewUpdate(brewPath.value);
+    await spawnDetachedHomebrewUpdate(brewPath.value, expectedVersion);
     return ok(currentStatus());
   } catch (cause) {
     updateState({
