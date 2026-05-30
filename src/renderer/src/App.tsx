@@ -117,6 +117,17 @@ export const App = () => {
     });
   }, [applyResultError, refreshMeetings, refreshStatus]);
 
+  useEffect(() => {
+    const meetingKeys = new Set(meetingsSnapshot.meetings.map((meeting) => meeting.occurrenceKey));
+
+    setOpenedMeetingKeys((current) => {
+      if (current.size === 0) return current;
+
+      const pruned = new Set([...current].filter((key) => meetingKeys.has(key)));
+      return pruned.size === current.size ? current : pruned;
+    });
+  }, [meetingsSnapshot.meetings]);
+
   const connectAccount = async () => {
     setPendingAction("connect");
     setErrorMessage(undefined);
