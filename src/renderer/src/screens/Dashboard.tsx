@@ -4,13 +4,14 @@ type DashboardProps = {
   accountStatus: AccountStatus;
   errorMessage?: string;
   meetings: MeetEvent[];
+  nextMeetingNotification?: MeetEvent;
   openingMeetUrl?: string;
   pendingAction?: "connect" | "disconnect" | "sync";
   syncedAt?: string;
   onCheckForUpdates?: () => Promise<unknown>;
   onConnectAccount: () => Promise<unknown>;
   onDisconnectAccount: () => Promise<unknown>;
-  onOpenMeeting: (meetUrl: string) => Promise<unknown>;
+  onOpenMeeting: (meeting: MeetEvent) => Promise<unknown>;
   onRunHomebrewUpdate?: () => Promise<unknown>;
   onSyncCalendar: () => Promise<unknown>;
   updateErrorMessage?: string;
@@ -55,6 +56,7 @@ export const Dashboard = ({
   accountStatus,
   errorMessage,
   meetings,
+  nextMeetingNotification,
   onCheckForUpdates,
   onConnectAccount,
   onDisconnectAccount,
@@ -81,6 +83,8 @@ export const Dashboard = ({
         ? "Calendar sync is ready."
         : "Connect Google Calendar to load upcoming meetings.";
   const updateErrorText = updateErrorTextFor(updateStatus, updateErrorMessage);
+  const notificationOpening =
+    nextMeetingNotification !== undefined && openingMeetUrl === nextMeetingNotification.meetUrl;
 
   return (
     <main className="app-shell">
@@ -127,6 +131,24 @@ export const Dashboard = ({
 
       {errorMessage !== undefined ? <p className="error-banner">{errorMessage}</p> : null}
 
+      {nextMeetingNotification !== undefined ? (
+        <button
+          type="button"
+          className="meeting-notification"
+          disabled={openingMeetUrl !== undefined}
+          onClick={() => void onOpenMeeting(nextMeetingNotification)}
+        >
+          <span>
+            <strong>Next meeting is ready</strong>
+            <span>
+              {nextMeetingNotification.summary} at{" "}
+              {formatMeetingTime(nextMeetingNotification.startAt)}
+            </span>
+          </span>
+          <span>{notificationOpening ? "Opening" : "Join"}</span>
+        </button>
+      ) : null}
+
       <section className="update-panel" aria-labelledby="updates-title">
         <div>
           <h2 id="updates-title">App updates</h2>
@@ -169,7 +191,7 @@ export const Dashboard = ({
                 <button
                   type="button"
                   disabled={openingMeetUrl !== undefined}
-                  onClick={() => void onOpenMeeting(meeting.meetUrl)}
+                  onClick={() => void onOpenMeeting(meeting)}
                 >
                   {openingMeetUrl === meeting.meetUrl ? "Opening" : "Join"}
                 </button>

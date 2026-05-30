@@ -1,6 +1,6 @@
 import { App } from "@renderer/App";
 import type { ApiResult } from "@shared/ipc";
-import type { AccountStatus, AppUpdateStatus, MeetEventsSnapshot } from "@shared/types";
+import type { AccountStatus, AppUpdateStatus, MeetEvent, MeetEventsSnapshot } from "@shared/types";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,7 +33,13 @@ const meetings: ApiResult<MeetEventsSnapshot> = {
   },
 };
 
-const installMeetLauncher = (openMeetUrl: ReturnType<typeof vi.fn>) => {
+const installMeetLauncher = (
+  openMeetUrl: ReturnType<typeof vi.fn>,
+  meetingsResult: ApiResult<MeetEventsSnapshot> = meetings,
+  onCalendarUpdated: (
+    handler: (result: ApiResult<MeetEventsSnapshot>) => void,
+  ) => () => void = vi.fn(() => vi.fn()),
+) => {
   const status: ApiResult<AccountStatus> = {
     ok: true,
     value: { connected: true, syncing: false },
@@ -49,12 +55,12 @@ const installMeetLauncher = (openMeetUrl: ReturnType<typeof vi.fn>) => {
       ),
       getAccountStatus: vi.fn(() => Promise.resolve(status)),
       getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
-      listUpcomingMeetings: vi.fn(() => Promise.resolve(meetings)),
-      onCalendarUpdated: vi.fn(() => vi.fn()),
+      listUpcomingMeetings: vi.fn(() => Promise.resolve(meetingsResult)),
+      onCalendarUpdated,
       onUpdateStatusChanged: vi.fn(() => vi.fn()),
       runHomebrewUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       openMeetUrl,
-      syncCalendarNow: vi.fn(() => Promise.resolve(meetings)),
+      syncCalendarNow: vi.fn(() => Promise.resolve(meetingsResult)),
       versions: {
         chrome: "test-chrome",
         electron: "test-electron",
@@ -90,9 +96,25 @@ const installMeetLauncherWithStatus = (status: ApiResult<AccountStatus>) => {
 
 const okResult: ApiResult<void> = { ok: true, value: undefined };
 
+const activeMeetingFor = (now: Date, overrides: Partial<MeetEvent> = {}): MeetEvent => ({
+  eventId: "event-1",
+  occurrenceKey: `primary:event-1:${now.toISOString()}`,
+  calendarId: "primary",
+  summary: "Product sync",
+  startAt: new Date(now.getTime() - 60_000).toISOString(),
+  endAt: new Date(now.getTime() + 10 * 60_000).toISOString(),
+  updatedAt: now.toISOString(),
+  meetUrl: "https://meet.google.com/abc-defg-hij",
+  meetCode: "abc-defg-hij",
+  responseStatus: "accepted",
+  status: "confirmed",
+  ...overrides,
+});
+
 describe("App", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it("opens a meeting through the preload API and shows loading state", async () => {
@@ -120,6 +142,73 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Join" })).toBeEnabled());
     expect(openMeetUrl).toHaveBeenCalledWith("https://meet.google.com/abc-defg-hij");
+  });
+
+  it("shows an in-app notification for an active unopened meeting", async () => {
+    const now = new Date();
+    const activeMeetings: ApiResult<MeetEventsSnapshot> = {
+      ok: true,
+      value: {
+        meetings: [activeMeetingFor(now)],
+      },
+    };
+    const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() => Promise.resolve(okResult));
+    installMeetLauncher(openMeetUrl, activeMeetings);
+
+    render(<App />);
+
+    const notification = await screen.findByRole("button", { name: /Next meeting is ready/ });
+
+    fireEvent.click(notification);
+
+    await waitFor(() =>
+      expect(openMeetUrl).toHaveBeenCalledWith("https://meet.google.com/abc-defg-hij"),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /Next meeting is ready/ }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("prunes opened meeting records after calendar updates remove them", async () => {
+    const now = new Date();
+    const activeMeeting = activeMeetingFor(now);
+    const activeMeetings: ApiResult<MeetEventsSnapshot> = {
+      ok: true,
+      value: { meetings: [activeMeeting] },
+    };
+    let calendarUpdatedHandler!: (result: ApiResult<MeetEventsSnapshot>) => void;
+    const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() => Promise.resolve(okResult));
+
+    installMeetLauncher(
+      openMeetUrl,
+      activeMeetings,
+      vi.fn((handler: (result: ApiResult<MeetEventsSnapshot>) => void) => {
+        calendarUpdatedHandler = handler;
+        return vi.fn();
+      }),
+    );
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Next meeting is ready/ }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /Next meeting is ready/ }),
+      ).not.toBeInTheDocument(),
+    );
+
+    act(() => {
+      calendarUpdatedHandler({ ok: true, value: { meetings: [] } });
+    });
+    await screen.findByText("No upcoming Google Meet meetings.");
+
+    act(() => {
+      calendarUpdatedHandler(activeMeetings);
+    });
+
+    expect(await screen.findByRole("button", { name: /Next meeting is ready/ })).toBeEnabled();
   });
 
   it("renders an IPC error response", async () => {

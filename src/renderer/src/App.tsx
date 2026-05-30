@@ -1,20 +1,33 @@
 import { unknownToMessage } from "@shared/errors";
 import type { ApiResult } from "@shared/ipc";
-import type { AccountStatus, AppUpdateStatus, MeetEventsSnapshot } from "@shared/types";
+import type { AccountStatus, AppUpdateStatus, MeetEvent, MeetEventsSnapshot } from "@shared/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Dashboard } from "./screens/Dashboard";
 import "./styles.css";
 
 const disconnectedStatus: AccountStatus = { connected: false, syncing: false };
+const meetingNotificationTickMs = 30_000;
 
 const caughtErrorMessage = (cause: unknown, fallback: string): string =>
   cause instanceof Error ? unknownToMessage(cause) : fallback;
 
+const isActiveMeeting = (meeting: MeetEvent, now: Date): boolean => {
+  const startAt = new Date(meeting.startAt).getTime();
+  const endAt = new Date(meeting.endAt).getTime();
+  const nowTime = now.getTime();
+
+  return (
+    Number.isFinite(startAt) && Number.isFinite(endAt) && startAt <= nowTime && nowTime <= endAt
+  );
+};
+
 export const App = () => {
   const [accountStatus, setAccountStatus] = useState<AccountStatus>(disconnectedStatus);
   const [meetingsSnapshot, setMeetingsSnapshot] = useState<MeetEventsSnapshot>({ meetings: [] });
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
   const [openingMeetUrl, setOpeningMeetUrl] = useState<string | undefined>(undefined);
+  const [openedMeetingKeys, setOpenedMeetingKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [pendingAction, setPendingAction] = useState<"connect" | "disconnect" | "sync" | undefined>(
     undefined,
   );
@@ -80,6 +93,16 @@ export const App = () => {
   }, []);
 
   useEffect(() => {
+    const timer = window.setInterval(() => {
+      setCurrentTime(new Date());
+    }, meetingNotificationTickMs);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
     void (async () => {
       await refreshStatus();
       await refreshMeetings();
@@ -93,6 +116,17 @@ export const App = () => {
       }
     });
   }, [applyResultError, refreshMeetings, refreshStatus]);
+
+  useEffect(() => {
+    const meetingKeys = new Set(meetingsSnapshot.meetings.map((meeting) => meeting.occurrenceKey));
+
+    setOpenedMeetingKeys((current) => {
+      if (current.size === 0) return current;
+
+      const pruned = new Set([...current].filter((key) => meetingKeys.has(key)));
+      return pruned.size === current.size ? current : pruned;
+    });
+  }, [meetingsSnapshot.meetings]);
 
   const connectAccount = async () => {
     setPendingAction("connect");
@@ -115,6 +149,7 @@ export const App = () => {
       const status = applyResultError(await window.meetLauncher.disconnectGoogleAccount());
       if (status !== undefined) setAccountStatus(status);
       setMeetingsSnapshot({ meetings: [] });
+      setOpenedMeetingKeys(new Set());
     } catch (cause) {
       setErrorMessage(caughtErrorMessage(cause, "Google disconnect failed."));
     } finally {
@@ -138,17 +173,19 @@ export const App = () => {
     }
   };
 
-  const openMeeting = async (meetUrl: string) => {
+  const openMeeting = async (meeting: MeetEvent) => {
     if (openingMeetingRef.current) return;
 
     openingMeetingRef.current = true;
     setErrorMessage(undefined);
-    setOpeningMeetUrl(meetUrl);
+    setOpeningMeetUrl(meeting.meetUrl);
 
     try {
-      const result = await window.meetLauncher.openMeetUrl(meetUrl);
+      const result = await window.meetLauncher.openMeetUrl(meeting.meetUrl);
       if (!result.ok) {
         setErrorMessage(result.error.message);
+      } else {
+        setOpenedMeetingKeys((current) => new Set(current).add(meeting.occurrenceKey));
       }
     } catch (cause) {
       setErrorMessage(caughtErrorMessage(cause, "Google Meet window failed."));
@@ -175,6 +212,10 @@ export const App = () => {
 
   const checkForUpdates = () => runUpdateAction(window.meetLauncher.checkForUpdates);
   const runHomebrewUpdate = () => runUpdateAction(window.meetLauncher.runHomebrewUpdate);
+  const nextMeetingNotification = meetingsSnapshot.meetings.find(
+    (meeting) =>
+      !openedMeetingKeys.has(meeting.occurrenceKey) && isActiveMeeting(meeting, currentTime),
+  );
 
   return (
     <Dashboard
@@ -184,6 +225,7 @@ export const App = () => {
       pendingAction={pendingAction}
       syncedAt={meetingsSnapshot.syncedAt}
       openingMeetUrl={openingMeetUrl}
+      nextMeetingNotification={nextMeetingNotification}
       onCheckForUpdates={checkForUpdates}
       onConnectAccount={connectAccount}
       onDisconnectAccount={disconnectAccount}
