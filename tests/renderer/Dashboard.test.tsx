@@ -89,7 +89,9 @@ describe("Dashboard", () => {
       />,
     );
 
-    expect(screen.getByText("Version 0.2.0 is available via Homebrew.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Version 0.2.0 is available via Homebrew for ~/Applications."),
+    ).toBeInTheDocument();
     expect(screen.getByText("Current version 0.1.0")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
     fireEvent.click(screen.getByRole("button", { name: "Update with Homebrew" }));

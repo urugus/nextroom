@@ -52,21 +52,22 @@ GitHub Releases を公式配布元にする。`package.json` の `version` を�
 
 ## Homebrew
 
-NextRoom のアプリ内更新は macOS の自己置換 updater ではなく、Homebrew cask に委譲する。アプリは GitHub Release の更新有無だけを確認し、更新が見つかった場合はバックグラウンドで次の固定コマンドを実行する。
+NextRoom のアプリ内更新は macOS の自己置換 updater ではなく、Homebrew cask に委譲する。署名・公証なしでも Gatekeeper に止められにくいように、アプリは `~/Applications` 配置を前提にする。GitHub Release の更新有無だけを確認し、更新が見つかった場合は detached background process で次の固定コマンド相当を実行する。
 
 ```sh
 brew update
-brew upgrade --cask nextroom
+brew upgrade --cask --appdir="$HOME/Applications" nextroom
+open "$HOME/Applications/NextRoom.app"
 ```
 
-このため、NextRoom は Homebrew cask としてインストールされている必要がある。未インストールの場合、アプリ内更新は `Homebrew was not found` または cask 未導入のエラーを表示する。
+このため、NextRoom は Homebrew cask として `~/Applications` にインストールされている必要がある。未インストールの場合、アプリ内更新は `Homebrew was not found` または cask 未導入のエラーを表示する。更新ログは `~/Library/Application Support/nextroom/homebrew-update.log` に出力する。
 
-tap は別リポジトリ `urugus/homebrew-nextroom` で管理する想定。
+tap は別リポジトリ `urugus/homebrew-tap` で管理する想定。
 
 ```sh
-brew tap urugus/nextroom
-brew install --cask nextroom
-brew upgrade --cask nextroom
+brew tap urugus/tap
+brew install --cask --appdir="$HOME/Applications" urugus/tap/nextroom
+brew upgrade --cask --appdir="$HOME/Applications" nextroom
 ```
 
 ## Key Product Decision

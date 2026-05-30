@@ -1,6 +1,8 @@
-import { execFile } from "node:child_process";
-import { access } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { closeSync, openSync } from "node:fs";
+import { access, mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type { AppError } from "@shared/errors";
 import type { AppUpdateStatus } from "@shared/types";
@@ -15,6 +17,7 @@ const { autoUpdater } = nodeRequire("electron-updater") as typeof import("electr
 const execFileAsync = promisify(execFile);
 const brewCandidates = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"];
 const statusChangedChannel = "updates:status-changed";
+const updateLogFileName = "homebrew-update.log";
 
 let configured = false;
 let updaterState: UpdaterState = {
@@ -47,6 +50,12 @@ const updateState = (nextState: UpdaterState) => {
 };
 
 const errorFrom = (cause: unknown): AppError => ({ type: "UpdateFailed", cause });
+
+const homebrewAppDir = () => join(app.getPath("home"), "Applications");
+
+const homebrewAppPath = () => join(homebrewAppDir(), "NextRoom.app");
+
+const homebrewUpdateLogPath = () => join(app.getPath("userData"), updateLogFileName);
 
 const updateErrorMessageFrom = (cause: unknown) => {
   const message = cause instanceof Error ? cause.message : String(cause);
@@ -104,6 +113,63 @@ const runBrew = async (brewPath: string, args: string[]) =>
     maxBuffer: 1024 * 1024,
     timeout: 10 * 60 * 1_000,
   });
+
+const homebrewUpdateScript = `
+set -e
+echo "==== NextRoom Homebrew update started $(date -u +%Y-%m-%dT%H:%M:%SZ) ===="
+trap 'status=$?; if [ "$status" -ne 0 ]; then echo "__NEXTROOM_HOMEBREW_UPDATE_FAILED__ status=$status"; open "$NEXTROOM_APP_PATH" >/dev/null 2>&1 || true; fi' EXIT
+mkdir -p "$NEXTROOM_APPDIR"
+"$NEXTROOM_BREW_PATH" update
+"$NEXTROOM_BREW_PATH" upgrade --cask --appdir "$NEXTROOM_APPDIR" nextroom
+echo "__NEXTROOM_HOMEBREW_UPDATE_SUCCESS__ $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+open "$NEXTROOM_APP_PATH"
+`;
+
+const spawnDetachedHomebrewUpdate = async (brewPath: string) => {
+  await mkdir(app.getPath("userData"), { recursive: true });
+  const logFd = openSync(homebrewUpdateLogPath(), "a");
+
+  try {
+    const child = spawn("/bin/zsh", ["-lc", homebrewUpdateScript], {
+      detached: true,
+      env: {
+        ...process.env,
+        HOMEBREW_NO_ANALYTICS: "1",
+        NEXTROOM_APPDIR: homebrewAppDir(),
+        NEXTROOM_APP_PATH: homebrewAppPath(),
+        NEXTROOM_BREW_PATH: brewPath,
+      },
+      stdio: ["ignore", logFd, logFd],
+    });
+
+    child.on("error", (cause) => {
+      updateState({
+        errorMessage: updateErrorMessageFrom(cause),
+        status: "error",
+      });
+    });
+
+    child.on("exit", (code) => {
+      if (code === 0) {
+        updateState({
+          ...updaterState,
+          status: "homebrew-updated",
+          updateMessage: "Homebrew update completed. NextRoom was reopened from ~/Applications.",
+        });
+        return;
+      }
+
+      updateState({
+        errorMessage: `Homebrew update failed. See ${homebrewUpdateLogPath()}.`,
+        status: "error",
+      });
+    });
+
+    child.unref();
+  } finally {
+    closeSync(logFd);
+  }
+};
 
 export const getAppUpdateStatus = (): AppUpdateStatus => currentStatus();
 
@@ -184,20 +250,9 @@ export const runHomebrewAppUpdate = async (): Promise<Result<AppUpdateStatus, Ap
     updateState({
       ...updaterState,
       status: "homebrew-updating",
-      updateMessage: "Running brew update.",
+      updateMessage: "Starting Homebrew update in the background.",
     });
-    await runBrew(brewPath.value, ["update"]);
-    updateState({
-      ...updaterState,
-      status: "homebrew-updating",
-      updateMessage: "Running brew upgrade --cask nextroom.",
-    });
-    await runBrew(brewPath.value, ["upgrade", "--cask", "nextroom"]);
-    updateState({
-      ...updaterState,
-      status: "homebrew-updated",
-      updateMessage: "Homebrew update completed. Restart NextRoom to use the new version.",
-    });
+    await spawnDetachedHomebrewUpdate(brewPath.value);
     return ok(currentStatus());
   } catch (cause) {
     updateState({
