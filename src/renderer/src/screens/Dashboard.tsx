@@ -36,11 +36,13 @@ const formatUpdateSummary = (updateStatus?: AppUpdateStatus) => {
     case "not-available":
       return "You are on the latest version.";
     case "available":
-      return `Version ${updateStatus.availableVersion ?? "unknown"} is available via Homebrew.`;
+      return `Version ${
+        updateStatus.availableVersion ?? "unknown"
+      } is available via Homebrew for ~/Applications.`;
     case "homebrew-updating":
       return updateStatus.updateMessage ?? "Updating with Homebrew.";
     case "homebrew-updated":
-      return updateStatus.updateMessage ?? "Homebrew update completed. Restart NextRoom.";
+      return updateStatus.updateMessage ?? "Homebrew update completed. NextRoom was reopened.";
     case "error":
       return "Update check failed.";
   }
