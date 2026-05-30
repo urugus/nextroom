@@ -32,6 +32,7 @@ export type AuthorizationUrlInput = {
 
 export type ExchangeCodeInput = {
   clientId: string;
+  clientSecret?: string;
   code: string;
   codeVerifier: string;
   redirectUri: string;
@@ -39,6 +40,7 @@ export type ExchangeCodeInput = {
 
 export type RefreshAccessTokenInput = {
   clientId: string;
+  clientSecret?: string;
   refreshToken: string;
 };
 
@@ -134,6 +136,22 @@ const requestToken = async (body: URLSearchParams, fetchImpl: typeof fetch): Pro
   }
 };
 
+const appendClientSecret = (params: URLSearchParams, clientSecret: string | undefined): void => {
+  if (clientSecret !== undefined && clientSecret.length > 0) {
+    params.set("client_secret", clientSecret);
+  }
+};
+
+const requestTokenWith = (
+  fields: Record<string, string>,
+  clientSecret: string | undefined,
+  fetchImpl: typeof fetch,
+): Promise<TokenSet> => {
+  const params = new URLSearchParams(fields);
+  appendClientSecret(params, clientSecret);
+  return requestToken(params, fetchImpl);
+};
+
 export const createOAuthClient = (fetchImpl: typeof fetch = globalThis.fetch): OAuthClient => ({
   buildAuthorizationUrl: ({ clientId, redirectUri, state, codeChallenge }) => {
     const url = new URL(googleAuthorizationUrl);
@@ -148,28 +166,30 @@ export const createOAuthClient = (fetchImpl: typeof fetch = globalThis.fetch): O
     url.searchParams.set("code_challenge_method", "S256");
     return url;
   },
-  exchangeAuthorizationCode: ({ clientId, code, codeVerifier, redirectUri }) =>
+  exchangeAuthorizationCode: ({ clientId, clientSecret, code, codeVerifier, redirectUri }) =>
     ResultAsync.fromPromise(
-      requestToken(
-        new URLSearchParams({
+      requestTokenWith(
+        {
           client_id: clientId,
           code,
           code_verifier: codeVerifier,
           grant_type: "authorization_code",
           redirect_uri: redirectUri,
-        }),
+        },
+        clientSecret,
         fetchImpl,
       ),
       toOAuthFailed,
     ),
-  refreshAccessToken: ({ clientId, refreshToken }) =>
+  refreshAccessToken: ({ clientId, clientSecret, refreshToken }) =>
     ResultAsync.fromPromise(
-      requestToken(
-        new URLSearchParams({
+      requestTokenWith(
+        {
           client_id: clientId,
           grant_type: "refresh_token",
           refresh_token: refreshToken,
-        }),
+        },
+        clientSecret,
         fetchImpl,
       ),
       toTokenRefreshFailed,
