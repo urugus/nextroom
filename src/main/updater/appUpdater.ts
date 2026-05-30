@@ -1,17 +1,15 @@
 import { createRequire } from "node:module";
 import type { AppError } from "@shared/errors";
-import type { AppUpdateProgress, AppUpdateStatus } from "@shared/types";
+import type { AppUpdateStatus } from "@shared/types";
 import { err, ok, type Result } from "neverthrow";
 
-type UpdaterState = Omit<
-  AppUpdateStatus,
-  "canCheck" | "canDownload" | "canInstall" | "currentVersion"
->;
+type UpdaterState = Omit<AppUpdateStatus, "canCheck" | "canOpenDownloadPage" | "currentVersion">;
 
 const nodeRequire = createRequire(import.meta.url);
-const { app, BrowserWindow } = nodeRequire("electron") as typeof import("electron");
+const { app, BrowserWindow, shell } = nodeRequire("electron") as typeof import("electron");
 const { autoUpdater } = nodeRequire("electron-updater") as typeof import("electron-updater");
 
+const githubReleasesUrl = "https://github.com/urugus/nextroom/releases";
 const statusChangedChannel = "updates:status-changed";
 
 let configured = false;
@@ -20,9 +18,8 @@ let updaterState: UpdaterState = {
 };
 
 const actionFlagsFor = (status: AppUpdateStatus["status"]) => ({
-  canCheck: app.isPackaged && status !== "checking" && status !== "downloading",
-  canDownload: app.isPackaged && status === "available",
-  canInstall: app.isPackaged && status === "downloaded",
+  canCheck: app.isPackaged && status !== "checking",
+  canOpenDownloadPage: app.isPackaged && status === "available",
 });
 
 const currentStatus = (): AppUpdateStatus => ({
@@ -65,13 +62,6 @@ const updateErrorMessageFrom = (cause: unknown) => {
   return message.split("\n")[0] ?? "Update check failed.";
 };
 
-const progressFrom = (progress: AppUpdateProgress): AppUpdateProgress => ({
-  bytesPerSecond: progress.bytesPerSecond,
-  percent: progress.percent,
-  total: progress.total,
-  transferred: progress.transferred,
-});
-
 export const getAppUpdateStatus = (): AppUpdateStatus => currentStatus();
 
 export const configureAppUpdater = () => {
@@ -95,24 +85,6 @@ export const configureAppUpdater = () => {
       releaseDate: info.releaseDate,
       releaseName: info.releaseName ?? undefined,
       status: "available",
-    });
-  });
-
-  autoUpdater.on("download-progress", (progress) => {
-    updateState({
-      ...updaterState,
-      progress: progressFrom(progress),
-      status: "downloading",
-    });
-  });
-
-  autoUpdater.on("update-downloaded", (info) => {
-    updateState({
-      availableVersion: info.version,
-      downloadedVersion: info.version,
-      releaseDate: info.releaseDate,
-      releaseName: info.releaseName ?? undefined,
-      status: "downloaded",
     });
   });
 
@@ -141,18 +113,21 @@ export const checkForAppUpdates = async (): Promise<Result<AppUpdateStatus, AppE
   }
 };
 
-export const downloadAppUpdate = async (): Promise<Result<AppUpdateStatus, AppError>> => {
+export const openAppUpdateDownloadPage = async (): Promise<Result<AppUpdateStatus, AppError>> => {
   if (!app.isPackaged) {
     return ok(currentStatus());
   }
 
   if (updaterState.status !== "available") {
-    return err(errorFrom("No update is ready to download."));
+    return err(errorFrom("No update download page is ready to open."));
   }
 
   try {
-    updateState({ ...updaterState, status: "downloading" });
-    await autoUpdater.downloadUpdate();
+    const releaseUrl =
+      updaterState.availableVersion !== undefined
+        ? `${githubReleasesUrl}/tag/v${updaterState.availableVersion}`
+        : githubReleasesUrl;
+    await shell.openExternal(releaseUrl);
     return ok(currentStatus());
   } catch (cause) {
     updateState({
@@ -161,20 +136,4 @@ export const downloadAppUpdate = async (): Promise<Result<AppUpdateStatus, AppEr
     });
     return err(errorFrom(cause));
   }
-};
-
-export const installAppUpdate = (): Result<void, AppError> => {
-  if (!app.isPackaged) {
-    return ok(undefined);
-  }
-
-  if (updaterState.status !== "downloaded") {
-    return err(errorFrom("No downloaded update is ready to install."));
-  }
-
-  setImmediate(() => {
-    autoUpdater.quitAndInstall(false, true);
-  });
-
-  return ok(undefined);
 };

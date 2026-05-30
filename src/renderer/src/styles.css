@@ -137,11 +137,6 @@ a {
   cursor: not-allowed;
 }
 
-.update-progress {
-  min-width: 44px;
-  text-align: right;
-}
-
 .update-error {
   grid-column: 1 / -1;
   color: #9b1c1c;

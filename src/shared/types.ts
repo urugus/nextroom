@@ -79,31 +79,13 @@ export type LaunchRecord = {
   eventUpdatedAt: string;
 };
 
-export type AppUpdateProgress = {
-  percent: number;
-  transferred: number;
-  total: number;
-  bytesPerSecond: number;
-};
-
 export type AppUpdateStatus = {
   currentVersion: string;
-  status:
-    | "unsupported"
-    | "idle"
-    | "checking"
-    | "not-available"
-    | "available"
-    | "downloading"
-    | "downloaded"
-    | "error";
+  status: "unsupported" | "idle" | "checking" | "not-available" | "available" | "error";
   availableVersion?: string;
-  downloadedVersion?: string;
   releaseDate?: string;
   releaseName?: string;
   errorMessage?: string;
-  progress?: AppUpdateProgress;
   canCheck: boolean;
-  canDownload: boolean;
-  canInstall: boolean;
+  canOpenDownloadPage: boolean;
 };

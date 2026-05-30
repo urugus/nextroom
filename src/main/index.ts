@@ -9,9 +9,8 @@ import { createOAuthClient } from "@main/oauth/oauthClient";
 import {
   checkForAppUpdates,
   configureAppUpdater,
-  downloadAppUpdate,
   getAppUpdateStatus,
-  installAppUpdate,
+  openAppUpdateDownloadPage,
 } from "@main/updater/appUpdater";
 import type { AppError } from "@shared/errors";
 import type { BrowserWindow as ElectronBrowserWindow } from "electron";
@@ -177,10 +176,9 @@ const registerIpc = () => {
   ipcMain.handle("updates:check", async () =>
     serializeResultForRenderer(await checkForAppUpdates()),
   );
-  ipcMain.handle("updates:download", async () =>
-    serializeResultForRenderer(await downloadAppUpdate()),
+  ipcMain.handle("updates:openDownloadPage", async () =>
+    serializeResultForRenderer(await openAppUpdateDownloadPage()),
   );
-  ipcMain.handle("updates:install", () => serializeResultForRenderer(installAppUpdate()));
 };
 
 void app.whenReady().then(() => {
