@@ -1,3 +1,4 @@
+import { unknownToMessage } from "@shared/errors";
 import type { ApiResult } from "@shared/ipc";
 import type { AccountStatus, AppUpdateStatus, MeetEventsSnapshot } from "@shared/types";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -5,6 +6,9 @@ import { Dashboard } from "./screens/Dashboard";
 import "./styles.css";
 
 const disconnectedStatus: AccountStatus = { connected: false, syncing: false };
+
+const caughtErrorMessage = (cause: unknown, fallback: string): string =>
+  cause instanceof Error ? unknownToMessage(cause) : fallback;
 
 export const App = () => {
   const [accountStatus, setAccountStatus] = useState<AccountStatus>(disconnectedStatus);
@@ -56,8 +60,7 @@ export const App = () => {
         }
       } catch (cause) {
         if (!mounted) return;
-        const message = cause instanceof Error ? cause.message : "Update status is unavailable.";
-        setUpdateErrorMessage(message);
+        setUpdateErrorMessage(caughtErrorMessage(cause, "Update status is unavailable."));
       }
     };
 
@@ -99,7 +102,7 @@ export const App = () => {
       if (status !== undefined) applyAccountStatus(status);
       await refreshMeetings();
     } catch (cause) {
-      setErrorMessage(cause instanceof Error ? cause.message : "Google authorization failed.");
+      setErrorMessage(caughtErrorMessage(cause, "Google authorization failed."));
     } finally {
       setPendingAction(undefined);
     }
@@ -113,7 +116,7 @@ export const App = () => {
       if (status !== undefined) setAccountStatus(status);
       setMeetingsSnapshot({ meetings: [] });
     } catch (cause) {
-      setErrorMessage(cause instanceof Error ? cause.message : "Google disconnect failed.");
+      setErrorMessage(caughtErrorMessage(cause, "Google disconnect failed."));
     } finally {
       setPendingAction(undefined);
     }
@@ -128,7 +131,7 @@ export const App = () => {
       if (snapshot !== undefined) setMeetingsSnapshot(snapshot);
       await refreshStatus();
     } catch (cause) {
-      setErrorMessage(cause instanceof Error ? cause.message : "Google Calendar sync failed.");
+      setErrorMessage(caughtErrorMessage(cause, "Google Calendar sync failed."));
     } finally {
       setPendingAction(undefined);
       setAccountStatus((current) => ({ ...current, syncing: false }));
@@ -148,19 +151,14 @@ export const App = () => {
         setErrorMessage(result.error.message);
       }
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "Google Meet window failed.";
-      setErrorMessage(message);
+      setErrorMessage(caughtErrorMessage(cause, "Google Meet window failed."));
     } finally {
       openingMeetingRef.current = false;
       setOpeningMeetUrl(undefined);
     }
   };
 
-  const runUpdateAction = async (
-    action: () => Promise<
-      { ok: true; value: AppUpdateStatus } | { ok: false; error: { message: string } }
-    >,
-  ) => {
+  const runUpdateAction = async (action: () => Promise<ApiResult<AppUpdateStatus>>) => {
     setUpdateErrorMessage(undefined);
 
     try {
@@ -171,8 +169,7 @@ export const App = () => {
         setUpdateErrorMessage(result.error.message);
       }
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "App update failed.";
-      setUpdateErrorMessage(message);
+      setUpdateErrorMessage(caughtErrorMessage(cause, "App update failed."));
     }
   };
 

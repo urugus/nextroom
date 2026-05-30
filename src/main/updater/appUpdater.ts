@@ -4,6 +4,7 @@ import { access, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { AppError } from "@shared/errors";
+import { IPC_CHANNELS } from "@shared/ipc";
 import type { AppUpdateStatus } from "@shared/types";
 import { app, BrowserWindow } from "electron";
 import { autoUpdater } from "electron-updater";
@@ -13,7 +14,6 @@ type UpdaterState = Omit<AppUpdateStatus, "canCheck" | "canRunHomebrewUpdate" | 
 
 const execFileAsync = promisify(execFile);
 const brewCandidates = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"];
-const statusChangedChannel = "updates:status-changed";
 const updateLogFileName = "homebrew-update.log";
 
 let configured = false;
@@ -37,7 +37,7 @@ const publishStatus = (nextState: UpdaterState) => {
   const updateStatus = currentStatus();
 
   BrowserWindow.getAllWindows().forEach((window) => {
-    window.webContents.send(statusChangedChannel, updateStatus);
+    window.webContents.send(IPC_CHANNELS.updatesStatusChanged, updateStatus);
   });
 };
 

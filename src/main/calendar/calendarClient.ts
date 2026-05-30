@@ -2,6 +2,7 @@ import type { AppError } from "@shared/errors";
 import type { CalendarEvent } from "@shared/types";
 import { ResultAsync } from "neverthrow";
 import { z } from "zod";
+import { isHttpJsonFailure, requestJson } from "../http/requestJson";
 
 export type CalendarClient = {
   listUpcomingEvents: (accessToken: string, now: Date) => ResultAsync<CalendarEvent[], AppError>;
@@ -69,18 +70,20 @@ export const createGoogleCalendarClient = (
   listUpcomingEvents: (accessToken, now) =>
     ResultAsync.fromPromise(
       (async () => {
-        const response = await fetchImpl(buildEventsUrl(now), {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-        const responseBody = (await response.json().catch(() => undefined)) as unknown;
+        let responseBody: unknown;
+        try {
+          responseBody = await requestJson(fetchImpl, buildEventsUrl(now), {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          });
+        } catch (cause) {
+          if (!isHttpJsonFailure(cause)) throw cause;
 
-        if (!response.ok) {
           throw {
             kind: "calendar-api-failure",
-            status: response.status,
-            cause: calendarApiFailureMessage(responseBody),
+            status: cause.status,
+            cause: calendarApiFailureMessage(cause.body),
           } satisfies CalendarApiFailure;
         }
 

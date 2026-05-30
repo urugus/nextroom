@@ -1,33 +1,40 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AppUpdateStatus } from "../shared/types";
+import { type ApiResult, IPC_CHANNELS, type MeetLauncherApi } from "../shared/ipc";
+import type { AccountStatus, AppUpdateStatus, MeetEventsSnapshot } from "../shared/types";
 
-const api = {
-  getAccountStatus: () => ipcRenderer.invoke("account:getStatus"),
-  connectGoogleAccount: () => ipcRenderer.invoke("account:connect"),
-  disconnectGoogleAccount: () => ipcRenderer.invoke("account:disconnect"),
-  syncCalendarNow: () => ipcRenderer.invoke("calendar:syncNow"),
-  listUpcomingMeetings: () => ipcRenderer.invoke("meet:listUpcoming"),
-  onCalendarUpdated: (handler: (result: unknown) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, result: unknown) => {
+type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
+
+const invoke = <T>(channel: IpcChannel, ...args: unknown[]): Promise<T> =>
+  ipcRenderer.invoke(channel, ...args) as Promise<T>;
+
+const api: MeetLauncherApi = {
+  getAccountStatus: () => invoke<ApiResult<AccountStatus>>(IPC_CHANNELS.accountGetStatus),
+  connectGoogleAccount: () => invoke<ApiResult<AccountStatus>>(IPC_CHANNELS.accountConnect),
+  disconnectGoogleAccount: () => invoke<ApiResult<AccountStatus>>(IPC_CHANNELS.accountDisconnect),
+  syncCalendarNow: () => invoke<ApiResult<MeetEventsSnapshot>>(IPC_CHANNELS.calendarSyncNow),
+  listUpcomingMeetings: () => invoke<ApiResult<MeetEventsSnapshot>>(IPC_CHANNELS.meetListUpcoming),
+  onCalendarUpdated: (handler) => {
+    const listener = (_event: Electron.IpcRendererEvent, result: ApiResult<MeetEventsSnapshot>) => {
       handler(result);
     };
-    ipcRenderer.on("calendar:updated", listener);
+    ipcRenderer.on(IPC_CHANNELS.calendarUpdated, listener);
     return () => {
-      ipcRenderer.removeListener("calendar:updated", listener);
+      ipcRenderer.removeListener(IPC_CHANNELS.calendarUpdated, listener);
     };
   },
-  openMeetUrl: (meetUrl: string) => ipcRenderer.invoke("meet:open", meetUrl),
-  getUpdateStatus: () => ipcRenderer.invoke("updates:getStatus"),
-  checkForUpdates: () => ipcRenderer.invoke("updates:check"),
-  runHomebrewUpdate: () => ipcRenderer.invoke("updates:runHomebrewUpdate"),
-  onUpdateStatusChanged: (listener: (status: AppUpdateStatus) => void) => {
+  openMeetUrl: (meetUrl) => invoke<ApiResult<void>>(IPC_CHANNELS.meetOpen, meetUrl),
+  getUpdateStatus: () => invoke<ApiResult<AppUpdateStatus>>(IPC_CHANNELS.updatesGetStatus),
+  checkForUpdates: () => invoke<ApiResult<AppUpdateStatus>>(IPC_CHANNELS.updatesCheck),
+  runHomebrewUpdate: () =>
+    invoke<ApiResult<AppUpdateStatus>>(IPC_CHANNELS.updatesRunHomebrewUpdate),
+  onUpdateStatusChanged: (listener) => {
     const subscription = (_event: Electron.IpcRendererEvent, status: AppUpdateStatus) => {
       listener(status);
     };
 
-    ipcRenderer.on("updates:status-changed", subscription);
+    ipcRenderer.on(IPC_CHANNELS.updatesStatusChanged, subscription);
     return () => {
-      ipcRenderer.removeListener("updates:status-changed", subscription);
+      ipcRenderer.removeListener(IPC_CHANNELS.updatesStatusChanged, subscription);
     };
   },
   versions: {
