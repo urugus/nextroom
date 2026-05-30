@@ -36,7 +36,7 @@ Google Calendar の予定に連動し、Google Meet を専用 Mac デスクト�
 
 ## Release
 
-GitHub Releases を公式配布元にする。`package.json` の `version` を唯一のバージョン元にし、Git タグは必ず `v${version}` 形式にする。`v0.1.0` のような `v*` タグを push すると、`.github/workflows/release.yml` が Apple Silicon Mac 用の `.dmg` と `.zip` を作成し、GitHub Release に添付する。Intel Mac は配布対象外とする。
+GitHub Releases を公式配布元にする。`package.json` の `version` を唯一のバージョン元にし、Git タグは必ず `v${version}` 形式にする。`v0.1.0` のような `v*` タグを push すると、`.github/workflows/release.yml` が Apple Silicon Mac 用の `.dmg` と `.zip` を作成し、GitHub Release に添付したうえで、`urugus/homebrew-tap` の `Casks/nextroom.rb` を同じバージョンと zip の sha256 へ更新する。Intel Mac は配布対象外とする。
 
 リリース手順:
 
@@ -47,6 +47,7 @@ GitHub Releases を公式配布元にする。`package.json` の `version` を�
 5. `git push origin main` と `git push origin v0.1.0` を実行する。
 
 タグ名と `package.json` の `version` が一致しない場合、release workflow は失敗する。
+Homebrew tap 更新には、`urugus/homebrew-tap` へ push できる repository secret `HOMEBREW_TAP_TOKEN` が必要。
 
 `package.json` の `build.appId` は署名、Keychain、将来の自動更新に影響するため、公開後は変更しない。所有ドメインに基づく Bundle ID に変える場合は、初回の一般公開前に行う。
 
@@ -57,11 +58,13 @@ NextRoom のアプリ内更新は macOS の自己置換 updater ではなく、H
 ```sh
 brew update
 brew upgrade --cask --appdir="$HOME/Applications" nextroom
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$HOME/Applications/NextRoom.app/Contents/Info.plist")" = "$EXPECTED_VERSION"
+osascript -e 'display dialog "NextRoom was updated. Restart now to use the new version." buttons {"Restart"} default button "Restart" with title "NextRoom update"'
 osascript -e 'quit app "NextRoom"' >/dev/null 2>&1 || true
 open -n "$HOME/Applications/NextRoom.app"
 ```
 
-このため、NextRoom は Homebrew cask として `~/Applications` にインストールされている必要がある。未インストールの場合、アプリ内更新は `Homebrew was not found` または cask 未導入のエラーを表示する。更新ログは `~/Library/Application Support/NextRoom/homebrew-update.log` に出力する。
+このため、NextRoom は Homebrew cask として `~/Applications` にインストールされている必要がある。未インストールの場合、アプリ内更新は `Homebrew was not found` または cask 未導入のエラーを表示する。Homebrew cask がGitHub Releaseの最新バージョンへ更新されていない場合、アプリ内更新は成功扱いにせずエラーを表示する。更新ログは `~/Library/Application Support/NextRoom/homebrew-update.log` に出力する。
 
 tap は別リポジトリ `urugus/homebrew-tap` で管理する想定。
 
