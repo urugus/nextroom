@@ -1,6 +1,7 @@
 import type { AppError } from "@shared/errors";
 import { ResultAsync } from "neverthrow";
 import { z } from "zod";
+import { isHttpJsonFailure, requestJson } from "../http/requestJson";
 
 export const GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE =
   "https://www.googleapis.com/auth/calendar.events.readonly";
@@ -100,36 +101,37 @@ const tokenSetFromResponse = (value: unknown): TokenSet => {
 };
 
 const requestToken = async (body: URLSearchParams, fetchImpl: typeof fetch): Promise<TokenSet> => {
-  const response = await fetchImpl(googleTokenUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-  });
-  const responseBody = (await response.json().catch(() => undefined)) as unknown;
+  try {
+    return tokenSetFromResponse(
+      await requestJson(fetchImpl, googleTokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body,
+      }),
+    );
+  } catch (cause) {
+    if (!isHttpJsonFailure(cause)) throw cause;
 
-  if (!response.ok) {
     const parsedError = z
       .object({
         error: z.string().optional(),
         error_description: z.string().optional(),
       })
       .passthrough()
-      .safeParse(responseBody);
+      .safeParse(cause.body);
 
     throw {
       kind: "oauth-http-failure",
-      status: response.status,
+      status: cause.status,
       oauthError: parsedError.success ? parsedError.data.error : undefined,
       cause:
         parsedError.success && parsedError.data.error_description !== undefined
           ? parsedError.data.error_description
-          : responseBody,
+          : cause.body,
     } satisfies OAuthHttpFailure;
   }
-
-  return tokenSetFromResponse(responseBody);
 };
 
 export const createOAuthClient = (fetchImpl: typeof fetch = globalThis.fetch): OAuthClient => ({

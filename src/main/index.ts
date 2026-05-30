@@ -13,6 +13,7 @@ import {
   runHomebrewAppUpdate,
 } from "@main/updater/appUpdater";
 import type { AppError } from "@shared/errors";
+import { IPC_CHANNELS } from "@shared/ipc";
 import type { BrowserWindow as ElectronBrowserWindow } from "electron";
 import * as keytar from "keytar";
 import { err, fromThrowable, ok, type Result } from "neverthrow";
@@ -146,37 +147,39 @@ const registerIpc = () => {
   calendarSyncService.subscribe((snapshot) => {
     const result = serializeResultForRenderer(ok(snapshot));
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("calendar:updated", result);
+      mainWindow.webContents.send(IPC_CHANNELS.calendarUpdated, result);
     }
   });
 
-  ipcMain.handle("account:getStatus", async () =>
+  ipcMain.handle(IPC_CHANNELS.accountGetStatus, async () =>
     serializeResultForRenderer(await calendarSyncService.getAccountStatus()),
   );
-  ipcMain.handle("account:connect", async () =>
+  ipcMain.handle(IPC_CHANNELS.accountConnect, async () =>
     serializeResultForRenderer(await calendarSyncService.connectAccount()),
   );
-  ipcMain.handle("account:disconnect", async () =>
+  ipcMain.handle(IPC_CHANNELS.accountDisconnect, async () =>
     serializeResultForRenderer(await calendarSyncService.disconnectAccount()),
   );
-  ipcMain.handle("calendar:syncNow", async () =>
+  ipcMain.handle(IPC_CHANNELS.calendarSyncNow, async () =>
     serializeResultForRenderer(await calendarSyncService.syncNow()),
   );
-  ipcMain.handle("meet:listUpcoming", () =>
+  ipcMain.handle(IPC_CHANNELS.meetListUpcoming, () =>
     serializeResultForRenderer(calendarSyncService.listUpcomingMeetings()),
   );
-  ipcMain.handle("meet:open", async (_event, meetUrl: string) =>
+  ipcMain.handle(IPC_CHANNELS.meetOpen, async (_event, meetUrl: string) =>
     serializeResultForRenderer(
       meetUrlSchema.safeParse(meetUrl).success
         ? await openMeetUrl(meetUrl)
         : err({ type: "MeetUrlNotFound", eventId: "unknown" }),
     ),
   );
-  ipcMain.handle("updates:getStatus", () => serializeResultForRenderer(ok(getAppUpdateStatus())));
-  ipcMain.handle("updates:check", async () =>
+  ipcMain.handle(IPC_CHANNELS.updatesGetStatus, () =>
+    serializeResultForRenderer(ok(getAppUpdateStatus())),
+  );
+  ipcMain.handle(IPC_CHANNELS.updatesCheck, async () =>
     serializeResultForRenderer(await checkForAppUpdates()),
   );
-  ipcMain.handle("updates:runHomebrewUpdate", async () =>
+  ipcMain.handle(IPC_CHANNELS.updatesRunHomebrewUpdate, async () =>
     serializeResultForRenderer(await runHomebrewAppUpdate()),
   );
 };
