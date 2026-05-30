@@ -115,7 +115,7 @@ const runBrew = async (brewPath: string, args: string[]) =>
 const homebrewUpdateScript = `
 set -e
 echo "==== NextRoom Homebrew update started $(date -u +%Y-%m-%dT%H:%M:%SZ) ===="
-trap 'status=$?; if [ "$status" -ne 0 ]; then echo "__NEXTROOM_HOMEBREW_UPDATE_FAILED__ status=$status"; open "$NEXTROOM_APP_PATH" >/dev/null 2>&1 || true; fi' EXIT
+trap 'exit_code=$?; if [ "$exit_code" -ne 0 ]; then echo "__NEXTROOM_HOMEBREW_UPDATE_FAILED__ status=$exit_code"; open "$NEXTROOM_APP_PATH" >/dev/null 2>&1 || true; fi' EXIT
 mkdir -p "$NEXTROOM_APPDIR"
 "$NEXTROOM_BREW_PATH" update
 "$NEXTROOM_BREW_PATH" upgrade --cask --appdir "$NEXTROOM_APPDIR" nextroom

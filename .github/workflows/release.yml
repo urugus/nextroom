@@ -49,6 +49,21 @@ jobs:
             exit 1
           fi
 
+      - name: Verify Homebrew tap app credentials
+        env:
+          NEXTROOM_RELEASE_APP_ID: ${{ secrets.NEXTROOM_RELEASE_APP_ID }}
+          NEXTROOM_RELEASE_APP_PRIVATE_KEY: ${{ secrets.NEXTROOM_RELEASE_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$NEXTROOM_RELEASE_APP_ID" ]; then
+            echo "::error title=Missing NEXTROOM_RELEASE_APP_ID::Set the NEXTROOM_RELEASE_APP_ID repository secret before creating a release tag."
+            exit 1
+          fi
+
+          if [ -z "$NEXTROOM_RELEASE_APP_PRIVATE_KEY" ]; then
+            echo "::error title=Missing NEXTROOM_RELEASE_APP_PRIVATE_KEY::Set the NEXTROOM_RELEASE_APP_PRIVATE_KEY repository secret before creating a release tag."
+            exit 1
+          fi
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -61,11 +76,20 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: pnpm run release:mac
 
+      - name: Create Homebrew tap token
+        id: homebrew-tap-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.NEXTROOM_RELEASE_APP_ID }}
+          private-key: ${{ secrets.NEXTROOM_RELEASE_APP_PRIVATE_KEY }}
+          owner: urugus
+          repositories: homebrew-tap
+
       - name: Checkout Homebrew tap
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: urugus/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          token: ${{ steps.homebrew-tap-token.outputs.token }}
           path: homebrew-tap
 
       - name: Update Homebrew cask
