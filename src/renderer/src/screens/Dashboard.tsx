@@ -10,9 +10,8 @@ type DashboardProps = {
   onCheckForUpdates?: () => Promise<unknown>;
   onConnectAccount: () => Promise<unknown>;
   onDisconnectAccount: () => Promise<unknown>;
-  onDownloadUpdate?: () => Promise<unknown>;
-  onInstallUpdate?: () => Promise<unknown>;
   onOpenMeeting: (meetUrl: string) => Promise<unknown>;
+  onRunHomebrewUpdate?: () => Promise<unknown>;
   onSyncCalendar: () => Promise<unknown>;
   updateErrorMessage?: string;
   updateStatus?: AppUpdateStatus;
@@ -37,19 +36,14 @@ const formatUpdateSummary = (updateStatus?: AppUpdateStatus) => {
     case "not-available":
       return "You are on the latest version.";
     case "available":
-      return `Version ${updateStatus.availableVersion ?? "unknown"} is available.`;
-    case "downloading":
-      return `Downloading version ${updateStatus.availableVersion ?? "unknown"}.`;
-    case "downloaded":
-      return `Version ${updateStatus.downloadedVersion ?? updateStatus.availableVersion ?? "unknown"} is ready to install.`;
+      return `Version ${updateStatus.availableVersion ?? "unknown"} is available via Homebrew.`;
+    case "homebrew-updating":
+      return updateStatus.updateMessage ?? "Updating with Homebrew.";
+    case "homebrew-updated":
+      return updateStatus.updateMessage ?? "Homebrew update completed. Restart NextRoom.";
     case "error":
       return "Update check failed.";
   }
-};
-
-const formatProgress = (updateStatus?: AppUpdateStatus) => {
-  if (updateStatus?.progress === undefined) return undefined;
-  return `${Math.round(updateStatus.progress.percent)}%`;
 };
 
 const updateErrorTextFor = (updateStatus?: AppUpdateStatus, updateErrorMessage?: string) =>
@@ -62,9 +56,8 @@ export const Dashboard = ({
   onCheckForUpdates,
   onConnectAccount,
   onDisconnectAccount,
-  onDownloadUpdate,
-  onInstallUpdate,
   onOpenMeeting,
+  onRunHomebrewUpdate,
   onSyncCalendar,
   openingMeetUrl,
   pendingAction,
@@ -139,9 +132,6 @@ export const Dashboard = ({
           <span>Current version {updateStatus?.currentVersion ?? "unknown"}</span>
         </div>
         <div className="update-controls">
-          {formatProgress(updateStatus) !== undefined ? (
-            <span className="update-progress">{formatProgress(updateStatus)}</span>
-          ) : null}
           <button
             type="button"
             disabled={!updateStatus?.canCheck || onCheckForUpdates === undefined}
@@ -151,17 +141,10 @@ export const Dashboard = ({
           </button>
           <button
             type="button"
-            disabled={!updateStatus?.canDownload || onDownloadUpdate === undefined}
-            onClick={() => void onDownloadUpdate?.()}
+            disabled={!updateStatus?.canRunHomebrewUpdate || onRunHomebrewUpdate === undefined}
+            onClick={() => void onRunHomebrewUpdate?.()}
           >
-            Download update
-          </button>
-          <button
-            type="button"
-            disabled={!updateStatus?.canInstall || onInstallUpdate === undefined}
-            onClick={() => void onInstallUpdate?.()}
-          >
-            Restart to update
+            Update with Homebrew
           </button>
         </div>
         {updateErrorText !== undefined ? <p className="update-error">{updateErrorText}</p> : null}

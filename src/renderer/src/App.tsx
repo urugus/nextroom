@@ -177,21 +177,7 @@ export const App = () => {
   };
 
   const checkForUpdates = () => runUpdateAction(window.meetLauncher.checkForUpdates);
-  const downloadUpdate = () => runUpdateAction(window.meetLauncher.downloadUpdate);
-
-  const installUpdate = async () => {
-    setUpdateErrorMessage(undefined);
-
-    try {
-      const result = await window.meetLauncher.installUpdate();
-      if (!result.ok) {
-        setUpdateErrorMessage(result.error.message);
-      }
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "App update failed.";
-      setUpdateErrorMessage(message);
-    }
-  };
+  const runHomebrewUpdate = () => runUpdateAction(window.meetLauncher.runHomebrewUpdate);
 
   return (
     <Dashboard
@@ -204,8 +190,7 @@ export const App = () => {
       onCheckForUpdates={checkForUpdates}
       onConnectAccount={connectAccount}
       onDisconnectAccount={disconnectAccount}
-      onDownloadUpdate={downloadUpdate}
-      onInstallUpdate={installUpdate}
+      onRunHomebrewUpdate={runHomebrewUpdate}
       onOpenMeeting={openMeeting}
       onSyncCalendar={syncCalendar}
       updateErrorMessage={updateErrorMessage}

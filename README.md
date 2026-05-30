@@ -48,15 +48,26 @@ GitHub Releases を公式配布元にする。`package.json` の `version` を�
 
 タグ名と `package.json` の `version` が一致しない場合、release workflow は失敗する。
 
-公開前に GitHub repository secrets へ以下を設定する。
-
-- `MACOS_CERTIFICATE`: Developer ID Application 証明書の `.p12` を base64 化した値
-- `MACOS_CERTIFICATE_PASSWORD`: `.p12` のパスワード
-- `APPLE_API_KEY`: App Store Connect API key の `.p8` 内容
-- `APPLE_API_KEY_ID`: App Store Connect API key ID
-- `APPLE_API_ISSUER`: App Store Connect issuer ID
-
 `package.json` の `build.appId` は署名、Keychain、将来の自動更新に影響するため、公開後は変更しない。所有ドメインに基づく Bundle ID に変える場合は、初回の一般公開前に行う。
+
+## Homebrew
+
+NextRoom のアプリ内更新は macOS の自己置換 updater ではなく、Homebrew cask に委譲する。アプリは GitHub Release の更新有無だけを確認し、更新が見つかった場合はバックグラウンドで次の固定コマンドを実行する。
+
+```sh
+brew update
+brew upgrade --cask nextroom
+```
+
+このため、NextRoom は Homebrew cask としてインストールされている必要がある。未インストールの場合、アプリ内更新は `Homebrew was not found` または cask 未導入のエラーを表示する。
+
+tap は別リポジトリ `urugus/homebrew-nextroom` で管理する想定。
+
+```sh
+brew tap urugus/nextroom
+brew install --cask nextroom
+brew upgrade --cask nextroom
+```
 
 ## Key Product Decision
 

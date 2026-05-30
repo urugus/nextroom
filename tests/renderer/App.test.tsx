@@ -7,8 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const updateStatus: AppUpdateStatus = {
   canCheck: false,
-  canDownload: false,
-  canInstall: false,
+  canRunHomebrewUpdate: false,
   currentVersion: "0.1.0",
   status: "unsupported",
 };
@@ -48,13 +47,12 @@ const installMeetLauncher = (openMeetUrl: ReturnType<typeof vi.fn>) => {
       disconnectGoogleAccount: vi.fn(() =>
         Promise.resolve({ ok: true, value: { connected: false, syncing: false } }),
       ),
-      downloadUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       getAccountStatus: vi.fn(() => Promise.resolve(status)),
       getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
-      installUpdate: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
       listUpcomingMeetings: vi.fn(() => Promise.resolve(meetings)),
       onCalendarUpdated: vi.fn(() => vi.fn()),
       onUpdateStatusChanged: vi.fn(() => vi.fn()),
+      runHomebrewUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       openMeetUrl,
       syncCalendarNow: vi.fn(() => Promise.resolve(meetings)),
       versions: {
@@ -72,15 +70,14 @@ const installMeetLauncherWithStatus = (status: ApiResult<AccountStatus>) => {
       checkForUpdates: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       connectGoogleAccount: vi.fn(() => Promise.resolve(status)),
       disconnectGoogleAccount: vi.fn(),
-      downloadUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       getAccountStatus: vi.fn(() =>
         Promise.resolve({ ok: true, value: { connected: false, syncing: false } }),
       ),
       getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
-      installUpdate: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
       listUpcomingMeetings: vi.fn(() => Promise.resolve({ ok: true, value: { meetings: [] } })),
       onCalendarUpdated: vi.fn(() => vi.fn()),
       onUpdateStatusChanged: vi.fn(() => vi.fn()),
+      runHomebrewUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       openMeetUrl: vi.fn(),
       syncCalendarNow: vi.fn(),
       versions: {
@@ -187,7 +184,6 @@ describe("App", () => {
         checkForUpdates: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
         connectGoogleAccount: vi.fn(),
         disconnectGoogleAccount: vi.fn(),
-        downloadUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
         getAccountStatus: vi
           .fn()
           .mockResolvedValueOnce({
@@ -207,13 +203,13 @@ describe("App", () => {
             value: { connected: true, syncing: false },
           }),
         getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
-        installUpdate: vi.fn(() => Promise.resolve({ ok: true, value: undefined })),
         listUpcomingMeetings: vi.fn(() => Promise.resolve({ ok: true, value: { meetings: [] } })),
         onCalendarUpdated: vi.fn((handler: (result: ApiResult<MeetEventsSnapshot>) => void) => {
           calendarUpdatedHandler = handler;
           return vi.fn();
         }),
         onUpdateStatusChanged: vi.fn(() => vi.fn()),
+        runHomebrewUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
         openMeetUrl: vi.fn(),
         syncCalendarNow: vi.fn(),
         versions: {

@@ -13,8 +13,7 @@ export type MeetLauncherApi = {
   openMeetUrl: (meetUrl: string) => Promise<ApiResult<void>>;
   getUpdateStatus: () => Promise<ApiResult<AppUpdateStatus>>;
   checkForUpdates: () => Promise<ApiResult<AppUpdateStatus>>;
-  downloadUpdate: () => Promise<ApiResult<AppUpdateStatus>>;
-  installUpdate: () => Promise<ApiResult<void>>;
+  runHomebrewUpdate: () => Promise<ApiResult<AppUpdateStatus>>;
   onUpdateStatusChanged: (listener: (status: AppUpdateStatus) => void) => () => void;
   versions: {
     electron: string;

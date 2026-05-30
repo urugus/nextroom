@@ -79,13 +79,6 @@ export type LaunchRecord = {
   eventUpdatedAt: string;
 };
 
-export type AppUpdateProgress = {
-  percent: number;
-  transferred: number;
-  total: number;
-  bytesPerSecond: number;
-};
-
 export type AppUpdateStatus = {
   currentVersion: string;
   status:
@@ -94,16 +87,14 @@ export type AppUpdateStatus = {
     | "checking"
     | "not-available"
     | "available"
-    | "downloading"
-    | "downloaded"
+    | "homebrew-updating"
+    | "homebrew-updated"
     | "error";
   availableVersion?: string;
-  downloadedVersion?: string;
   releaseDate?: string;
   releaseName?: string;
   errorMessage?: string;
-  progress?: AppUpdateProgress;
+  updateMessage?: string;
   canCheck: boolean;
-  canDownload: boolean;
-  canInstall: boolean;
+  canRunHomebrewUpdate: boolean;
 };

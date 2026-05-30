@@ -1,6 +1,6 @@
 {
   "name": "nextroom",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "Google Calendar linked Google Meet launcher for macOS.",
   "type": "module",
   "main": "out/main/index.js",
@@ -10,7 +10,7 @@
     "build": "electron-vite build",
     "package": "electron-builder",
     "dist:mac": "pnpm run build && electron-builder --mac dmg zip --arm64 --publish never -c.mac.notarize=false",
-    "release:mac": "pnpm run build && electron-builder --mac dmg zip --arm64 --publish always",
+    "release:mac": "pnpm run build && electron-builder --mac dmg zip --arm64 --publish always -c.mac.notarize=false",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "pnpm exec oxlint . && pnpm run lint:arrows",
