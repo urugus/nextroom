@@ -1,6 +1,6 @@
 {
   "name": "nextroom",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "description": "Google Calendar linked Google Meet launcher for macOS.",
   "type": "module",
   "main": "out/main/index.js",
