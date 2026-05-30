@@ -51,11 +51,11 @@ jobs:
 
       - name: Verify Homebrew tap app credentials
         env:
-          NEXTROOM_RELEASE_APP_ID: ${{ secrets.NEXTROOM_RELEASE_APP_ID }}
+          NEXTROOM_RELEASE_APP_CLIENT_ID: ${{ vars.NEXTROOM_RELEASE_APP_CLIENT_ID }}
           NEXTROOM_RELEASE_APP_PRIVATE_KEY: ${{ secrets.NEXTROOM_RELEASE_APP_PRIVATE_KEY }}
         run: |
-          if [ -z "$NEXTROOM_RELEASE_APP_ID" ]; then
-            echo "::error title=Missing NEXTROOM_RELEASE_APP_ID::Set the NEXTROOM_RELEASE_APP_ID repository secret before creating a release tag."
+          if [ -z "$NEXTROOM_RELEASE_APP_CLIENT_ID" ]; then
+            echo "::error title=Missing NEXTROOM_RELEASE_APP_CLIENT_ID::Set the NEXTROOM_RELEASE_APP_CLIENT_ID repository variable before creating a release tag."
             exit 1
           fi
 
@@ -80,7 +80,7 @@ jobs:
         id: homebrew-tap-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.NEXTROOM_RELEASE_APP_ID }}
+          client-id: ${{ vars.NEXTROOM_RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.NEXTROOM_RELEASE_APP_PRIVATE_KEY }}
           owner: urugus
           repositories: homebrew-tap
