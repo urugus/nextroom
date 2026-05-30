@@ -177,7 +177,7 @@ export const App = () => {
   };
 
   const checkForUpdates = () => runUpdateAction(window.meetLauncher.checkForUpdates);
-  const openUpdateDownloadPage = () => runUpdateAction(window.meetLauncher.openUpdateDownloadPage);
+  const runHomebrewUpdate = () => runUpdateAction(window.meetLauncher.runHomebrewUpdate);
 
   return (
     <Dashboard
@@ -190,7 +190,7 @@ export const App = () => {
       onCheckForUpdates={checkForUpdates}
       onConnectAccount={connectAccount}
       onDisconnectAccount={disconnectAccount}
-      onOpenUpdateDownloadPage={openUpdateDownloadPage}
+      onRunHomebrewUpdate={runHomebrewUpdate}
       onOpenMeeting={openMeeting}
       onSyncCalendar={syncCalendar}
       updateErrorMessage={updateErrorMessage}

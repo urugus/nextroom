@@ -19,7 +19,7 @@ const api = {
   openMeetUrl: (meetUrl: string) => ipcRenderer.invoke("meet:open", meetUrl),
   getUpdateStatus: () => ipcRenderer.invoke("updates:getStatus"),
   checkForUpdates: () => ipcRenderer.invoke("updates:check"),
-  openUpdateDownloadPage: () => ipcRenderer.invoke("updates:openDownloadPage"),
+  runHomebrewUpdate: () => ipcRenderer.invoke("updates:runHomebrewUpdate"),
   onUpdateStatusChanged: (listener: (status: AppUpdateStatus) => void) => {
     const subscription = (_event: Electron.IpcRendererEvent, status: AppUpdateStatus) => {
       listener(status);

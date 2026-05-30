@@ -1,15 +1,19 @@
+import { execFile } from "node:child_process";
+import { access } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { promisify } from "node:util";
 import type { AppError } from "@shared/errors";
 import type { AppUpdateStatus } from "@shared/types";
 import { err, ok, type Result } from "neverthrow";
 
-type UpdaterState = Omit<AppUpdateStatus, "canCheck" | "canOpenDownloadPage" | "currentVersion">;
+type UpdaterState = Omit<AppUpdateStatus, "canCheck" | "canRunHomebrewUpdate" | "currentVersion">;
 
 const nodeRequire = createRequire(import.meta.url);
-const { app, BrowserWindow, shell } = nodeRequire("electron") as typeof import("electron");
+const { app, BrowserWindow } = nodeRequire("electron") as typeof import("electron");
 const { autoUpdater } = nodeRequire("electron-updater") as typeof import("electron-updater");
 
-const githubReleasesUrl = "https://github.com/urugus/nextroom/releases";
+const execFileAsync = promisify(execFile);
+const brewCandidates = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"];
 const statusChangedChannel = "updates:status-changed";
 
 let configured = false;
@@ -18,8 +22,8 @@ let updaterState: UpdaterState = {
 };
 
 const actionFlagsFor = (status: AppUpdateStatus["status"]) => ({
-  canCheck: app.isPackaged && status !== "checking",
-  canOpenDownloadPage: app.isPackaged && status === "available",
+  canCheck: app.isPackaged && status !== "checking" && status !== "homebrew-updating",
+  canRunHomebrewUpdate: app.isPackaged && status === "available",
 });
 
 const currentStatus = (): AppUpdateStatus => ({
@@ -61,6 +65,45 @@ const updateErrorMessageFrom = (cause: unknown) => {
 
   return message.split("\n")[0] ?? "Update check failed.";
 };
+
+const commandOutputMessage = (error: unknown) => {
+  if (typeof error !== "object" || error === null) return updateErrorMessageFrom(error);
+
+  const output = [
+    "stderr" in error && typeof error.stderr === "string" ? error.stderr : undefined,
+    "stdout" in error && typeof error.stdout === "string" ? error.stdout : undefined,
+    "message" in error && typeof error.message === "string" ? error.message : undefined,
+  ]
+    .filter((value): value is string => value !== undefined && value.trim().length > 0)
+    .join("\n")
+    .trim();
+
+  return output.split("\n").find((line) => line.trim().length > 0) ?? "Homebrew update failed.";
+};
+
+const findBrewExecutable = async () => {
+  for (const candidate of brewCandidates) {
+    try {
+      await access(candidate);
+      return ok(candidate);
+    } catch {
+      // Try the next common Homebrew install path.
+    }
+  }
+
+  return err(errorFrom("Homebrew was not found. Install NextRoom with Homebrew first."));
+};
+
+const runBrew = async (brewPath: string, args: string[]) =>
+  execFileAsync(brewPath, args, {
+    env: {
+      ...process.env,
+      HOMEBREW_NO_ANALYTICS: "1",
+      HOMEBREW_NO_AUTO_UPDATE: "1",
+    },
+    maxBuffer: 1024 * 1024,
+    timeout: 10 * 60 * 1_000,
+  });
 
 export const getAppUpdateStatus = (): AppUpdateStatus => currentStatus();
 
@@ -113,25 +156,52 @@ export const checkForAppUpdates = async (): Promise<Result<AppUpdateStatus, AppE
   }
 };
 
-export const openAppUpdateDownloadPage = async (): Promise<Result<AppUpdateStatus, AppError>> => {
+export const runHomebrewAppUpdate = async (): Promise<Result<AppUpdateStatus, AppError>> => {
   if (!app.isPackaged) {
     return ok(currentStatus());
   }
 
   if (updaterState.status !== "available") {
-    return err(errorFrom("No update download page is ready to open."));
+    return err(errorFrom("No Homebrew update is ready to run."));
+  }
+
+  const brewPath = await findBrewExecutable();
+  if (brewPath.isErr()) {
+    updateState({
+      errorMessage: "Homebrew was not found. Install NextRoom with Homebrew first.",
+      status: "error",
+    });
+    return err(brewPath.error);
   }
 
   try {
-    const releaseUrl =
-      updaterState.availableVersion !== undefined
-        ? `${githubReleasesUrl}/tag/v${updaterState.availableVersion}`
-        : githubReleasesUrl;
-    await shell.openExternal(releaseUrl);
+    updateState({
+      ...updaterState,
+      status: "homebrew-updating",
+      updateMessage: "Checking Homebrew cask installation.",
+    });
+    await runBrew(brewPath.value, ["list", "--cask", "nextroom"]);
+    updateState({
+      ...updaterState,
+      status: "homebrew-updating",
+      updateMessage: "Running brew update.",
+    });
+    await runBrew(brewPath.value, ["update"]);
+    updateState({
+      ...updaterState,
+      status: "homebrew-updating",
+      updateMessage: "Running brew upgrade --cask nextroom.",
+    });
+    await runBrew(brewPath.value, ["upgrade", "--cask", "nextroom"]);
+    updateState({
+      ...updaterState,
+      status: "homebrew-updated",
+      updateMessage: "Homebrew update completed. Restart NextRoom to use the new version.",
+    });
     return ok(currentStatus());
   } catch (cause) {
     updateState({
-      errorMessage: updateErrorMessageFrom(cause),
+      errorMessage: commandOutputMessage(cause),
       status: "error",
     });
     return err(errorFrom(cause));

@@ -10,7 +10,7 @@ import {
   checkForAppUpdates,
   configureAppUpdater,
   getAppUpdateStatus,
-  openAppUpdateDownloadPage,
+  runHomebrewAppUpdate,
 } from "@main/updater/appUpdater";
 import type { AppError } from "@shared/errors";
 import type { BrowserWindow as ElectronBrowserWindow } from "electron";
@@ -176,8 +176,8 @@ const registerIpc = () => {
   ipcMain.handle("updates:check", async () =>
     serializeResultForRenderer(await checkForAppUpdates()),
   );
-  ipcMain.handle("updates:openDownloadPage", async () =>
-    serializeResultForRenderer(await openAppUpdateDownloadPage()),
+  ipcMain.handle("updates:runHomebrewUpdate", async () =>
+    serializeResultForRenderer(await runHomebrewAppUpdate()),
   );
 };
 

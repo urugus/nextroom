@@ -81,11 +81,20 @@ export type LaunchRecord = {
 
 export type AppUpdateStatus = {
   currentVersion: string;
-  status: "unsupported" | "idle" | "checking" | "not-available" | "available" | "error";
+  status:
+    | "unsupported"
+    | "idle"
+    | "checking"
+    | "not-available"
+    | "available"
+    | "homebrew-updating"
+    | "homebrew-updated"
+    | "error";
   availableVersion?: string;
   releaseDate?: string;
   releaseName?: string;
   errorMessage?: string;
+  updateMessage?: string;
   canCheck: boolean;
-  canOpenDownloadPage: boolean;
+  canRunHomebrewUpdate: boolean;
 };

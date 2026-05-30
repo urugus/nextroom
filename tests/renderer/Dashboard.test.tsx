@@ -18,14 +18,14 @@ const meeting: MeetEvent = {
 const updateAvailable: AppUpdateStatus = {
   availableVersion: "0.2.0",
   canCheck: true,
-  canOpenDownloadPage: true,
+  canRunHomebrewUpdate: true,
   currentVersion: "0.1.0",
   status: "available",
 };
 
 const updateError: AppUpdateStatus = {
   canCheck: true,
-  canOpenDownloadPage: false,
+  canRunHomebrewUpdate: false,
   currentVersion: "0.1.0",
   errorMessage: "GitHub Releases request failed",
   status: "error",
@@ -74,7 +74,7 @@ describe("Dashboard", () => {
 
   it("renders update controls", () => {
     const onCheckForUpdates = vi.fn();
-    const onOpenUpdateDownloadPage = vi.fn();
+    const onRunHomebrewUpdate = vi.fn();
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
@@ -82,19 +82,19 @@ describe("Dashboard", () => {
         onCheckForUpdates={onCheckForUpdates}
         onConnectAccount={vi.fn()}
         onDisconnectAccount={vi.fn()}
-        onOpenUpdateDownloadPage={onOpenUpdateDownloadPage}
+        onRunHomebrewUpdate={onRunHomebrewUpdate}
         onOpenMeeting={vi.fn()}
         onSyncCalendar={vi.fn()}
         updateStatus={updateAvailable}
       />,
     );
 
-    expect(screen.getByText("Version 0.2.0 is available for manual download.")).toBeInTheDocument();
+    expect(screen.getByText("Version 0.2.0 is available via Homebrew.")).toBeInTheDocument();
     expect(screen.getByText("Current version 0.1.0")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
-    fireEvent.click(screen.getByRole("button", { name: "Open download page" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update with Homebrew" }));
     expect(onCheckForUpdates).toHaveBeenCalledTimes(1);
-    expect(onOpenUpdateDownloadPage).toHaveBeenCalledTimes(1);
+    expect(onRunHomebrewUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("renders update errors once in the dedicated error area", () => {

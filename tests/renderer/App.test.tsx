@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const updateStatus: AppUpdateStatus = {
   canCheck: false,
-  canOpenDownloadPage: false,
+  canRunHomebrewUpdate: false,
   currentVersion: "0.1.0",
   status: "unsupported",
 };
@@ -52,7 +52,7 @@ const installMeetLauncher = (openMeetUrl: ReturnType<typeof vi.fn>) => {
       listUpcomingMeetings: vi.fn(() => Promise.resolve(meetings)),
       onCalendarUpdated: vi.fn(() => vi.fn()),
       onUpdateStatusChanged: vi.fn(() => vi.fn()),
-      openUpdateDownloadPage: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+      runHomebrewUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       openMeetUrl,
       syncCalendarNow: vi.fn(() => Promise.resolve(meetings)),
       versions: {
@@ -77,7 +77,7 @@ const installMeetLauncherWithStatus = (status: ApiResult<AccountStatus>) => {
       listUpcomingMeetings: vi.fn(() => Promise.resolve({ ok: true, value: { meetings: [] } })),
       onCalendarUpdated: vi.fn(() => vi.fn()),
       onUpdateStatusChanged: vi.fn(() => vi.fn()),
-      openUpdateDownloadPage: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+      runHomebrewUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       openMeetUrl: vi.fn(),
       syncCalendarNow: vi.fn(),
       versions: {
@@ -209,7 +209,7 @@ describe("App", () => {
           return vi.fn();
         }),
         onUpdateStatusChanged: vi.fn(() => vi.fn()),
-        openUpdateDownloadPage: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
+        runHomebrewUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
         openMeetUrl: vi.fn(),
         syncCalendarNow: vi.fn(),
         versions: {

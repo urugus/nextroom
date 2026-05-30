@@ -10,8 +10,8 @@ type DashboardProps = {
   onCheckForUpdates?: () => Promise<unknown>;
   onConnectAccount: () => Promise<unknown>;
   onDisconnectAccount: () => Promise<unknown>;
-  onOpenUpdateDownloadPage?: () => Promise<unknown>;
   onOpenMeeting: (meetUrl: string) => Promise<unknown>;
+  onRunHomebrewUpdate?: () => Promise<unknown>;
   onSyncCalendar: () => Promise<unknown>;
   updateErrorMessage?: string;
   updateStatus?: AppUpdateStatus;
@@ -36,7 +36,11 @@ const formatUpdateSummary = (updateStatus?: AppUpdateStatus) => {
     case "not-available":
       return "You are on the latest version.";
     case "available":
-      return `Version ${updateStatus.availableVersion ?? "unknown"} is available for manual download.`;
+      return `Version ${updateStatus.availableVersion ?? "unknown"} is available via Homebrew.`;
+    case "homebrew-updating":
+      return updateStatus.updateMessage ?? "Updating with Homebrew.";
+    case "homebrew-updated":
+      return updateStatus.updateMessage ?? "Homebrew update completed. Restart NextRoom.";
     case "error":
       return "Update check failed.";
   }
@@ -52,8 +56,8 @@ export const Dashboard = ({
   onCheckForUpdates,
   onConnectAccount,
   onDisconnectAccount,
-  onOpenUpdateDownloadPage,
   onOpenMeeting,
+  onRunHomebrewUpdate,
   onSyncCalendar,
   openingMeetUrl,
   pendingAction,
@@ -137,10 +141,10 @@ export const Dashboard = ({
           </button>
           <button
             type="button"
-            disabled={!updateStatus?.canOpenDownloadPage || onOpenUpdateDownloadPage === undefined}
-            onClick={() => void onOpenUpdateDownloadPage?.()}
+            disabled={!updateStatus?.canRunHomebrewUpdate || onRunHomebrewUpdate === undefined}
+            onClick={() => void onRunHomebrewUpdate?.()}
           >
-            Open download page
+            Update with Homebrew
           </button>
         </div>
         {updateErrorText !== undefined ? <p className="update-error">{updateErrorText}</p> : null}
