@@ -15,7 +15,6 @@ import {
 import type { AppError } from "@shared/errors";
 import { IPC_CHANNELS } from "@shared/ipc";
 import type { BrowserWindow as ElectronBrowserWindow } from "electron";
-import * as keytar from "keytar";
 import { err, fromThrowable, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { serializeResultForRenderer } from "./ipc/result";
@@ -24,6 +23,7 @@ const nodeRequire = createRequire(import.meta.url);
 const { app, BrowserWindow, ipcMain, session, shell } = nodeRequire(
   "electron",
 ) as typeof import("electron");
+const keytar = nodeRequire("keytar") as typeof import("keytar");
 
 let mainWindow: ElectronBrowserWindow | undefined;
 const meetWindows = new Set<ElectronBrowserWindow>();
@@ -32,6 +32,7 @@ const tokenStore = createKeychainTokenStore(keytar);
 const oauthClient = createOAuthClient();
 const authService = createGoogleAuthService({
   clientId: process.env.NEXTROOM_GOOGLE_CLIENT_ID,
+  clientSecret: process.env.NEXTROOM_GOOGLE_CLIENT_SECRET,
   tokenStore,
   oauthClient,
   openExternal: (url) => shell.openExternal(url).then(() => undefined),

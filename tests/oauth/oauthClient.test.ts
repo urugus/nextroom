@@ -2,6 +2,13 @@ import { createOAuthClient, GOOGLE_CALENDAR_EVENTS_READONLY_SCOPE } from "@main/
 import { appErrorMessage } from "@shared/errors";
 import { describe, expect, it, vi } from "vitest";
 
+const requestBody = (fetchImpl: ReturnType<typeof vi.fn<typeof fetch>>): URLSearchParams => {
+  const init = fetchImpl.mock.calls[0]?.[1];
+  expect(init).toBeDefined();
+  expect(init?.body).toBeInstanceOf(URLSearchParams);
+  return init?.body as URLSearchParams;
+};
+
 describe("createOAuthClient", () => {
   it("builds a Google authorization URL with PKCE and offline access", () => {
     const client = createOAuthClient();
@@ -50,6 +57,56 @@ describe("createOAuthClient", () => {
       "https://oauth2.googleapis.com/token",
       expect.objectContaining({ method: "POST" }),
     );
+    expect(requestBody(fetchImpl).get("client_secret")).toBeNull();
+  });
+
+  it("includes an optional client secret when exchanging tokens", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            access_token: "access-token",
+            expires_in: 3600,
+            refresh_token: "refresh-token",
+          }),
+        ),
+      ),
+    );
+    const client = createOAuthClient(fetchImpl);
+
+    const result = await client.exchangeAuthorizationCode({
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      code: "code",
+      codeVerifier: "verifier",
+      redirectUri: "http://127.0.0.1:1234/oauth/callback",
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(requestBody(fetchImpl).get("client_secret")).toBe("client-secret");
+  });
+
+  it("includes an optional client secret when refreshing tokens", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            access_token: "access-token",
+            expires_in: 3600,
+          }),
+        ),
+      ),
+    );
+    const client = createOAuthClient(fetchImpl);
+
+    const result = await client.refreshAccessToken({
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      refreshToken: "refresh-token",
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(requestBody(fetchImpl).get("client_secret")).toBe("client-secret");
   });
 
   it("keeps refresh token failure messages user-visible", async () => {

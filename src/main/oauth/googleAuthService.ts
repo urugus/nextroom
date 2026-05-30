@@ -19,6 +19,7 @@ type AccessTokenCache = {
 
 type GoogleAuthServiceInput = {
   clientId: string | undefined;
+  clientSecret?: string;
   tokenStore: TokenStore;
   oauthClient: OAuthClient;
   openExternal: (url: string) => Promise<boolean | undefined>;
@@ -49,6 +50,7 @@ const cacheAccessToken = (tokenSet: TokenSet): AccessTokenCache => ({
 
 export const createGoogleAuthService = ({
   clientId,
+  clientSecret,
   tokenStore,
   oauthClient,
   openExternal,
@@ -89,6 +91,7 @@ export const createGoogleAuthService = ({
 
         const tokenSet = await oauthClient.exchangeAuthorizationCode({
           clientId,
+          clientSecret,
           code: code.value,
           codeVerifier: pkce.codeVerifier,
           redirectUri: receiver.value.redirectUri,
@@ -128,6 +131,7 @@ export const createGoogleAuthService = ({
 
       const refreshed = await oauthClient.refreshAccessToken({
         clientId,
+        clientSecret,
         refreshToken: refreshToken.value,
       });
       if (refreshed.isErr()) {
