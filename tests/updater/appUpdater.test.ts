@@ -189,6 +189,8 @@ describe("appUpdater Homebrew updates", () => {
     expect(script).toContain("osascript -e 'quit app \"NextRoom\"'");
     expect(script).toContain("CFBundleShortVersionString");
     expect(script).toContain("__NEXTROOM_HOMEBREW_UPDATE_VERSION_MISMATCH__");
+    expect(script).toContain("exit_code=$?");
+    expect(script).not.toContain("status=$?");
     expect(script).toContain(
       'display dialog "NextRoom was updated. Restart now to use the new version."',
     );
