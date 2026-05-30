@@ -7,11 +7,12 @@ import type { AppError } from "@shared/errors";
 import { IPC_CHANNELS } from "@shared/ipc";
 import type { AppUpdateStatus } from "@shared/types";
 import { app, BrowserWindow } from "electron";
-import { autoUpdater } from "electron-updater";
+import electronUpdater from "electron-updater";
 import { err, ok, type Result } from "neverthrow";
 
 type UpdaterState = Omit<AppUpdateStatus, "canCheck" | "canRunHomebrewUpdate" | "currentVersion">;
 
+const { autoUpdater } = electronUpdater;
 const execFileAsync = promisify(execFile);
 const brewCandidates = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"];
 const updateLogFileName = "homebrew-update.log";
