@@ -13,6 +13,7 @@ type MenuBarControllerInput = {
   icon: NativeImage | string;
   openMeetUrl: (meetUrl: string) => Promise<Result<void, AppError>>;
   quitApp: () => void;
+  reportError: (message: string, cause: unknown) => void;
   showSettingsWindow: () => void;
   syncNow: () => Promise<Result<MeetEventsSnapshot, AppError>>;
 };
@@ -92,6 +93,7 @@ export const createMenuBarController = ({
   icon,
   openMeetUrl,
   quitApp,
+  reportError,
   showSettingsWindow,
   syncNow,
 }: MenuBarControllerInput): MenuBarController => {
@@ -103,12 +105,28 @@ export const createMenuBarController = ({
       buildMenuBarTemplate({
         meetings,
         openMeetUrl: (meetUrl) => {
-          void openMeetUrl(meetUrl);
+          void openMeetUrl(meetUrl)
+            .then((result) => {
+              if (result.isErr()) {
+                reportError("Failed to open Meet from the menu bar.", result.error);
+              }
+            })
+            .catch((cause: unknown) => {
+              reportError("Failed to open Meet from the menu bar.", cause);
+            });
         },
         quitApp,
         showSettingsWindow,
         syncNow: () => {
-          void syncNow();
+          void syncNow()
+            .then((result) => {
+              if (result.isErr()) {
+                reportError("Failed to sync Calendar from the menu bar.", result.error);
+              }
+            })
+            .catch((cause: unknown) => {
+              reportError("Failed to sync Calendar from the menu bar.", cause);
+            });
         },
       }),
     );

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { createKeychainTokenStore } from "@main/adapters/keychainTokenStore";
@@ -62,6 +62,7 @@ const settingsSchema = z
   .strict();
 const settingsUpdateSchema = settingsSchema.pick({ openOffsetSeconds: true }).strict();
 const settingsFileName = "settings.json";
+const menuBarLogFileName = "menu-bar.log";
 let appSettings: AppSettings = { ...defaultAppSettings };
 
 const settingsPath = (): string => join(app.getPath("userData"), settingsFileName);
@@ -98,6 +99,19 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
   Object.assign(appSettings, nextSettings);
   return ok(appSettings);
 };
+
+const formatLogCause = (cause: unknown): string => {
+  if (cause instanceof Error) return cause.stack ?? cause.message;
+  if (typeof cause === "string") return cause;
+
+  try {
+    const json = JSON.stringify(cause);
+    return json ?? String(cause);
+  } catch {
+    return String(cause);
+  }
+};
+
 const tokenStore = createKeychainTokenStore(keytar);
 const oauthClient = createOAuthClient();
 const authService = createGoogleAuthService({
@@ -211,6 +225,19 @@ const createTrayIcon = () => {
   return image;
 };
 
+const reportMenuBarError = (message: string, cause: unknown): void => {
+  try {
+    const logDirectory = app.getPath("logs");
+    mkdirSync(logDirectory, { recursive: true });
+    appendFileSync(
+      join(logDirectory, menuBarLogFileName),
+      `${new Date().toISOString()} ${message} ${formatLogCause(cause)}\n`,
+    );
+  } catch {
+    // Logging must never make a tray action fail harder.
+  }
+};
+
 const createMenuBar = (): void => {
   menuBarController = createMenuBarController({
     buildMenuFromTemplate: (template) => Menu.buildFromTemplate(template),
@@ -220,10 +247,11 @@ const createMenuBar = (): void => {
     quitApp: () => {
       app.quit();
     },
+    reportError: reportMenuBarError,
     showSettingsWindow: () => {
       const result = showSettingsWindow();
       if (result.isErr()) {
-        throw new Error(result.error.type);
+        reportMenuBarError("Failed to open settings from the menu bar.", result.error);
       }
     },
     syncNow: () => calendarSyncService.syncNow(),

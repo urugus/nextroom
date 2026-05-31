@@ -1,7 +1,8 @@
 import { buildMenuBarTemplate, createMenuBarController } from "@main/menuBar/menuBarController";
+import type { AppError } from "@shared/errors";
 import type { MeetEvent } from "@shared/types";
 import type { Menu, MenuItemConstructorOptions, NativeImage, Tray } from "electron";
-import { ok } from "neverthrow";
+import { err, ok } from "neverthrow";
 import { describe, expect, it, vi } from "vitest";
 
 const meeting: MeetEvent = {
@@ -93,6 +94,7 @@ describe("createMenuBarController", () => {
       icon: "icon" as unknown as NativeImage,
       openMeetUrl: vi.fn(() => Promise.resolve(ok(undefined))),
       quitApp: vi.fn(),
+      reportError: vi.fn(),
       showSettingsWindow: vi.fn(),
       syncNow: vi.fn(() => Promise.resolve(ok({ meetings: [] }))),
     });
@@ -105,5 +107,50 @@ describe("createMenuBarController", () => {
         label: "10:00 Product sync",
       }),
     );
+  });
+
+  it("reports meeting open and sync failures from tray actions", async () => {
+    const reportError = vi.fn();
+    const menus: MenuItemConstructorOptions[][] = [];
+    const meetWindowError: AppError = { type: "MeetWindowFailed", cause: "window failed" };
+    const syncError: AppError = { type: "CalendarApiFailed", cause: "sync failed" };
+    const controller = createMenuBarController({
+      buildMenuFromTemplate: (template) => {
+        menus.push(template);
+        return template as unknown as Menu;
+      },
+      createTray: vi.fn(
+        () =>
+          ({
+            setContextMenu: vi.fn(),
+            setToolTip: vi.fn(),
+          }) as unknown as Tray,
+      ),
+      icon: "icon" as unknown as NativeImage,
+      openMeetUrl: vi.fn(() => Promise.resolve(err(meetWindowError))),
+      quitApp: vi.fn(),
+      reportError,
+      showSettingsWindow: vi.fn(),
+      syncNow: vi.fn(() => Promise.resolve(err(syncError))),
+    });
+
+    controller.updateMeetings({ meetings: [meeting] });
+    const latestMenu = menus.at(-1) ?? [];
+
+    clickItem(
+      latestMenu.find((item) => item.label === "10:00 Product sync") as MenuItemConstructorOptions,
+    );
+    clickItem(latestMenu.find((item) => item.label === "Sync Now") as MenuItemConstructorOptions);
+
+    await vi.waitFor(() => {
+      expect(reportError).toHaveBeenCalledWith(
+        "Failed to open Meet from the menu bar.",
+        expect.objectContaining({ type: "MeetWindowFailed" }),
+      );
+      expect(reportError).toHaveBeenCalledWith(
+        "Failed to sync Calendar from the menu bar.",
+        expect.objectContaining({ type: "CalendarApiFailed" }),
+      );
+    });
   });
 });
