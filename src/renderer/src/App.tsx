@@ -274,7 +274,6 @@ export const App = () => {
     <Dashboard
       accountStatus={accountStatus}
       errorMessage={errorMessage}
-      meetings={meetingsSnapshot.meetings}
       pendingAction={pendingAction}
       settings={settings}
       syncedAt={meetingsSnapshot.syncedAt}

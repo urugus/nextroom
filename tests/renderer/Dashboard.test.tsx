@@ -1,19 +1,7 @@
 import { Dashboard } from "@renderer/screens/Dashboard";
-import type { AppSettings, AppUpdateStatus, MeetEvent } from "@shared/types";
+import type { AppSettings, AppUpdateStatus } from "@shared/types";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-
-const meeting: MeetEvent = {
-  eventId: "event-1",
-  occurrenceKey: "primary:event-1:2026-05-28T10:00:00+09:00",
-  calendarId: "primary",
-  summary: "Product sync",
-  startAt: "2026-05-28T10:00:00+09:00",
-  endAt: "2026-05-28T10:30:00+09:00",
-  updatedAt: "2026-05-28T09:00:00+09:00",
-  meetUrl: "https://meet.google.com/abc-defg-hij",
-  status: "confirmed",
-};
 
 const updateAvailable: AppUpdateStatus = {
   availableVersion: "0.2.0",
@@ -64,15 +52,13 @@ const settings: AppSettings = {
 };
 
 describe("Dashboard", () => {
-  it("renders disconnected state and upcoming meetings", () => {
-    const onOpenMeeting = vi.fn();
+  it("renders disconnected account settings", () => {
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
-        meetings={[meeting]}
         onConnectAccount={vi.fn()}
         onDisconnectAccount={vi.fn()}
-        onOpenMeeting={onOpenMeeting}
+        onOpenMeeting={vi.fn()}
         onOpenOffsetMinutesChange={vi.fn()}
         onSyncCalendar={vi.fn()}
         settings={settings}
@@ -82,11 +68,9 @@ describe("Dashboard", () => {
     expect(screen.getByText("Google Calendar not connected")).toBeInTheDocument();
     expect(screen.getByText("Loading")).toBeInTheDocument();
     expect(
-      screen.getByText("Connect Google Calendar to load upcoming meetings."),
+      screen.getByText("Connect Google Calendar to enable Meet launching."),
     ).toBeInTheDocument();
-    expect(screen.getByText("Product sync")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Join" }));
-    expect(onOpenMeeting).toHaveBeenCalledWith(meeting);
+    expect(screen.queryByText("Product sync")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Connect" })).toBeEnabled();
   });
 
@@ -95,7 +79,6 @@ describe("Dashboard", () => {
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
         errorMessage="Calendar API failed"
-        meetings={[]}
         onConnectAccount={vi.fn()}
         onDisconnectAccount={vi.fn()}
         onOpenMeeting={vi.fn()}
@@ -106,7 +89,6 @@ describe("Dashboard", () => {
     );
 
     expect(screen.getByText("Calendar API failed")).toBeInTheDocument();
-    expect(screen.getByText("No upcoming Google Meet meetings.")).toBeInTheDocument();
   });
 
   it("renders update controls", () => {
@@ -115,7 +97,6 @@ describe("Dashboard", () => {
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
-        meetings={[]}
         onCheckForUpdates={onCheckForUpdates}
         onConnectAccount={vi.fn()}
         onDisconnectAccount={vi.fn()}
@@ -143,7 +124,6 @@ describe("Dashboard", () => {
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
-        meetings={[]}
         onCheckForUpdates={vi.fn()}
         onConnectAccount={vi.fn()}
         onDisconnectAccount={vi.fn()}
@@ -167,7 +147,6 @@ describe("Dashboard", () => {
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
-        meetings={[]}
         onCheckForUpdates={vi.fn()}
         onConnectAccount={vi.fn()}
         onDisconnectAccount={vi.fn()}
@@ -194,7 +173,6 @@ describe("Dashboard", () => {
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
-        meetings={[]}
         onConnectAccount={vi.fn()}
         onDisconnectAccount={vi.fn()}
         onOpenMeeting={vi.fn()}
@@ -217,7 +195,6 @@ describe("Dashboard", () => {
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
-        meetings={[]}
         onConnectAccount={vi.fn()}
         onDisconnectAccount={vi.fn()}
         onOpenMeeting={vi.fn()}
@@ -238,7 +215,6 @@ describe("Dashboard", () => {
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
-        meetings={[]}
         onConnectAccount={vi.fn()}
         onDisconnectAccount={vi.fn()}
         onOpenMeeting={vi.fn()}
@@ -259,7 +235,6 @@ describe("Dashboard", () => {
     render(
       <Dashboard
         accountStatus={{ connected: true, syncing: false }}
-        meetings={[]}
         onConnectAccount={vi.fn()}
         onDisconnectAccount={vi.fn()}
         onOpenMeeting={vi.fn()}

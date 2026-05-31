@@ -1,8 +1,8 @@
 :root {
-  color: #1f2933;
-  background: #f5f7fa;
+  color: #1d1d1f;
+  background: #f5f5f7;
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
 }
 
 * {
@@ -18,84 +18,158 @@ a {
   font: inherit;
 }
 
-.app-shell {
+button {
+  min-height: 28px;
+  border: 1px solid #c4c4c6;
+  border-radius: 6px;
+  background: linear-gradient(#ffffff, #f2f2f4);
+  color: #1d1d1f;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 5px 13px;
+}
+
+button:disabled {
+  color: #8e8e93;
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.preference-actions button:not(.secondary-button):not(:disabled) {
+  border-color: #0071e3;
+  background: #007aff;
+  color: #ffffff;
+}
+
+.preferences-shell {
   display: grid;
-  gap: 24px;
-  max-width: 980px;
+  gap: 18px;
+  width: min(100%, 720px);
   margin: 0 auto;
-  padding: 32px;
+  padding: 28px 32px 36px;
 }
 
-.toolbar,
-.meeting-panel,
-.settings-panel,
-.update-panel {
-  background: #ffffff;
-  border: 1px solid #d8dee8;
-  border-radius: 8px;
-  padding: 24px;
+.preferences-header {
+  display: grid;
+  gap: 3px;
+  padding: 2px 0 4px;
 }
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.toolbar h1,
-.meeting-panel h2,
-.settings-panel h2,
-.update-panel h2 {
+.preferences-header p {
   margin: 0;
-  font-size: 22px;
-}
-
-.toolbar p {
-  margin: 8px 0 0;
-  color: #52616f;
-}
-
-.toolbar .helper-text {
+  color: #6e6e73;
   font-size: 13px;
 }
 
-.toolbar-actions {
-  display: flex;
-  gap: 10px;
+.preferences-header h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
 }
 
-.toolbar button,
-.toolbar-actions button {
-  min-width: 112px;
-  border: 0;
-  border-radius: 6px;
-  background: #1267d8;
-  color: #ffffff;
+.preferences-group {
+  display: grid;
+  gap: 8px;
+}
+
+.preferences-group h2 {
+  margin: 0 0 0 12px;
+  color: #6e6e73;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.preference-list {
+  overflow: hidden;
+  border: 1px solid #d6d6d8;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.preference-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  min-height: 68px;
+  padding: 13px 16px;
+}
+
+.update-error,
+.update-progress {
+  border-top: 1px solid #e5e5e7;
+}
+
+.update-error {
+  margin: 0;
+  color: #9b1c1c;
+  font-size: 12px;
   padding: 10px 16px;
 }
 
-.toolbar .secondary-button {
-  border: 1px solid #c7d1dd;
-  background: #ffffff;
-  color: #27384a;
+.update-progress {
+  display: block;
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  background: #e5e5e7;
 }
 
-.toolbar button:disabled,
-.toolbar .secondary-button:disabled {
-  background: #9aa8b6;
-  border-color: #9aa8b6;
-  color: #ffffff;
-  cursor: not-allowed;
+.update-progress::-webkit-progress-bar {
+  background: #e5e5e7;
+}
+
+.update-progress::-webkit-progress-value {
+  background: #007aff;
+}
+
+.update-progress:indeterminate {
+  background:
+    linear-gradient(90deg, transparent 0%, #007aff 50%, transparent 100%) 0 0 / 40% 100% no-repeat,
+    #e5e5e7;
+  animation: update-progress-slide 1.2s ease-in-out infinite;
+}
+
+.preference-row + .preference-row {
+  border-top: 1px solid #e5e5e7;
+}
+
+.preference-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.preference-copy strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.preference-copy span {
+  color: #6e6e73;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.preference-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .error-banner {
   margin: 0;
   border: 1px solid #f0b8b8;
-  border-radius: 8px;
+  border-radius: 10px;
   background: #fff1f1;
   color: #9b1c1c;
-  padding: 12px 16px;
+  font-size: 13px;
+  padding: 10px 12px;
 }
 
 .meeting-notification {
@@ -104,24 +178,30 @@ a {
   justify-content: space-between;
   gap: 16px;
   width: 100%;
-  border: 1px solid #9ec5fe;
-  border-radius: 8px;
+  min-height: 48px;
+  border: 1px solid #8ec5ff;
+  border-radius: 10px;
   background: #eaf4ff;
   color: #163d63;
   cursor: pointer;
-  padding: 14px 16px;
+  padding: 11px 14px;
   text-align: left;
 }
 
 .meeting-notification > span:first-child {
   display: grid;
-  gap: 4px;
+  gap: 3px;
+}
+
+.meeting-notification > span:first-child span {
+  color: #315f8a;
+  font-size: 12px;
 }
 
 .meeting-notification > span:last-child {
   flex: 0 0 auto;
-  color: #1267d8;
-  font-weight: 700;
+  color: #0066cc;
+  font-weight: 600;
 }
 
 .meeting-notification:disabled {
@@ -129,123 +209,65 @@ a {
   opacity: 0.72;
 }
 
-.update-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 16px;
-}
-
-.settings-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
-  align-items: center;
-  gap: 20px;
-}
-
-.settings-panel p {
-  margin: 8px 0 0;
-  color: #52616f;
-}
-
 .range-control {
   display: grid;
-  grid-template-columns: auto minmax(120px, 1fr) 56px;
+  grid-template-columns: minmax(132px, 180px) 50px;
   align-items: center;
   gap: 12px;
-  color: #27384a;
-  font-size: 14px;
-  font-weight: 600;
+  color: #6e6e73;
+  font-size: 12px;
 }
 
 .range-control input {
   width: 100%;
-  accent-color: #1267d8;
+  accent-color: #007aff;
 }
 
-.range-control span:last-child {
-  color: #607080;
+.range-control span {
   text-align: right;
-}
-
-.update-panel p {
-  margin: 8px 0 0;
-  color: #52616f;
-}
-
-.update-version {
-  display: inline-block;
-  margin-top: 8px;
-  color: #607080;
-  font-size: 13px;
+  white-space: nowrap;
 }
 
 .update-status {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 22px;
-  margin-top: 12px;
-  border-radius: 999px;
-  color: #27384a;
-  font-size: 13px;
-  font-weight: 700;
+  gap: 6px;
+  min-height: 18px;
+  color: #1d1d1f;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .update-status-dot {
-  width: 9px;
-  height: 9px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: #8795a3;
+  background: #8e8e93;
 }
 
 .update-status-info .update-status-dot {
-  background: #1267d8;
+  background: #007aff;
 }
 
 .update-status-success .update-status-dot {
-  background: #16794c;
+  background: #248a3d;
 }
 
 .update-status-warning .update-status-dot {
-  background: #b7791f;
+  background: #bf7a00;
 }
 
 .update-status-error .update-status-dot {
-  background: #c24141;
+  background: #d70015;
 }
 
 .update-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid #c7d1dd;
-  border-top-color: #1267d8;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #d6d6d8;
+  border-top-color: #007aff;
   border-radius: 50%;
   animation: update-spinner-rotation 0.8s linear infinite;
-}
-
-.update-progress {
-  grid-column: 1 / -1;
-  width: 100%;
-  height: 8px;
-  overflow: hidden;
-  border: 0;
-  border-radius: 999px;
-  background: #e3e8ef;
-}
-
-.update-progress::-webkit-progress-bar {
-  background: #e3e8ef;
-}
-
-.update-progress::-webkit-progress-value {
-  background: #1267d8;
-}
-
-.update-progress:indeterminate {
-  background:
-    linear-gradient(90deg, transparent 0%, #1267d8 50%, transparent 100%) 0 0 / 40% 100% no-repeat,
-    #e3e8ef;
-  animation: update-progress-slide 1.2s ease-in-out infinite;
 }
 
 @keyframes update-spinner-rotation {
@@ -275,92 +297,18 @@ a {
   }
 }
 
-.update-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.update-controls button {
-  border: 1px solid #c7d0dc;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #1f2933;
-  cursor: pointer;
-  padding: 9px 12px;
-}
-
-.update-controls button:disabled {
-  background: #eef2f6;
-  color: #8795a3;
-  cursor: not-allowed;
-}
-
-.update-error {
-  grid-column: 1 / -1;
-  color: #9b1c1c;
-}
-
-.meeting-list {
-  display: grid;
-  gap: 12px;
-  margin: 20px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.meeting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  border: 1px solid #e3e8ef;
-  border-radius: 6px;
-  padding: 16px;
-}
-
-.meeting-row div {
-  display: grid;
-  gap: 6px;
-}
-
-.meeting-row span,
-.empty-state {
-  color: #607080;
-}
-
-.meeting-row button {
-  border: 0;
-  background: transparent;
-  color: #1267d8;
-  cursor: pointer;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.meeting-row button:disabled {
-  color: #607080;
-  cursor: progress;
-}
-
 @media (max-width: 720px) {
-  .app-shell {
-    padding: 20px;
+  .preferences-shell {
+    padding: 22px 18px 28px;
   }
 
-  .toolbar,
-  .meeting-row,
-  .settings-panel,
-  .update-panel {
-    align-items: stretch;
+  .preference-row {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
 
-  .toolbar,
-  .meeting-row {
-    flex-direction: column;
+  .preference-actions {
+    justify-content: flex-start;
   }
 
   .meeting-notification {
@@ -368,15 +316,7 @@ a {
     flex-direction: column;
   }
 
-  .update-controls {
-    justify-content: flex-start;
-  }
-
   .range-control {
-    grid-template-columns: 1fr;
-  }
-
-  .range-control span:last-child {
-    text-align: left;
+    grid-template-columns: minmax(0, 1fr) 50px;
   }
 }

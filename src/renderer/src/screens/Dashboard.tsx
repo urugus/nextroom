@@ -3,7 +3,6 @@ import type { AccountStatus, AppSettings, AppUpdateStatus, MeetEvent } from "@sh
 type DashboardProps = {
   accountStatus: AccountStatus;
   errorMessage?: string;
-  meetings: MeetEvent[];
   nextMeetingNotification?: MeetEvent;
   openingMeetUrl?: string;
   pendingAction?: "connect" | "disconnect" | "sync";
@@ -90,7 +89,6 @@ const updateStatusMetaFor = (updateStatus?: AppUpdateStatus): UpdateStatusMeta =
 export const Dashboard = ({
   accountStatus,
   errorMessage,
-  meetings,
   nextMeetingNotification,
   onCheckForUpdates,
   onConnectAccount,
@@ -118,7 +116,7 @@ export const Dashboard = ({
         }).format(new Date(syncedAt))}`
       : accountStatus.connected
         ? "Calendar sync is ready."
-        : "Connect Google Calendar to load upcoming meetings.";
+        : "Connect Google Calendar to enable Meet launching.";
   const updateErrorText = updateErrorTextFor(updateStatus, updateErrorMessage);
   const notificationOpening =
     nextMeetingNotification !== undefined && openingMeetUrl === nextMeetingNotification.meetUrl;
@@ -135,47 +133,11 @@ export const Dashboard = ({
   const homebrewButtonLabel = homebrewUpdating ? "Updating" : "Update with Homebrew";
 
   return (
-    <main className="app-shell">
-      <section className="toolbar" aria-label="Account status">
-        <div>
-          <h1>NextRoom</h1>
-          <p>{statusText}</p>
-          <p id="calendar-action-help" className="helper-text">
-            {helperText}
-          </p>
-        </div>
-        <div className="toolbar-actions">
-          {accountStatus.connected ? (
-            <>
-              <button
-                type="button"
-                disabled={actionInProgress}
-                aria-describedby="calendar-action-help"
-                onClick={() => void onSyncCalendar()}
-              >
-                {pendingAction === "sync" || accountStatus.syncing ? "Syncing" : "Sync"}
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={actionInProgress}
-                onClick={() => void onDisconnectAccount()}
-              >
-                {pendingAction === "disconnect" ? "Disconnecting" : "Disconnect"}
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              disabled={actionInProgress}
-              aria-describedby="calendar-action-help"
-              onClick={() => void onConnectAccount()}
-            >
-              {pendingAction === "connect" ? "Connecting" : "Connect"}
-            </button>
-          )}
-        </div>
-      </section>
+    <main className="preferences-shell">
+      <header className="preferences-header">
+        <p>NextRoom</p>
+        <h1>Settings</h1>
+      </header>
 
       {errorMessage !== undefined ? <p className="error-banner">{errorMessage}</p> : null}
 
@@ -197,91 +159,119 @@ export const Dashboard = ({
         </button>
       ) : null}
 
-      <section className="settings-panel" aria-labelledby="settings-title">
-        <div>
-          <h2 id="settings-title">Settings</h2>
-          <p>{openOffsetLabel}</p>
-        </div>
-        <label className="range-control">
-          <span>Meet window</span>
-          <input
-            type="range"
-            min="0"
-            max="10"
-            step="1"
-            value={openOffsetMinutes}
-            aria-label="Meet window open offset"
-            onChange={(event) => void onOpenOffsetMinutesChange(Number(event.currentTarget.value))}
-          />
-          <span>{openOffsetMinutes} min</span>
-        </label>
-      </section>
-
-      <section className="update-panel" aria-labelledby="updates-title">
-        <div>
-          <h2 id="updates-title">App updates</h2>
-          <div
-            className={`update-status update-status-${updateStatusMeta.tone}`}
-            aria-live="polite"
-          >
-            <span className="update-status-dot" aria-hidden="true" />
-            {updateStatusMeta.busy ? <span className="update-spinner" aria-hidden="true" /> : null}
-            <span>{updateStatusMeta.label}</span>
-          </div>
-          <p>{formatUpdateSummary(updateStatus)}</p>
-          <span className="update-version">
-            Current version {updateStatus?.currentVersion ?? "unknown"}
-          </span>
-        </div>
-        <div className="update-controls">
-          <button
-            type="button"
-            aria-busy={updateChecking}
-            disabled={!updateStatus?.canCheck || onCheckForUpdates === undefined}
-            onClick={() => void onCheckForUpdates?.()}
-          >
-            {checkButtonLabel}
-          </button>
-          <button
-            type="button"
-            aria-busy={homebrewUpdating}
-            disabled={!updateStatus?.canRunHomebrewUpdate || onRunHomebrewUpdate === undefined}
-            onClick={() => void onRunHomebrewUpdate?.()}
-          >
-            {homebrewButtonLabel}
-          </button>
-        </div>
-        {homebrewUpdating ? (
-          <progress className="update-progress" aria-label="Homebrew update progress" />
-        ) : null}
-        {updateErrorText !== undefined ? <p className="update-error">{updateErrorText}</p> : null}
-      </section>
-
-      <section className="meeting-panel" aria-labelledby="upcoming-title">
-        <h2 id="upcoming-title">Upcoming Meet meetings</h2>
-        {meetings.length === 0 ? (
-          <p className="empty-state">No upcoming Google Meet meetings.</p>
-        ) : (
-          <ul className="meeting-list">
-            {meetings.map((meeting) => (
-              <li key={meeting.occurrenceKey} className="meeting-row">
-                <div>
-                  <strong>{meeting.summary}</strong>
-                  <span>
-                    {formatMeetingTime(meeting.startAt)} - {formatMeetingTime(meeting.endAt)}
-                  </span>
-                </div>
+      <section className="preferences-group" aria-labelledby="account-title">
+        <h2 id="account-title">Account</h2>
+        <div className="preference-list">
+          <div className="preference-row">
+            <div className="preference-copy">
+              <strong>Google Calendar</strong>
+              <span>{statusText}</span>
+              <span id="calendar-action-help">{helperText}</span>
+            </div>
+            <div className="preference-actions">
+              {accountStatus.connected ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={actionInProgress}
+                    aria-describedby="calendar-action-help"
+                    onClick={() => void onSyncCalendar()}
+                  >
+                    {pendingAction === "sync" || accountStatus.syncing ? "Syncing" : "Sync"}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={actionInProgress}
+                    onClick={() => void onDisconnectAccount()}
+                  >
+                    {pendingAction === "disconnect" ? "Disconnecting" : "Disconnect"}
+                  </button>
+                </>
+              ) : (
                 <button
                   type="button"
-                  disabled={openingMeetUrl !== undefined}
-                  onClick={() => void onOpenMeeting(meeting)}
+                  disabled={actionInProgress}
+                  aria-describedby="calendar-action-help"
+                  onClick={() => void onConnectAccount()}
                 >
-                  {openingMeetUrl === meeting.meetUrl ? "Opening" : "Join"}
+                  {pendingAction === "connect" ? "Connecting" : "Connect"}
                 </button>
-              </li>
-            ))}
-          </ul>
-        )}
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="preferences-group" aria-labelledby="meet-title">
+        <h2 id="meet-title">Meet</h2>
+        <div className="preference-list">
+          <div className="preference-row">
+            <div className="preference-copy">
+              <strong>Open Meet window</strong>
+              <span>{openOffsetLabel}</span>
+            </div>
+            <label className="range-control">
+              <input
+                type="range"
+                min="0"
+                max="10"
+                step="1"
+                value={openOffsetMinutes}
+                aria-label="Meet window open offset"
+                onChange={(event) =>
+                  void onOpenOffsetMinutesChange(Number(event.currentTarget.value))
+                }
+              />
+              <span>{openOffsetMinutes} min</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section className="preferences-group" aria-labelledby="updates-title">
+        <h2 id="updates-title">App updates</h2>
+        <div className="preference-list">
+          <div className="preference-row">
+            <div className="preference-copy">
+              <strong>Status</strong>
+              <div
+                className={`update-status update-status-${updateStatusMeta.tone}`}
+                aria-live="polite"
+              >
+                <span className="update-status-dot" aria-hidden="true" />
+                {updateStatusMeta.busy ? (
+                  <span className="update-spinner" aria-hidden="true" />
+                ) : null}
+                <span>{updateStatusMeta.label}</span>
+              </div>
+              <span>{formatUpdateSummary(updateStatus)}</span>
+              <span>Current version {updateStatus?.currentVersion ?? "unknown"}</span>
+            </div>
+            <div className="preference-actions">
+              <button
+                type="button"
+                aria-busy={updateChecking}
+                disabled={!updateStatus?.canCheck || onCheckForUpdates === undefined}
+                onClick={() => void onCheckForUpdates?.()}
+              >
+                {checkButtonLabel}
+              </button>
+              <button
+                type="button"
+                aria-busy={homebrewUpdating}
+                disabled={!updateStatus?.canRunHomebrewUpdate || onRunHomebrewUpdate === undefined}
+                onClick={() => void onRunHomebrewUpdate?.()}
+              >
+                {homebrewButtonLabel}
+              </button>
+            </div>
+          </div>
+          {homebrewUpdating ? (
+            <progress className="update-progress" aria-label="Homebrew update progress" />
+          ) : null}
+          {updateErrorText !== undefined ? <p className="update-error">{updateErrorText}</p> : null}
+        </div>
       </section>
     </main>
   );

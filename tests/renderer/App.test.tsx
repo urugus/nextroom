@@ -142,17 +142,24 @@ describe("App", () => {
 
   it("opens a meeting through the preload API and shows loading state", async () => {
     let resolveOpen!: (value: ApiResult<void>) => void;
+    const now = new Date();
+    const activeMeetings: ApiResult<MeetEventsSnapshot> = {
+      ok: true,
+      value: {
+        meetings: [activeMeetingFor(now)],
+      },
+    };
     const openPromise = new Promise<ApiResult<void>>((resolve) => {
       resolveOpen = resolve;
     });
     const openMeetUrl = vi.fn(() => openPromise);
-    installMeetLauncher(openMeetUrl);
+    installMeetLauncher(openMeetUrl, activeMeetings);
 
     render(<App />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Join" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Next meeting is ready/ }));
 
-    const openingButton = await screen.findByRole("button", { name: "Opening" });
+    const openingButton = await screen.findByRole("button", { name: /Opening/ });
     expect(openingButton).toBeDisabled();
 
     fireEvent.click(openingButton);
@@ -163,7 +170,11 @@ describe("App", () => {
       await openPromise;
     });
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Join" })).toBeEnabled());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /Next meeting is ready/ }),
+      ).not.toBeInTheDocument(),
+    );
     expect(openMeetUrl).toHaveBeenCalledWith("https://meet.google.com/abc-defg-hij");
   });
 
@@ -269,7 +280,7 @@ describe("App", () => {
     act(() => {
       calendarUpdatedHandler({ ok: true, value: { meetings: [] } });
     });
-    await screen.findByText("No upcoming Google Meet meetings.");
+    await act(async () => undefined);
 
     act(() => {
       calendarUpdatedHandler(activeMeetings);
@@ -279,6 +290,13 @@ describe("App", () => {
   });
 
   it("renders an IPC error response", async () => {
+    const now = new Date();
+    const activeMeetings: ApiResult<MeetEventsSnapshot> = {
+      ok: true,
+      value: {
+        meetings: [activeMeetingFor(now)],
+      },
+    };
     const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() =>
       Promise.resolve({
         ok: false,
@@ -289,24 +307,31 @@ describe("App", () => {
         },
       }),
     );
-    installMeetLauncher(openMeetUrl);
+    installMeetLauncher(openMeetUrl, activeMeetings);
 
     render(<App />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Join" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Next meeting is ready/ }));
 
     expect(await screen.findByText("Google Meet window failed: network error")).toBeInTheDocument();
   });
 
   it("renders thrown preload errors", async () => {
+    const now = new Date();
+    const activeMeetings: ApiResult<MeetEventsSnapshot> = {
+      ok: true,
+      value: {
+        meetings: [activeMeetingFor(now)],
+      },
+    };
     const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() =>
       Promise.reject(new Error("preload bridge unavailable")),
     );
-    installMeetLauncher(openMeetUrl);
+    installMeetLauncher(openMeetUrl, activeMeetings);
 
     render(<App />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Join" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Next meeting is ready/ }));
 
     expect(await screen.findByText("preload bridge unavailable")).toBeInTheDocument();
   });
