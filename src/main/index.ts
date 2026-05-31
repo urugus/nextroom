@@ -130,10 +130,10 @@ const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "Mee
   fromThrowable(
     () =>
       new BrowserWindow({
-        width: 1120,
-        height: 760,
-        minWidth: 900,
-        minHeight: 620,
+        width: 760,
+        height: 520,
+        minWidth: 620,
+        minHeight: 420,
         title,
         webPreferences: {
           preload: join(__dirname, "../preload/index.cjs"),
