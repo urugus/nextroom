@@ -29,6 +29,7 @@
     "icon": "assets/nextroom-logo.png",
     "files": [
       "out/**",
+      "assets/**",
       "package.json"
     ],
     "mac": {
