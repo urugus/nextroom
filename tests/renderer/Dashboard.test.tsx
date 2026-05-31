@@ -31,6 +31,29 @@ const updateError: AppUpdateStatus = {
   status: "error",
 };
 
+const updateChecking: AppUpdateStatus = {
+  canCheck: false,
+  canRunHomebrewUpdate: false,
+  currentVersion: "0.1.0",
+  status: "checking",
+};
+
+const updateHomebrewUpdating: AppUpdateStatus = {
+  availableVersion: "0.2.0",
+  canCheck: false,
+  canRunHomebrewUpdate: false,
+  currentVersion: "0.1.0",
+  status: "homebrew-updating",
+  updateMessage: "Updating with Homebrew. A restart prompt will appear when it is ready.",
+};
+
+const updateUnsupported: AppUpdateStatus = {
+  canCheck: false,
+  canRunHomebrewUpdate: false,
+  currentVersion: "0.1.0",
+  status: "unsupported",
+};
+
 const settings: AppSettings = {
   autoOpenEnabled: true,
   notifyBeforeMinutes: 1,
@@ -57,6 +80,7 @@ describe("Dashboard", () => {
     );
 
     expect(screen.getByText("Google Calendar not connected")).toBeInTheDocument();
+    expect(screen.getByText("Loading")).toBeInTheDocument();
     expect(
       screen.getByText("Connect Google Calendar to load upcoming meetings."),
     ).toBeInTheDocument();
@@ -107,11 +131,86 @@ describe("Dashboard", () => {
     expect(
       screen.getByText("Version 0.2.0 is available via Homebrew for ~/Applications."),
     ).toBeInTheDocument();
+    expect(screen.getByText("Update available")).toBeInTheDocument();
     expect(screen.getByText("Current version 0.1.0")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
     fireEvent.click(screen.getByRole("button", { name: "Update with Homebrew" }));
     expect(onCheckForUpdates).toHaveBeenCalledTimes(1);
     expect(onRunHomebrewUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders update checking as a busy state without progress", () => {
+    render(
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        meetings={[]}
+        onCheckForUpdates={vi.fn()}
+        onConnectAccount={vi.fn()}
+        onDisconnectAccount={vi.fn()}
+        onOpenMeeting={vi.fn()}
+        onOpenOffsetMinutesChange={vi.fn()}
+        onSyncCalendar={vi.fn()}
+        settings={settings}
+        updateStatus={updateChecking}
+      />,
+    );
+
+    const checkButton = screen.getByRole("button", { name: "Checking" });
+
+    expect(screen.getAllByText("Checking")).toHaveLength(2);
+    expect(checkButton).toBeDisabled();
+    expect(checkButton).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  it("renders Homebrew update progress while updating", () => {
+    render(
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        meetings={[]}
+        onCheckForUpdates={vi.fn()}
+        onConnectAccount={vi.fn()}
+        onDisconnectAccount={vi.fn()}
+        onOpenMeeting={vi.fn()}
+        onOpenOffsetMinutesChange={vi.fn()}
+        onRunHomebrewUpdate={vi.fn()}
+        onSyncCalendar={vi.fn()}
+        settings={settings}
+        updateStatus={updateHomebrewUpdating}
+      />,
+    );
+
+    const updateButton = screen.getByRole("button", { name: "Updating" });
+
+    expect(screen.getAllByText("Updating")).toHaveLength(2);
+    expect(updateButton).toBeDisabled();
+    expect(updateButton).toHaveAttribute("aria-busy", "true");
+    expect(
+      screen.getByRole("progressbar", { name: "Homebrew update progress" }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders unsupported update status without busy controls", () => {
+    render(
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        meetings={[]}
+        onConnectAccount={vi.fn()}
+        onDisconnectAccount={vi.fn()}
+        onOpenMeeting={vi.fn()}
+        onOpenOffsetMinutesChange={vi.fn()}
+        onSyncCalendar={vi.fn()}
+        settings={settings}
+        updateStatus={updateUnsupported}
+      />,
+    );
+
+    expect(screen.getByText("Updates unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Updates are available in installed app builds.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check for updates" })).not.toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
   });
 
   it("renders update errors once in the dedicated error area", () => {
@@ -130,8 +229,29 @@ describe("Dashboard", () => {
     );
 
     expect(screen.getByText("Update check failed.")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument();
     expect(screen.getByText("GitHub Releases request failed")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Check for updates" })).toBeDisabled();
+  });
+
+  it("renders update bridge errors as failed without stale loading state", () => {
+    render(
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        meetings={[]}
+        onConnectAccount={vi.fn()}
+        onDisconnectAccount={vi.fn()}
+        onOpenMeeting={vi.fn()}
+        onOpenOffsetMinutesChange={vi.fn()}
+        onSyncCalendar={vi.fn()}
+        settings={settings}
+        updateErrorMessage="Update status is unavailable."
+      />,
+    );
+
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.getByText("Update status is unavailable.")).toBeInTheDocument();
+    expect(screen.queryByText("Loading")).not.toBeInTheDocument();
   });
 
   it("updates the Meet window open offset with a slider", () => {

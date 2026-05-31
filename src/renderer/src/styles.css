@@ -172,11 +172,107 @@ a {
   color: #52616f;
 }
 
-.update-panel span {
+.update-version {
   display: inline-block;
   margin-top: 8px;
   color: #607080;
   font-size: 13px;
+}
+
+.update-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  margin-top: 12px;
+  border-radius: 999px;
+  color: #27384a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.update-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #8795a3;
+}
+
+.update-status-info .update-status-dot {
+  background: #1267d8;
+}
+
+.update-status-success .update-status-dot {
+  background: #16794c;
+}
+
+.update-status-warning .update-status-dot {
+  background: #b7791f;
+}
+
+.update-status-error .update-status-dot {
+  background: #c24141;
+}
+
+.update-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #c7d1dd;
+  border-top-color: #1267d8;
+  border-radius: 50%;
+  animation: update-spinner-rotation 0.8s linear infinite;
+}
+
+.update-progress {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: #e3e8ef;
+}
+
+.update-progress::-webkit-progress-bar {
+  background: #e3e8ef;
+}
+
+.update-progress::-webkit-progress-value {
+  background: #1267d8;
+}
+
+.update-progress:indeterminate {
+  background:
+    linear-gradient(90deg, transparent 0%, #1267d8 50%, transparent 100%) 0 0 / 40% 100% no-repeat,
+    #e3e8ef;
+  animation: update-progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes update-spinner-rotation {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes update-progress-slide {
+  from {
+    background-position:
+      -40% 0,
+      0 0;
+  }
+
+  to {
+    background-position:
+      140% 0,
+      0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-spinner,
+  .update-progress:indeterminate {
+    animation: none;
+  }
 }
 
 .update-controls {
