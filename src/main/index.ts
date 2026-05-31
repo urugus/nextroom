@@ -4,8 +4,11 @@ import { createKeychainTokenStore } from "@main/adapters/keychainTokenStore";
 import { createGoogleCalendarClient } from "@main/calendar/calendarClient";
 import { createCalendarSyncService } from "@main/calendar/calendarSyncService";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
+import { createMeetWindowManager, type ManagedMeetWindow } from "@main/meet/meetWindowManager";
 import { createGoogleAuthService } from "@main/oauth/googleAuthService";
 import { createOAuthClient } from "@main/oauth/oauthClient";
+import { type AutoOpenScheduler, createAutoOpenScheduler } from "@main/scheduler/autoOpenScheduler";
+import { createLaunchDeduper } from "@main/scheduler/launchDeduper";
 import {
   checkForAppUpdates,
   configureAppUpdater,
@@ -14,6 +17,7 @@ import {
 } from "@main/updater/appUpdater";
 import type { AppError } from "@shared/errors";
 import { IPC_CHANNELS } from "@shared/ipc";
+import type { AppSettings } from "@shared/types";
 import type { BrowserWindow as ElectronBrowserWindow } from "electron";
 import { err, fromThrowable, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -26,8 +30,15 @@ const { app, BrowserWindow, ipcMain, session, shell } = nodeRequire(
 const keytar = nodeRequire("keytar") as typeof import("keytar");
 
 let mainWindow: ElectronBrowserWindow | undefined;
-const meetWindows = new Set<ElectronBrowserWindow>();
 const meetUrlSchema = z.string().url();
+const defaultAppSettings: AppSettings = {
+  autoOpenEnabled: true,
+  notifyBeforeMinutes: 1,
+  openOffsetSeconds: 0,
+  launchAtLogin: false,
+  calendarId: "primary",
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+};
 const tokenStore = createKeychainTokenStore(keytar);
 const oauthClient = createOAuthClient();
 const authService = createGoogleAuthService({
@@ -79,6 +90,13 @@ const createMeetWindow = fromThrowable(
   (cause): AppError => ({ type: "MeetWindowFailed", cause }),
 );
 
+const meetWindowManager = createMeetWindowManager({
+  createWindow: () => createMeetWindow().map((window): ManagedMeetWindow => window),
+  focusApp: () => {
+    app.focus({ steal: true });
+  },
+});
+
 const createMainWindow = () =>
   createBrowserWindow("NextRoom", "MainWindowFailed").map((window) => {
     window.webContents.setWindowOpenHandler(({ url }) => {
@@ -122,34 +140,16 @@ const openMeetUrl = async (value: string): Promise<Result<void, AppError>> => {
     return err(canonicalized.error);
   }
 
-  const created = createMeetWindow();
-  if (created.isErr()) {
-    return err(created.error);
-  }
-
-  const meetWindow = created.value;
-  meetWindows.add(meetWindow);
-  meetWindow.on("closed", () => {
-    meetWindows.delete(meetWindow);
-  });
-
-  try {
-    await meetWindow.loadURL(canonicalized.value);
-    return ok(undefined);
-  } catch (cause) {
-    if (!meetWindow.isDestroyed()) {
-      meetWindow.destroy();
-    }
-    return err({ type: "MeetWindowFailed", cause });
-  }
+  return meetWindowManager.openMeetUrl(canonicalized.value);
 };
 
-const registerIpc = () => {
+const registerIpc = (autoOpenScheduler: AutoOpenScheduler) => {
   calendarSyncService.subscribe((snapshot) => {
     const result = serializeResultForRenderer(ok(snapshot));
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.calendarUpdated, result);
     }
+    void autoOpenScheduler.evaluate(snapshot).catch(() => undefined);
   });
 
   ipcMain.handle(IPC_CHANNELS.accountGetStatus, async () =>
@@ -188,7 +188,13 @@ const registerIpc = () => {
 void app.whenReady().then(() => {
   configureMeetSessionPermissions();
   configureAppUpdater();
-  registerIpc();
+  const autoOpenScheduler = createAutoOpenScheduler({
+    activatedAt: new Date(),
+    deduper: createLaunchDeduper(),
+    openMeetUrl,
+    settings: defaultAppSettings,
+  });
+  registerIpc(autoOpenScheduler);
   calendarSyncService.startPolling();
   const created = createMainWindow();
 
