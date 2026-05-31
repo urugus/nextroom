@@ -1,6 +1,12 @@
 import { App } from "@renderer/App";
 import type { ApiResult } from "@shared/ipc";
-import type { AccountStatus, AppUpdateStatus, MeetEvent, MeetEventsSnapshot } from "@shared/types";
+import type {
+  AccountStatus,
+  AppSettings,
+  AppUpdateStatus,
+  MeetEvent,
+  MeetEventsSnapshot,
+} from "@shared/types";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +16,15 @@ const updateStatus: AppUpdateStatus = {
   canRunHomebrewUpdate: false,
   currentVersion: "0.1.0",
   status: "unsupported",
+};
+
+const settings: AppSettings = {
+  autoOpenEnabled: true,
+  notifyBeforeMinutes: 1,
+  openOffsetSeconds: 0,
+  launchAtLogin: false,
+  calendarId: "primary",
+  timezone: "Asia/Tokyo",
 };
 
 const meetings: ApiResult<MeetEventsSnapshot> = {
@@ -54,6 +69,7 @@ const installMeetLauncher = (
         Promise.resolve({ ok: true, value: { connected: false, syncing: false } }),
       ),
       getAccountStatus: vi.fn(() => Promise.resolve(status)),
+      getSettings: vi.fn(() => Promise.resolve({ ok: true, value: settings })),
       getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       listUpcomingMeetings: vi.fn(() => Promise.resolve(meetingsResult)),
       onCalendarUpdated,
@@ -61,6 +77,9 @@ const installMeetLauncher = (
       runHomebrewUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       openMeetUrl,
       syncCalendarNow: vi.fn(() => Promise.resolve(meetingsResult)),
+      updateSettings: vi.fn((nextSettings: Partial<AppSettings>) =>
+        Promise.resolve({ ok: true, value: { ...settings, ...nextSettings } }),
+      ),
       versions: {
         chrome: "test-chrome",
         electron: "test-electron",
@@ -79,6 +98,7 @@ const installMeetLauncherWithStatus = (status: ApiResult<AccountStatus>) => {
       getAccountStatus: vi.fn(() =>
         Promise.resolve({ ok: true, value: { connected: false, syncing: false } }),
       ),
+      getSettings: vi.fn(() => Promise.resolve({ ok: true, value: settings })),
       getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       listUpcomingMeetings: vi.fn(() => Promise.resolve({ ok: true, value: { meetings: [] } })),
       onCalendarUpdated: vi.fn(() => vi.fn()),
@@ -86,6 +106,9 @@ const installMeetLauncherWithStatus = (status: ApiResult<AccountStatus>) => {
       runHomebrewUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       openMeetUrl: vi.fn(),
       syncCalendarNow: vi.fn(),
+      updateSettings: vi.fn((nextSettings: Partial<AppSettings>) =>
+        Promise.resolve({ ok: true, value: { ...settings, ...nextSettings } }),
+      ),
       versions: {
         chrome: "test-chrome",
         electron: "test-electron",
@@ -169,6 +192,20 @@ describe("App", () => {
         screen.queryByRole("button", { name: /Next meeting is ready/ }),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it("saves the configured Meet window open offset", async () => {
+    const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() => Promise.resolve(okResult));
+    installMeetLauncher(openMeetUrl);
+    const updateSettings = vi.mocked(window.meetLauncher.updateSettings);
+
+    render(<App />);
+
+    const slider = await screen.findByRole("slider", { name: "Meet window open offset" });
+    fireEvent.change(slider, { target: { value: "7" } });
+
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ openOffsetSeconds: 420 }));
+    expect(await screen.findByText("Open 7 min before")).toBeInTheDocument();
   });
 
   it("prunes opened meeting records after calendar updates remove them", async () => {
@@ -291,6 +328,7 @@ describe("App", () => {
             ok: true,
             value: { connected: true, syncing: false },
           }),
+        getSettings: vi.fn(() => Promise.resolve({ ok: true, value: settings })),
         getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
         listUpcomingMeetings: vi.fn(() => Promise.resolve({ ok: true, value: { meetings: [] } })),
         onCalendarUpdated: vi.fn((handler: (result: ApiResult<MeetEventsSnapshot>) => void) => {
@@ -301,6 +339,9 @@ describe("App", () => {
         runHomebrewUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
         openMeetUrl: vi.fn(),
         syncCalendarNow: vi.fn(),
+        updateSettings: vi.fn((nextSettings: Partial<AppSettings>) =>
+          Promise.resolve({ ok: true, value: { ...settings, ...nextSettings } }),
+        ),
         versions: {
           chrome: "test-chrome",
           electron: "test-electron",

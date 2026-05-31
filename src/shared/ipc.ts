@@ -1,7 +1,7 @@
 import type { Result } from "neverthrow";
 import type { AppError, SerializedAppError } from "./errors";
 import { serializeAppError } from "./errors";
-import type { AccountStatus, AppUpdateStatus, MeetEventsSnapshot } from "./types";
+import type { AccountStatus, AppSettings, AppUpdateStatus, MeetEventsSnapshot } from "./types";
 
 export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: SerializedAppError };
 
@@ -13,6 +13,8 @@ export const IPC_CHANNELS = {
   calendarUpdated: "calendar:updated",
   meetListUpcoming: "meet:listUpcoming",
   meetOpen: "meet:open",
+  settingsGet: "settings:get",
+  settingsUpdate: "settings:update",
   updatesGetStatus: "updates:getStatus",
   updatesCheck: "updates:check",
   updatesRunHomebrewUpdate: "updates:runHomebrewUpdate",
@@ -27,6 +29,8 @@ export type MeetLauncherApi = {
   listUpcomingMeetings: () => Promise<ApiResult<MeetEventsSnapshot>>;
   onCalendarUpdated: (handler: (result: ApiResult<MeetEventsSnapshot>) => void) => () => void;
   openMeetUrl: (meetUrl: string) => Promise<ApiResult<void>>;
+  getSettings: () => Promise<ApiResult<AppSettings>>;
+  updateSettings: (settings: Partial<AppSettings>) => Promise<ApiResult<AppSettings>>;
   getUpdateStatus: () => Promise<ApiResult<AppUpdateStatus>>;
   checkForUpdates: () => Promise<ApiResult<AppUpdateStatus>>;
   runHomebrewUpdate: () => Promise<ApiResult<AppUpdateStatus>>;

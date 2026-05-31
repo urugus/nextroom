@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { type ApiResult, IPC_CHANNELS, type MeetLauncherApi } from "../shared/ipc";
-import type { AccountStatus, AppUpdateStatus, MeetEventsSnapshot } from "../shared/types";
+import type {
+  AccountStatus,
+  AppSettings,
+  AppUpdateStatus,
+  MeetEventsSnapshot,
+} from "../shared/types";
 
 type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
@@ -23,6 +28,9 @@ const api: MeetLauncherApi = {
     };
   },
   openMeetUrl: (meetUrl) => invoke<ApiResult<void>>(IPC_CHANNELS.meetOpen, meetUrl),
+  getSettings: () => invoke<ApiResult<AppSettings>>(IPC_CHANNELS.settingsGet),
+  updateSettings: (settings) =>
+    invoke<ApiResult<AppSettings>>(IPC_CHANNELS.settingsUpdate, settings),
   getUpdateStatus: () => invoke<ApiResult<AppUpdateStatus>>(IPC_CHANNELS.updatesGetStatus),
   checkForUpdates: () => invoke<ApiResult<AppUpdateStatus>>(IPC_CHANNELS.updatesCheck),
   runHomebrewUpdate: () =>

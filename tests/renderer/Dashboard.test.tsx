@@ -1,5 +1,5 @@
 import { Dashboard } from "@renderer/screens/Dashboard";
-import type { AppUpdateStatus, MeetEvent } from "@shared/types";
+import type { AppSettings, AppUpdateStatus, MeetEvent } from "@shared/types";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -31,6 +31,15 @@ const updateError: AppUpdateStatus = {
   status: "error",
 };
 
+const settings: AppSettings = {
+  autoOpenEnabled: true,
+  notifyBeforeMinutes: 1,
+  openOffsetSeconds: 0,
+  launchAtLogin: false,
+  calendarId: "primary",
+  timezone: "Asia/Tokyo",
+};
+
 describe("Dashboard", () => {
   it("renders disconnected state and upcoming meetings", () => {
     const onOpenMeeting = vi.fn();
@@ -41,7 +50,9 @@ describe("Dashboard", () => {
         onConnectAccount={vi.fn()}
         onDisconnectAccount={vi.fn()}
         onOpenMeeting={onOpenMeeting}
+        onOpenOffsetMinutesChange={vi.fn()}
         onSyncCalendar={vi.fn()}
+        settings={settings}
       />,
     );
 
@@ -64,7 +75,9 @@ describe("Dashboard", () => {
         onConnectAccount={vi.fn()}
         onDisconnectAccount={vi.fn()}
         onOpenMeeting={vi.fn()}
+        onOpenOffsetMinutesChange={vi.fn()}
         onSyncCalendar={vi.fn()}
+        settings={settings}
       />,
     );
 
@@ -84,7 +97,9 @@ describe("Dashboard", () => {
         onDisconnectAccount={vi.fn()}
         onRunHomebrewUpdate={onRunHomebrewUpdate}
         onOpenMeeting={vi.fn()}
+        onOpenOffsetMinutesChange={vi.fn()}
         onSyncCalendar={vi.fn()}
+        settings={settings}
         updateStatus={updateAvailable}
       />,
     );
@@ -107,7 +122,9 @@ describe("Dashboard", () => {
         onConnectAccount={vi.fn()}
         onDisconnectAccount={vi.fn()}
         onOpenMeeting={vi.fn()}
+        onOpenOffsetMinutesChange={vi.fn()}
         onSyncCalendar={vi.fn()}
+        settings={settings}
         updateStatus={updateError}
       />,
     );
@@ -115,5 +132,29 @@ describe("Dashboard", () => {
     expect(screen.getByText("Update check failed.")).toBeInTheDocument();
     expect(screen.getByText("GitHub Releases request failed")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Check for updates" })).toBeDisabled();
+  });
+
+  it("updates the Meet window open offset with a slider", () => {
+    const onOpenOffsetMinutesChange = vi.fn();
+    render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        meetings={[]}
+        onConnectAccount={vi.fn()}
+        onDisconnectAccount={vi.fn()}
+        onOpenMeeting={vi.fn()}
+        onOpenOffsetMinutesChange={onOpenOffsetMinutesChange}
+        onSyncCalendar={vi.fn()}
+        settings={{ ...settings, openOffsetSeconds: 5 * 60 }}
+      />,
+    );
+
+    expect(screen.getByText("Open 5 min before")).toBeInTheDocument();
+    const slider = screen.getByRole("slider", { name: "Meet window open offset" });
+    expect(slider).toHaveValue("5");
+
+    fireEvent.change(slider, { target: { value: "10" } });
+
+    expect(onOpenOffsetMinutesChange).toHaveBeenCalledWith(10);
   });
 });
