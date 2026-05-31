@@ -107,8 +107,12 @@ describe("createCalendarSyncService", () => {
     let scheduled = false;
     const setTimeoutFn = ((handler: TimerHandler, timeout?: number) => {
       scheduled = true;
-      return globalThis.setTimeout(handler, timeout);
-    }) as typeof setTimeout;
+      const timer = globalThis.setTimeout(handler, timeout) as unknown as ReturnType<
+        typeof setTimeout
+      > & { unref?: () => void };
+      timer.unref?.();
+      return timer;
+    }) as unknown as typeof setTimeout;
     const authService: GoogleAuthService = {
       connect: () => Promise.resolve(ok(undefined)),
       disconnect: () => Promise.resolve(ok(undefined)),

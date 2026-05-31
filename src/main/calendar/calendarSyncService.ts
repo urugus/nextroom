@@ -192,9 +192,7 @@ export const createCalendarSyncService = ({
       polling = true;
       void runPollingSync();
     },
-    stopPolling: () => {
-      stopPolling();
-    },
+    stopPolling,
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {
