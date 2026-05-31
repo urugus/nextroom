@@ -100,4 +100,30 @@ describe("createCalendarSyncService", () => {
     expect(result._unsafeUnwrapErr()).toMatchObject({ type: "TokenRefreshFailed" });
     expect(snapshots).toEqual([{ meetings: [] }]);
   });
+
+  it("polling reads the refresh token once and stops when the account is disconnected", async () => {
+    const getAccessToken = vi.fn(() => Promise.resolve(ok(null)));
+    const isConnected = vi.fn(() => Promise.resolve(ok(false)));
+    let scheduled = false;
+    const setTimeoutFn = ((handler: TimerHandler, timeout?: number) => {
+      scheduled = true;
+      return globalThis.setTimeout(handler, timeout);
+    }) as typeof setTimeout;
+    const authService: GoogleAuthService = {
+      connect: () => Promise.resolve(ok(undefined)),
+      disconnect: () => Promise.resolve(ok(undefined)),
+      getAccessToken,
+      isConnected,
+    };
+    const calendarClient = createGoogleCalendarClient(vi.fn<typeof fetch>());
+    const service = createCalendarSyncService({ authService, calendarClient, setTimeoutFn });
+
+    service.startPolling();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getAccessToken).toHaveBeenCalledTimes(1);
+    expect(isConnected).not.toHaveBeenCalled();
+    expect(scheduled).toBe(false);
+  });
 });

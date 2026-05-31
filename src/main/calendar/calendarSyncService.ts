@@ -54,6 +54,14 @@ export const createCalendarSyncService = ({
   let errorBackoffIndex = 0;
   const listeners = new Set<(snapshot: MeetEventsSnapshot) => void>();
 
+  const stopPolling = (): void => {
+    polling = false;
+    if (pollTimer !== undefined) {
+      clearTimeoutFn(pollTimer);
+      pollTimer = undefined;
+    }
+  };
+
   const notify = (): void => {
     const snapshot = snapshotFromState(meetings, syncedAt);
     for (const listener of listeners) {
@@ -70,13 +78,9 @@ export const createCalendarSyncService = ({
   };
 
   const runPollingSync = async (): Promise<void> => {
-    const connected = await authService.isConnected();
-    if (connected.isErr() || !connected.value) {
-      polling = false;
-      return;
-    }
-
     const result = await syncNow();
+    if (!polling) return;
+
     if (result.isOk()) {
       errorBackoffIndex = 0;
       scheduleNextPoll(normalPollingDelayMs);
@@ -119,6 +123,7 @@ export const createCalendarSyncService = ({
 
     if (accessToken.value === null) {
       syncing = false;
+      stopPolling();
       meetings = [];
       syncedAt = undefined;
       lastError = undefined;
@@ -188,8 +193,7 @@ export const createCalendarSyncService = ({
       void runPollingSync();
     },
     stopPolling: () => {
-      polling = false;
-      if (pollTimer !== undefined) clearTimeoutFn(pollTimer);
+      stopPolling();
     },
     subscribe: (listener) => {
       listeners.add(listener);
