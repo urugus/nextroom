@@ -1,5 +1,5 @@
 import { App } from "@renderer/App";
-import type { ApiResult } from "@shared/ipc";
+import type { ApiResult, SettingsUpdate } from "@shared/ipc";
 import type {
   AccountStatus,
   AppSettings,
@@ -77,7 +77,7 @@ const installMeetLauncher = (
       runHomebrewUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       openMeetUrl,
       syncCalendarNow: vi.fn(() => Promise.resolve(meetingsResult)),
-      updateSettings: vi.fn((nextSettings: Partial<AppSettings>) =>
+      updateSettings: vi.fn((nextSettings: SettingsUpdate) =>
         Promise.resolve({ ok: true, value: { ...settings, ...nextSettings } }),
       ),
       versions: {
@@ -106,7 +106,7 @@ const installMeetLauncherWithStatus = (status: ApiResult<AccountStatus>) => {
       runHomebrewUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       openMeetUrl: vi.fn(),
       syncCalendarNow: vi.fn(),
-      updateSettings: vi.fn((nextSettings: Partial<AppSettings>) =>
+      updateSettings: vi.fn((nextSettings: SettingsUpdate) =>
         Promise.resolve({ ok: true, value: { ...settings, ...nextSettings } }),
       ),
       versions: {
@@ -206,6 +206,36 @@ describe("App", () => {
 
     await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ openOffsetSeconds: 420 }));
     expect(await screen.findByText("Open 7 min before")).toBeInTheDocument();
+  });
+
+  it("keeps the latest Meet window open offset when earlier saves finish later", async () => {
+    let resolveFirstSave!: (value: ApiResult<AppSettings>) => void;
+    const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() => Promise.resolve(okResult));
+    installMeetLauncher(openMeetUrl);
+    vi.mocked(window.meetLauncher.updateSettings)
+      .mockImplementationOnce(
+        (_nextSettings: SettingsUpdate) =>
+          new Promise<ApiResult<AppSettings>>((resolve) => {
+            resolveFirstSave = resolve;
+          }),
+      )
+      .mockImplementationOnce((nextSettings: SettingsUpdate) =>
+        Promise.resolve({ ok: true, value: { ...settings, ...nextSettings } }),
+      );
+
+    render(<App />);
+
+    const slider = await screen.findByRole("slider", { name: "Meet window open offset" });
+    fireEvent.change(slider, { target: { value: "3" } });
+    fireEvent.change(slider, { target: { value: "8" } });
+
+    expect(await screen.findByText("Open 8 min before")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveFirstSave({ ok: true, value: { ...settings, openOffsetSeconds: 3 * 60 } });
+    });
+
+    expect(screen.getByText("Open 8 min before")).toBeInTheDocument();
   });
 
   it("prunes opened meeting records after calendar updates remove them", async () => {
@@ -339,7 +369,7 @@ describe("App", () => {
         runHomebrewUpdate: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
         openMeetUrl: vi.fn(),
         syncCalendarNow: vi.fn(),
-        updateSettings: vi.fn((nextSettings: Partial<AppSettings>) =>
+        updateSettings: vi.fn((nextSettings: SettingsUpdate) =>
           Promise.resolve({ ok: true, value: { ...settings, ...nextSettings } }),
         ),
         versions: {

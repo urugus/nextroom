@@ -4,6 +4,7 @@ import { serializeAppError } from "./errors";
 import type { AccountStatus, AppSettings, AppUpdateStatus, MeetEventsSnapshot } from "./types";
 
 export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: SerializedAppError };
+export type SettingsUpdate = Pick<AppSettings, "openOffsetSeconds">;
 
 export const IPC_CHANNELS = {
   accountGetStatus: "account:getStatus",
@@ -30,7 +31,7 @@ export type MeetLauncherApi = {
   onCalendarUpdated: (handler: (result: ApiResult<MeetEventsSnapshot>) => void) => () => void;
   openMeetUrl: (meetUrl: string) => Promise<ApiResult<void>>;
   getSettings: () => Promise<ApiResult<AppSettings>>;
-  updateSettings: (settings: Partial<AppSettings>) => Promise<ApiResult<AppSettings>>;
+  updateSettings: (settings: SettingsUpdate) => Promise<ApiResult<AppSettings>>;
   getUpdateStatus: () => Promise<ApiResult<AppUpdateStatus>>;
   checkForUpdates: () => Promise<ApiResult<AppUpdateStatus>>;
   runHomebrewUpdate: () => Promise<ApiResult<AppUpdateStatus>>;

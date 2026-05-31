@@ -49,6 +49,7 @@ export const App = () => {
   const [updateErrorMessage, setUpdateErrorMessage] = useState<string | undefined>(undefined);
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | undefined>(undefined);
   const openingMeetingRef = useRef(false);
+  const latestOpenOffsetSecondsRef = useRef(defaultSettings.openOffsetSeconds);
 
   const applyResultError = useCallback(<T,>(result: ApiResult<T>): T | undefined => {
     if (result.ok) return result.value;
@@ -59,6 +60,11 @@ export const App = () => {
   const applyAccountStatus = useCallback((status: AccountStatus) => {
     setAccountStatus(status);
     setErrorMessage(status.error?.message);
+  }, []);
+
+  const applySettings = useCallback((nextSettings: AppSettings) => {
+    latestOpenOffsetSecondsRef.current = nextSettings.openOffsetSeconds;
+    setSettings(nextSettings);
   }, []);
 
   const refreshStatus = useCallback(async () => {
@@ -75,8 +81,8 @@ export const App = () => {
 
   const refreshSettings = useCallback(async () => {
     const currentSettings = applyResultError(await window.meetLauncher.getSettings());
-    if (currentSettings !== undefined) setSettings(currentSettings);
-  }, [applyResultError]);
+    if (currentSettings !== undefined) applySettings(currentSettings);
+  }, [applyResultError, applySettings]);
 
   useEffect(() => {
     let mounted = true;
@@ -195,22 +201,28 @@ export const App = () => {
   };
 
   const updateOpenOffsetMinutes = async (minutes: number) => {
-    const nextSettings = {
-      ...settings,
-      openOffsetSeconds: minutes * 60,
-    };
-    setSettings(nextSettings);
+    const nextOpenOffsetSeconds = minutes * 60;
+    latestOpenOffsetSecondsRef.current = nextOpenOffsetSeconds;
+    setSettings((current) => ({ ...current, openOffsetSeconds: nextOpenOffsetSeconds }));
 
     try {
-      const updated = applyResultError(
-        await window.meetLauncher.updateSettings({
-          openOffsetSeconds: nextSettings.openOffsetSeconds,
-        }),
-      );
-      if (updated !== undefined) setSettings(updated);
+      const updated = await window.meetLauncher.updateSettings({
+        openOffsetSeconds: nextOpenOffsetSeconds,
+      });
+      if (latestOpenOffsetSecondsRef.current !== nextOpenOffsetSeconds) return;
+
+      if (!updated.ok) {
+        setErrorMessage(updated.error.message);
+        await refreshSettings();
+        return;
+      }
+
+      applySettings(updated.value);
     } catch (cause) {
-      setErrorMessage(caughtErrorMessage(cause, "Settings update failed."));
-      setSettings(settings);
+      if (latestOpenOffsetSecondsRef.current === nextOpenOffsetSeconds) {
+        setErrorMessage(caughtErrorMessage(cause, "Settings update failed."));
+        await refreshSettings();
+      }
     }
   };
 

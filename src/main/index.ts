@@ -49,6 +49,9 @@ const settingsSchema = z
       .int()
       .min(0)
       .max(10 * 60)
+      .refine((value) => value % 60 === 0, {
+        message: "openOffsetSeconds must be a whole number of minutes",
+      })
       .optional(),
     launchAtLogin: z.boolean().optional(),
     calendarId: z.literal("primary").optional(),

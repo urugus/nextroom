@@ -89,7 +89,7 @@ export const Dashboard = ({
   const updateErrorText = updateErrorTextFor(updateStatus, updateErrorMessage);
   const notificationOpening =
     nextMeetingNotification !== undefined && openingMeetUrl === nextMeetingNotification.meetUrl;
-  const openOffsetMinutes = Math.round(settings.openOffsetSeconds / 60);
+  const openOffsetMinutes = Math.trunc(settings.openOffsetSeconds / 60);
   const openOffsetLabel =
     openOffsetMinutes === 0 ? "Open at start time" : `Open ${openOffsetMinutes} min before`;
 
