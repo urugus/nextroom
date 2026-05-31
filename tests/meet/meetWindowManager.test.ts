@@ -72,6 +72,22 @@ describe("focusMeetWindow", () => {
 
     expect(meetWindow.setAlwaysOnTop).toHaveBeenLastCalledWith(false);
   });
+
+  it("keeps always-on-top active for the full duration after the latest focus", () => {
+    vi.useFakeTimers();
+    const meetWindow = createFakeMeetWindow();
+
+    focusMeetWindow(meetWindow);
+    vi.advanceTimersByTime(600);
+    focusMeetWindow(meetWindow);
+    vi.advanceTimersByTime(600);
+
+    expect(meetWindow.setAlwaysOnTop).not.toHaveBeenCalledWith(false);
+
+    vi.advanceTimersByTime(600);
+
+    expect(meetWindow.setAlwaysOnTop).toHaveBeenCalledWith(false);
+  });
 });
 
 describe("createMeetWindowManager", () => {

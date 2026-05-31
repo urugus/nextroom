@@ -17,6 +17,7 @@ export type ManagedMeetWindow = {
 };
 
 type MeetWindowManagerInput = {
+  clearTimeoutFn?: typeof clearTimeout;
   createWindow: () => Result<ManagedMeetWindow, AppError>;
   focusApp?: () => void;
   focusDurationMs?: number;
@@ -27,10 +28,13 @@ export type MeetWindowManager = {
   openMeetUrl: (value: string) => Promise<Result<void, AppError>>;
 };
 
+const focusResetTimers = new WeakMap<ManagedMeetWindow, ReturnType<typeof setTimeout>>();
+
 export const focusMeetWindow = (
   meetWindow: ManagedMeetWindow,
   focusApp: () => void = () => undefined,
   setTimeoutFn: typeof setTimeout = setTimeout,
+  clearTimeoutFn: typeof clearTimeout = clearTimeout,
   focusDurationMs = 1_200,
 ): void => {
   if (meetWindow.isDestroyed()) return;
@@ -45,14 +49,22 @@ export const focusMeetWindow = (
   meetWindow.setAlwaysOnTop(true, "screen-saver");
   meetWindow.focus();
 
-  setTimeoutFn(() => {
+  const existingTimer = focusResetTimers.get(meetWindow);
+  if (existingTimer !== undefined) {
+    clearTimeoutFn(existingTimer);
+  }
+
+  const resetTimer = setTimeoutFn(() => {
+    focusResetTimers.delete(meetWindow);
     if (!meetWindow.isDestroyed()) {
       meetWindow.setAlwaysOnTop(false);
     }
   }, focusDurationMs);
+  focusResetTimers.set(meetWindow, resetTimer);
 };
 
 export const createMeetWindowManager = ({
+  clearTimeoutFn = clearTimeout,
   createWindow,
   focusApp,
   focusDurationMs,
@@ -76,7 +88,7 @@ export const createMeetWindowManager = ({
       const meetUrl = canonicalized.value;
       const existingWindow = meetWindows.get(meetUrl);
       if (existingWindow !== undefined && !existingWindow.isDestroyed()) {
-        focusMeetWindow(existingWindow, focusApp, setTimeoutFn, focusDurationMs);
+        focusMeetWindow(existingWindow, focusApp, setTimeoutFn, clearTimeoutFn, focusDurationMs);
         return ok(undefined);
       }
 
@@ -97,7 +109,7 @@ export const createMeetWindowManager = ({
 
       try {
         await meetWindow.loadURL(meetUrl);
-        focusMeetWindow(meetWindow, focusApp, setTimeoutFn, focusDurationMs);
+        focusMeetWindow(meetWindow, focusApp, setTimeoutFn, clearTimeoutFn, focusDurationMs);
         return ok(undefined);
       } catch (cause) {
         removeWindow(meetUrl, meetWindow);

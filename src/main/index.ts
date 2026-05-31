@@ -143,13 +143,18 @@ const openMeetUrl = async (value: string): Promise<Result<void, AppError>> => {
   return meetWindowManager.openMeetUrl(canonicalized.value);
 };
 
+const ignoreAutoOpenError = (_error: AppError): void => undefined;
+
 const registerIpc = (autoOpenScheduler: AutoOpenScheduler) => {
   calendarSyncService.subscribe((snapshot) => {
     const result = serializeResultForRenderer(ok(snapshot));
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.calendarUpdated, result);
     }
-    void autoOpenScheduler.evaluate(snapshot).catch(() => undefined);
+    void autoOpenScheduler
+      .evaluate(snapshot)
+      .then((autoOpenResult) => autoOpenResult.match(() => undefined, ignoreAutoOpenError))
+      .catch(() => undefined);
   });
 
   ipcMain.handle(IPC_CHANNELS.accountGetStatus, async () =>

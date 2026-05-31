@@ -1,11 +1,11 @@
 import type { AppError } from "@shared/errors";
 import type { AppSettings, MeetEvent, MeetEventsSnapshot } from "@shared/types";
-import type { Result } from "neverthrow";
+import { err, ok, type Result } from "neverthrow";
 import type { LaunchDeduper } from "./launchDeduper";
 import { decideLaunch } from "./meetingScheduler";
 
 export type AutoOpenScheduler = {
-  evaluate: (snapshot: MeetEventsSnapshot) => Promise<void>;
+  evaluate: (snapshot: MeetEventsSnapshot) => Promise<Result<void, AppError>>;
 };
 
 type AutoOpenSchedulerInput = {
@@ -34,19 +34,21 @@ export const createAutoOpenScheduler = ({
 }: AutoOpenSchedulerInput): AutoOpenScheduler => {
   const opening = new Set<string>();
 
-  const evaluateEvent = async (event: MeetEvent): Promise<void> => {
-    if (opening.has(event.occurrenceKey)) return;
-    if (missedBeforeActivation(event, settings, activatedAt)) return;
+  const evaluateEvent = async (event: MeetEvent): Promise<Result<void, AppError>> => {
+    if (opening.has(event.occurrenceKey)) return ok(undefined);
+    if (missedBeforeActivation(event, settings, activatedAt)) return ok(undefined);
 
     const decision = decideLaunch(event, settings, deduper, now());
-    if (decision.isErr() || decision.value.type !== "open") return;
+    if (decision.isErr()) return err(decision.error);
+    if (decision.value.type !== "open") return ok(undefined);
 
     opening.add(event.occurrenceKey);
     try {
       const result = await openMeetUrl(event.meetUrl);
       if (result.isOk()) {
-        deduper.markLaunched(event, now().toISOString());
+        return deduper.markLaunched(event, now().toISOString()).map(() => undefined);
       }
+      return result;
     } finally {
       opening.delete(event.occurrenceKey);
     }
@@ -55,8 +57,10 @@ export const createAutoOpenScheduler = ({
   return {
     evaluate: async (snapshot) => {
       for (const event of snapshot.meetings) {
-        await evaluateEvent(event);
+        const result = await evaluateEvent(event);
+        if (result.isErr()) return result;
       }
+      return ok(undefined);
     },
   };
 };
