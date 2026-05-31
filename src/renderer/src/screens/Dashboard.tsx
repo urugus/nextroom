@@ -54,6 +54,39 @@ const formatUpdateSummary = (updateStatus?: AppUpdateStatus) => {
 const updateErrorTextFor = (updateStatus?: AppUpdateStatus, updateErrorMessage?: string) =>
   updateErrorMessage ?? updateStatus?.errorMessage;
 
+type UpdateStatusTone = "neutral" | "info" | "success" | "warning" | "error";
+
+type UpdateStatusMeta = {
+  busy: boolean;
+  label: string;
+  tone: UpdateStatusTone;
+};
+
+const updateStatusMetaFor = (updateStatus?: AppUpdateStatus): UpdateStatusMeta => {
+  if (updateStatus === undefined) {
+    return { busy: true, label: "Loading", tone: "neutral" };
+  }
+
+  switch (updateStatus.status) {
+    case "unsupported":
+      return { busy: false, label: "Updates unavailable", tone: "neutral" };
+    case "idle":
+      return { busy: false, label: "Ready to check", tone: "neutral" };
+    case "checking":
+      return { busy: true, label: "Checking", tone: "info" };
+    case "not-available":
+      return { busy: false, label: "Up to date", tone: "success" };
+    case "available":
+      return { busy: false, label: "Update available", tone: "warning" };
+    case "homebrew-updating":
+      return { busy: true, label: "Updating", tone: "info" };
+    case "homebrew-updated":
+      return { busy: false, label: "Updated", tone: "success" };
+    case "error":
+      return { busy: false, label: "Failed", tone: "error" };
+  }
+};
+
 export const Dashboard = ({
   accountStatus,
   errorMessage,
@@ -92,6 +125,14 @@ export const Dashboard = ({
   const openOffsetMinutes = Math.trunc(settings.openOffsetSeconds / 60);
   const openOffsetLabel =
     openOffsetMinutes === 0 ? "Open at start time" : `Open ${openOffsetMinutes} min before`;
+  const updateStatusMeta =
+    updateErrorText !== undefined
+      ? { busy: false, label: "Failed", tone: "error" as const }
+      : updateStatusMetaFor(updateStatus);
+  const updateChecking = updateStatus?.status === "checking";
+  const homebrewUpdating = updateStatus?.status === "homebrew-updating";
+  const checkButtonLabel = updateChecking ? "Checking" : "Check for updates";
+  const homebrewButtonLabel = homebrewUpdating ? "Updating" : "Update with Homebrew";
 
   return (
     <main className="app-shell">
@@ -179,25 +220,40 @@ export const Dashboard = ({
       <section className="update-panel" aria-labelledby="updates-title">
         <div>
           <h2 id="updates-title">App updates</h2>
+          <div
+            className={`update-status update-status-${updateStatusMeta.tone}`}
+            aria-live="polite"
+          >
+            <span className="update-status-dot" aria-hidden="true" />
+            {updateStatusMeta.busy ? <span className="update-spinner" aria-hidden="true" /> : null}
+            <span>{updateStatusMeta.label}</span>
+          </div>
           <p>{formatUpdateSummary(updateStatus)}</p>
-          <span>Current version {updateStatus?.currentVersion ?? "unknown"}</span>
+          <span className="update-version">
+            Current version {updateStatus?.currentVersion ?? "unknown"}
+          </span>
         </div>
         <div className="update-controls">
           <button
             type="button"
+            aria-busy={updateChecking}
             disabled={!updateStatus?.canCheck || onCheckForUpdates === undefined}
             onClick={() => void onCheckForUpdates?.()}
           >
-            Check for updates
+            {checkButtonLabel}
           </button>
           <button
             type="button"
+            aria-busy={homebrewUpdating}
             disabled={!updateStatus?.canRunHomebrewUpdate || onRunHomebrewUpdate === undefined}
             onClick={() => void onRunHomebrewUpdate?.()}
           >
-            Update with Homebrew
+            {homebrewButtonLabel}
           </button>
         </div>
+        {homebrewUpdating ? (
+          <progress className="update-progress" aria-label="Homebrew update progress" />
+        ) : null}
         {updateErrorText !== undefined ? <p className="update-error">{updateErrorText}</p> : null}
       </section>
 
