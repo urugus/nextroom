@@ -42,4 +42,16 @@ describe("meeting scheduler", () => {
     expect(result._unsafeUnwrap()).toEqual({ type: "ignore", reason: "already-launched" });
     expect(deduper.records()).toHaveLength(1);
   });
+
+  it("opens a meeting once its configured offset is due", () => {
+    const deduper = createLaunchDeduper();
+    const result = decideLaunch(
+      event,
+      { ...settings, openOffsetSeconds: 10 * 60 },
+      deduper,
+      new Date("2026-05-28T09:50:00+09:00"),
+    );
+
+    expect(result._unsafeUnwrap()).toEqual({ type: "open", event });
+  });
 });

@@ -1,12 +1,26 @@
 import { unknownToMessage } from "@shared/errors";
 import type { ApiResult } from "@shared/ipc";
-import type { AccountStatus, AppUpdateStatus, MeetEvent, MeetEventsSnapshot } from "@shared/types";
+import type {
+  AccountStatus,
+  AppSettings,
+  AppUpdateStatus,
+  MeetEvent,
+  MeetEventsSnapshot,
+} from "@shared/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Dashboard } from "./screens/Dashboard";
 import "./styles.css";
 
 const disconnectedStatus: AccountStatus = { connected: false, syncing: false };
 const meetingNotificationTickMs = 30_000;
+const defaultSettings: AppSettings = {
+  autoOpenEnabled: true,
+  notifyBeforeMinutes: 1,
+  openOffsetSeconds: 0,
+  launchAtLogin: false,
+  calendarId: "primary",
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+};
 
 const caughtErrorMessage = (cause: unknown, fallback: string): string =>
   cause instanceof Error ? unknownToMessage(cause) : fallback;
@@ -24,6 +38,7 @@ const isActiveMeeting = (meeting: MeetEvent, now: Date): boolean => {
 export const App = () => {
   const [accountStatus, setAccountStatus] = useState<AccountStatus>(disconnectedStatus);
   const [meetingsSnapshot, setMeetingsSnapshot] = useState<MeetEventsSnapshot>({ meetings: [] });
+  const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
   const [openingMeetUrl, setOpeningMeetUrl] = useState<string | undefined>(undefined);
@@ -34,6 +49,7 @@ export const App = () => {
   const [updateErrorMessage, setUpdateErrorMessage] = useState<string | undefined>(undefined);
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | undefined>(undefined);
   const openingMeetingRef = useRef(false);
+  const latestOpenOffsetSecondsRef = useRef(defaultSettings.openOffsetSeconds);
 
   const applyResultError = useCallback(<T,>(result: ApiResult<T>): T | undefined => {
     if (result.ok) return result.value;
@@ -44,6 +60,11 @@ export const App = () => {
   const applyAccountStatus = useCallback((status: AccountStatus) => {
     setAccountStatus(status);
     setErrorMessage(status.error?.message);
+  }, []);
+
+  const applySettings = useCallback((nextSettings: AppSettings) => {
+    latestOpenOffsetSecondsRef.current = nextSettings.openOffsetSeconds;
+    setSettings(nextSettings);
   }, []);
 
   const refreshStatus = useCallback(async () => {
@@ -57,6 +78,11 @@ export const App = () => {
     const snapshot = applyResultError(await window.meetLauncher.listUpcomingMeetings());
     if (snapshot !== undefined) setMeetingsSnapshot(snapshot);
   }, [applyResultError]);
+
+  const refreshSettings = useCallback(async () => {
+    const currentSettings = applyResultError(await window.meetLauncher.getSettings());
+    if (currentSettings !== undefined) applySettings(currentSettings);
+  }, [applyResultError, applySettings]);
 
   useEffect(() => {
     let mounted = true;
@@ -106,6 +132,7 @@ export const App = () => {
     void (async () => {
       await refreshStatus();
       await refreshMeetings();
+      await refreshSettings();
     })();
 
     return window.meetLauncher.onCalendarUpdated((result) => {
@@ -115,7 +142,7 @@ export const App = () => {
         void refreshStatus();
       }
     });
-  }, [applyResultError, refreshMeetings, refreshStatus]);
+  }, [applyResultError, refreshMeetings, refreshSettings, refreshStatus]);
 
   useEffect(() => {
     const meetingKeys = new Set(meetingsSnapshot.meetings.map((meeting) => meeting.occurrenceKey));
@@ -173,6 +200,32 @@ export const App = () => {
     }
   };
 
+  const updateOpenOffsetMinutes = async (minutes: number) => {
+    const nextOpenOffsetSeconds = minutes * 60;
+    latestOpenOffsetSecondsRef.current = nextOpenOffsetSeconds;
+    setSettings((current) => ({ ...current, openOffsetSeconds: nextOpenOffsetSeconds }));
+
+    try {
+      const updated = await window.meetLauncher.updateSettings({
+        openOffsetSeconds: nextOpenOffsetSeconds,
+      });
+      if (latestOpenOffsetSecondsRef.current !== nextOpenOffsetSeconds) return;
+
+      if (!updated.ok) {
+        setErrorMessage(updated.error.message);
+        await refreshSettings();
+        return;
+      }
+
+      applySettings(updated.value);
+    } catch (cause) {
+      if (latestOpenOffsetSecondsRef.current === nextOpenOffsetSeconds) {
+        setErrorMessage(caughtErrorMessage(cause, "Settings update failed."));
+        await refreshSettings();
+      }
+    }
+  };
+
   const openMeeting = async (meeting: MeetEvent) => {
     if (openingMeetingRef.current) return;
 
@@ -223,6 +276,7 @@ export const App = () => {
       errorMessage={errorMessage}
       meetings={meetingsSnapshot.meetings}
       pendingAction={pendingAction}
+      settings={settings}
       syncedAt={meetingsSnapshot.syncedAt}
       openingMeetUrl={openingMeetUrl}
       nextMeetingNotification={nextMeetingNotification}
@@ -231,6 +285,7 @@ export const App = () => {
       onDisconnectAccount={disconnectAccount}
       onRunHomebrewUpdate={runHomebrewUpdate}
       onOpenMeeting={openMeeting}
+      onOpenOffsetMinutesChange={updateOpenOffsetMinutes}
       onSyncCalendar={syncCalendar}
       updateErrorMessage={updateErrorMessage}
       updateStatus={updateStatus}

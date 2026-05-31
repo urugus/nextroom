@@ -1,4 +1,4 @@
-import type { AccountStatus, AppUpdateStatus, MeetEvent } from "@shared/types";
+import type { AccountStatus, AppSettings, AppUpdateStatus, MeetEvent } from "@shared/types";
 
 type DashboardProps = {
   accountStatus: AccountStatus;
@@ -7,11 +7,13 @@ type DashboardProps = {
   nextMeetingNotification?: MeetEvent;
   openingMeetUrl?: string;
   pendingAction?: "connect" | "disconnect" | "sync";
+  settings: AppSettings;
   syncedAt?: string;
   onCheckForUpdates?: () => Promise<unknown>;
   onConnectAccount: () => Promise<unknown>;
   onDisconnectAccount: () => Promise<unknown>;
   onOpenMeeting: (meeting: MeetEvent) => Promise<unknown>;
+  onOpenOffsetMinutesChange: (minutes: number) => Promise<unknown>;
   onRunHomebrewUpdate?: () => Promise<unknown>;
   onSyncCalendar: () => Promise<unknown>;
   updateErrorMessage?: string;
@@ -63,8 +65,10 @@ export const Dashboard = ({
   onOpenMeeting,
   onRunHomebrewUpdate,
   onSyncCalendar,
+  onOpenOffsetMinutesChange,
   openingMeetUrl,
   pendingAction,
+  settings,
   syncedAt,
   updateErrorMessage,
   updateStatus,
@@ -85,6 +89,9 @@ export const Dashboard = ({
   const updateErrorText = updateErrorTextFor(updateStatus, updateErrorMessage);
   const notificationOpening =
     nextMeetingNotification !== undefined && openingMeetUrl === nextMeetingNotification.meetUrl;
+  const openOffsetMinutes = Math.trunc(settings.openOffsetSeconds / 60);
+  const openOffsetLabel =
+    openOffsetMinutes === 0 ? "Open at start time" : `Open ${openOffsetMinutes} min before`;
 
   return (
     <main className="app-shell">
@@ -148,6 +155,26 @@ export const Dashboard = ({
           <span>{notificationOpening ? "Opening" : "Join"}</span>
         </button>
       ) : null}
+
+      <section className="settings-panel" aria-labelledby="settings-title">
+        <div>
+          <h2 id="settings-title">Settings</h2>
+          <p>{openOffsetLabel}</p>
+        </div>
+        <label className="range-control">
+          <span>Meet window</span>
+          <input
+            type="range"
+            min="0"
+            max="10"
+            step="1"
+            value={openOffsetMinutes}
+            aria-label="Meet window open offset"
+            onChange={(event) => void onOpenOffsetMinutesChange(Number(event.currentTarget.value))}
+          />
+          <span>{openOffsetMinutes} min</span>
+        </label>
+      </section>
 
       <section className="update-panel" aria-labelledby="updates-title">
         <div>

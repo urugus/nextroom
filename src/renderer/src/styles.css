@@ -28,6 +28,7 @@ a {
 
 .toolbar,
 .meeting-panel,
+.settings-panel,
 .update-panel {
   background: #ffffff;
   border: 1px solid #d8dee8;
@@ -44,6 +45,7 @@ a {
 
 .toolbar h1,
 .meeting-panel h2,
+.settings-panel h2,
 .update-panel h2 {
   margin: 0;
   font-size: 22px;
@@ -131,6 +133,38 @@ a {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
+}
+
+.settings-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+  align-items: center;
+  gap: 20px;
+}
+
+.settings-panel p {
+  margin: 8px 0 0;
+  color: #52616f;
+}
+
+.range-control {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) 56px;
+  align-items: center;
+  gap: 12px;
+  color: #27384a;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.range-control input {
+  width: 100%;
+  accent-color: #1267d8;
+}
+
+.range-control span:last-child {
+  color: #607080;
+  text-align: right;
 }
 
 .update-panel p {
@@ -222,6 +256,7 @@ a {
 
   .toolbar,
   .meeting-row,
+  .settings-panel,
   .update-panel {
     align-items: stretch;
     grid-template-columns: 1fr;
@@ -239,5 +274,13 @@ a {
 
   .update-controls {
     justify-content: flex-start;
+  }
+
+  .range-control {
+    grid-template-columns: 1fr;
+  }
+
+  .range-control span:last-child {
+    text-align: left;
   }
 }

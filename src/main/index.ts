@@ -1,3 +1,4 @@
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { createKeychainTokenStore } from "@main/adapters/keychainTokenStore";
@@ -38,6 +39,62 @@ const defaultAppSettings: AppSettings = {
   launchAtLogin: false,
   calendarId: "primary",
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+};
+const settingsSchema = z
+  .object({
+    autoOpenEnabled: z.boolean().optional(),
+    notifyBeforeMinutes: z.number().int().min(0).optional(),
+    openOffsetSeconds: z
+      .number()
+      .int()
+      .min(0)
+      .max(10 * 60)
+      .refine((value) => value % 60 === 0, {
+        message: "openOffsetSeconds must be a whole number of minutes",
+      })
+      .optional(),
+    launchAtLogin: z.boolean().optional(),
+    calendarId: z.literal("primary").optional(),
+    timezone: z.string().min(1).optional(),
+  })
+  .strict();
+const settingsUpdateSchema = settingsSchema.pick({ openOffsetSeconds: true }).strict();
+const settingsFileName = "settings.json";
+let appSettings: AppSettings = { ...defaultAppSettings };
+
+const settingsPath = (): string => join(app.getPath("userData"), settingsFileName);
+
+const loadAppSettings = (): AppSettings => {
+  try {
+    const parsed = settingsSchema.safeParse(JSON.parse(readFileSync(settingsPath(), "utf8")));
+    return parsed.success ? { ...defaultAppSettings, ...parsed.data } : { ...defaultAppSettings };
+  } catch {
+    return { ...defaultAppSettings };
+  }
+};
+
+const saveAppSettings = (settings: AppSettings): Result<AppSettings, AppError> => {
+  try {
+    mkdirSync(app.getPath("userData"), { recursive: true });
+    writeFileSync(settingsPath(), `${JSON.stringify(settings, null, 2)}\n`);
+    return ok(settings);
+  } catch (cause) {
+    return err({ type: "DatabaseFailed", cause });
+  }
+};
+
+const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
+  const parsed = settingsUpdateSchema.safeParse(value);
+  if (!parsed.success) {
+    return err({ type: "DatabaseFailed", cause: parsed.error.message });
+  }
+
+  const nextSettings = { ...appSettings, ...parsed.data };
+  const saved = saveAppSettings(nextSettings);
+  if (saved.isErr()) return saved;
+
+  Object.assign(appSettings, nextSettings);
+  return ok(appSettings);
 };
 const tokenStore = createKeychainTokenStore(keytar);
 const oauthClient = createOAuthClient();
@@ -179,6 +236,10 @@ const registerIpc = (autoOpenScheduler: AutoOpenScheduler) => {
         : err({ type: "MeetUrlNotFound", eventId: "unknown" }),
     ),
   );
+  ipcMain.handle(IPC_CHANNELS.settingsGet, () => serializeResultForRenderer(ok(appSettings)));
+  ipcMain.handle(IPC_CHANNELS.settingsUpdate, (_event, settings: unknown) =>
+    serializeResultForRenderer(updateAppSettings(settings)),
+  );
   ipcMain.handle(IPC_CHANNELS.updatesGetStatus, () =>
     serializeResultForRenderer(ok(getAppUpdateStatus())),
   );
@@ -191,13 +252,14 @@ const registerIpc = (autoOpenScheduler: AutoOpenScheduler) => {
 };
 
 void app.whenReady().then(() => {
+  appSettings = loadAppSettings();
   configureMeetSessionPermissions();
   configureAppUpdater();
   const autoOpenScheduler = createAutoOpenScheduler({
     activatedAt: new Date(),
     deduper: createLaunchDeduper(),
     openMeetUrl,
-    settings: defaultAppSettings,
+    settings: appSettings,
   });
   registerIpc(autoOpenScheduler);
   calendarSyncService.startPolling();
