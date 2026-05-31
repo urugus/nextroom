@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { createKeychainTokenStore } from "@main/adapters/keychainTokenStore";
@@ -6,6 +6,7 @@ import { createGoogleCalendarClient } from "@main/calendar/calendarClient";
 import { createCalendarSyncService } from "@main/calendar/calendarSyncService";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
 import { createMeetWindowManager, type ManagedMeetWindow } from "@main/meet/meetWindowManager";
+import { createMenuBarController, type MenuBarController } from "@main/menuBar/menuBarController";
 import { createGoogleAuthService } from "@main/oauth/googleAuthService";
 import { createOAuthClient } from "@main/oauth/oauthClient";
 import { type AutoOpenScheduler, createAutoOpenScheduler } from "@main/scheduler/autoOpenScheduler";
@@ -25,12 +26,13 @@ import { z } from "zod";
 import { serializeResultForRenderer } from "./ipc/result";
 
 const nodeRequire = createRequire(import.meta.url);
-const { app, BrowserWindow, ipcMain, session, shell } = nodeRequire(
+const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, session, shell } = nodeRequire(
   "electron",
 ) as typeof import("electron");
 const keytar = nodeRequire("keytar") as typeof import("keytar");
 
 let mainWindow: ElectronBrowserWindow | undefined;
+let menuBarController: MenuBarController | undefined;
 const meetUrlSchema = z.string().url();
 const defaultAppSettings: AppSettings = {
   autoOpenEnabled: true,
@@ -60,6 +62,7 @@ const settingsSchema = z
   .strict();
 const settingsUpdateSchema = settingsSchema.pick({ openOffsetSeconds: true }).strict();
 const settingsFileName = "settings.json";
+const menuBarLogFileName = "menu-bar.log";
 let appSettings: AppSettings = { ...defaultAppSettings };
 
 const settingsPath = (): string => join(app.getPath("userData"), settingsFileName);
@@ -96,6 +99,19 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
   Object.assign(appSettings, nextSettings);
   return ok(appSettings);
 };
+
+const formatLogCause = (cause: unknown): string => {
+  if (cause instanceof Error) return cause.stack ?? cause.message;
+  if (typeof cause === "string") return cause;
+
+  try {
+    const json = JSON.stringify(cause);
+    return json ?? String(cause);
+  } catch {
+    return String(cause);
+  }
+};
+
 const tokenStore = createKeychainTokenStore(keytar);
 const oauthClient = createOAuthClient();
 const authService = createGoogleAuthService({
@@ -179,6 +195,69 @@ const createMainWindow = () =>
     return window;
   });
 
+const showSettingsWindow = (): Result<ElectronBrowserWindow, AppError> => {
+  if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+    mainWindow.show();
+    mainWindow.focus();
+    return ok(mainWindow);
+  }
+
+  const created = createMainWindow();
+  if (created.isOk()) {
+    mainWindow = created.value;
+  }
+
+  return created;
+};
+
+const createTrayIcon = () => {
+  const image = nativeImage
+    .createFromPath(join(__dirname, "../../assets/nextroom-logo.png"))
+    .resize({ height: 18, width: 18 });
+
+  if (process.platform === "darwin") {
+    image.setTemplateImage(true);
+  }
+
+  return image;
+};
+
+const reportMenuBarError = (message: string, cause: unknown): void => {
+  try {
+    const logDirectory = app.getPath("logs");
+    mkdirSync(logDirectory, { recursive: true });
+    appendFileSync(
+      join(logDirectory, menuBarLogFileName),
+      `${new Date().toISOString()} ${message} ${formatLogCause(cause)}\n`,
+    );
+  } catch {
+    // Logging must never make a tray action fail harder.
+  }
+};
+
+const createMenuBar = (): void => {
+  menuBarController = createMenuBarController({
+    buildMenuFromTemplate: (template) => Menu.buildFromTemplate(template),
+    createTray: (icon) => new Tray(icon),
+    icon: createTrayIcon(),
+    openMeetUrl,
+    quitApp: () => {
+      app.quit();
+    },
+    reportError: reportMenuBarError,
+    showSettingsWindow: () => {
+      const result = showSettingsWindow();
+      if (result.isErr()) {
+        reportMenuBarError("Failed to open settings from the menu bar.", result.error);
+      }
+    },
+    syncNow: () => calendarSyncService.syncNow(),
+  });
+};
+
 const configureMeetSessionPermissions = () => {
   session
     .fromPartition("persist:meet")
@@ -205,6 +284,7 @@ const ignoreAutoOpenError = (_error: AppError): void => undefined;
 const registerIpc = (autoOpenScheduler: AutoOpenScheduler) => {
   calendarSyncService.subscribe((snapshot) => {
     const result = serializeResultForRenderer(ok(snapshot));
+    menuBarController?.updateMeetings(snapshot);
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.calendarUpdated, result);
     }
@@ -253,6 +333,9 @@ const registerIpc = (autoOpenScheduler: AutoOpenScheduler) => {
 
 void app.whenReady().then(() => {
   appSettings = loadAppSettings();
+  if (process.platform === "darwin") {
+    app.dock?.hide();
+  }
   configureMeetSessionPermissions();
   configureAppUpdater();
   const autoOpenScheduler = createAutoOpenScheduler({
@@ -262,29 +345,16 @@ void app.whenReady().then(() => {
     settings: appSettings,
   });
   registerIpc(autoOpenScheduler);
+  createMenuBar();
   calendarSyncService.startPolling();
-  const created = createMainWindow();
-
-  if (created.isErr()) {
-    throw new Error(created.error.type);
-  }
-
-  mainWindow = created.value;
 
   void checkForAppUpdates();
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      const activated = createMainWindow();
-      if (activated.isOk()) {
-        mainWindow = activated.value;
-      }
+    if (mainWindow === undefined || mainWindow.isDestroyed()) {
+      showSettingsWindow();
     }
   });
 });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
+app.on("window-all-closed", () => undefined);
