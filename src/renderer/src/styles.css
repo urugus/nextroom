@@ -228,6 +228,19 @@ button:disabled {
   white-space: nowrap;
 }
 
+.toggle-control {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+}
+
+.toggle-control input {
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  accent-color: #007aff;
+}
+
 .update-status {
   display: inline-flex;
   align-items: center;

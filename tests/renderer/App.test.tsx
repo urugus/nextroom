@@ -19,7 +19,9 @@ const updateStatus: AppUpdateStatus = {
 };
 
 const settings: AppSettings = {
+  autoJoinEnabled: false,
   autoOpenEnabled: true,
+  joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
   launchAtLogin: false,
@@ -215,7 +217,12 @@ describe("App", () => {
     const slider = await screen.findByRole("slider", { name: "Meet window open offset" });
     fireEvent.change(slider, { target: { value: "7" } });
 
-    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ openOffsetSeconds: 420 }));
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith({
+        joinOffsetSeconds: 0,
+        openOffsetSeconds: 420,
+      }),
+    );
     expect(await screen.findByText("Open 7 min before")).toBeInTheDocument();
   });
 
@@ -247,6 +254,55 @@ describe("App", () => {
     });
 
     expect(screen.getByText("Open 8 min before")).toBeInTheDocument();
+  });
+
+  it("saves the configured Meet auto-join settings", async () => {
+    const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() => Promise.resolve(okResult));
+    installMeetLauncher(openMeetUrl);
+    const updateSettings = vi.mocked(window.meetLauncher.updateSettings);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Auto-join Meet" }));
+
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ autoJoinEnabled: true }));
+
+    const openSlider = await screen.findByRole("slider", { name: "Meet window open offset" });
+    fireEvent.change(openSlider, { target: { value: "5" } });
+
+    const joinSlider = await screen.findByRole("slider", { name: "Meet auto-join offset" });
+    fireEvent.change(joinSlider, { target: { value: "3" } });
+
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ joinOffsetSeconds: 180 }));
+    expect(await screen.findByText("Join 3 min before")).toBeInTheDocument();
+  });
+
+  it("clamps the auto-join offset when the Meet window open offset is reduced", async () => {
+    const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() => Promise.resolve(okResult));
+    installMeetLauncher(openMeetUrl);
+    vi.mocked(window.meetLauncher.getSettings).mockResolvedValue({
+      ok: true,
+      value: {
+        ...settings,
+        autoJoinEnabled: true,
+        joinOffsetSeconds: 5 * 60,
+        openOffsetSeconds: 8 * 60,
+      },
+    });
+    const updateSettings = vi.mocked(window.meetLauncher.updateSettings);
+
+    render(<App />);
+
+    const openSlider = await screen.findByRole("slider", { name: "Meet window open offset" });
+    fireEvent.change(openSlider, { target: { value: "3" } });
+
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith({
+        joinOffsetSeconds: 180,
+        openOffsetSeconds: 180,
+      }),
+    );
+    expect(await screen.findByText("Join 3 min before")).toBeInTheDocument();
   });
 
   it("prunes opened meeting records after calendar updates remove them", async () => {

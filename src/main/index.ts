@@ -16,6 +16,12 @@ import { createOAuthClient } from "@main/oauth/oauthClient";
 import { type AutoOpenScheduler, createAutoOpenScheduler } from "@main/scheduler/autoOpenScheduler";
 import { createLaunchDeduper } from "@main/scheduler/launchDeduper";
 import {
+  defaultAppSettings,
+  parseSettingsUpdate,
+  parseStoredAppSettings,
+  validateAppSettings,
+} from "@main/settings/appSettings";
+import {
   checkForAppUpdates,
   configureAppUpdater,
   getAppUpdateStatus,
@@ -37,34 +43,8 @@ const keytar = nodeRequire("keytar") as typeof import("keytar");
 
 let mainWindow: ElectronBrowserWindow | undefined;
 let menuBarController: MenuBarController | undefined;
+let autoOpenScheduler: AutoOpenScheduler | undefined;
 const meetUrlSchema = z.string().url();
-const defaultAppSettings: AppSettings = {
-  autoOpenEnabled: true,
-  notifyBeforeMinutes: 1,
-  openOffsetSeconds: 0,
-  launchAtLogin: false,
-  calendarId: "primary",
-  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
-};
-const settingsSchema = z
-  .object({
-    autoOpenEnabled: z.boolean().optional(),
-    notifyBeforeMinutes: z.number().int().min(0).optional(),
-    openOffsetSeconds: z
-      .number()
-      .int()
-      .min(0)
-      .max(10 * 60)
-      .refine((value) => value % 60 === 0, {
-        message: "openOffsetSeconds must be a whole number of minutes",
-      })
-      .optional(),
-    launchAtLogin: z.boolean().optional(),
-    calendarId: z.literal("primary").optional(),
-    timezone: z.string().min(1).optional(),
-  })
-  .strict();
-const settingsUpdateSchema = settingsSchema.pick({ openOffsetSeconds: true }).strict();
 const settingsFileName = "settings.json";
 const menuBarLogFileName = "menu-bar.log";
 let appSettings: AppSettings = { ...defaultAppSettings };
@@ -73,8 +53,7 @@ const settingsPath = (): string => join(app.getPath("userData"), settingsFileNam
 
 const loadAppSettings = (): AppSettings => {
   try {
-    const parsed = settingsSchema.safeParse(JSON.parse(readFileSync(settingsPath(), "utf8")));
-    return parsed.success ? { ...defaultAppSettings, ...parsed.data } : { ...defaultAppSettings };
+    return parseStoredAppSettings(JSON.parse(readFileSync(settingsPath(), "utf8")));
   } catch {
     return { ...defaultAppSettings };
   }
@@ -91,12 +70,13 @@ const saveAppSettings = (settings: AppSettings): Result<AppSettings, AppError> =
 };
 
 const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
-  const parsed = settingsUpdateSchema.safeParse(value);
-  if (!parsed.success) {
-    return err({ type: "DatabaseFailed", cause: parsed.error.message });
-  }
+  const parsed = parseSettingsUpdate(value);
+  if (parsed.isErr()) return err(parsed.error);
 
-  const nextSettings = { ...appSettings, ...parsed.data };
+  const nextSettings = { ...appSettings, ...parsed.value };
+  const validated = validateAppSettings(nextSettings);
+  if (validated.isErr()) return validated;
+
   const saved = saveAppSettings(nextSettings);
   if (saved.isErr()) return saved;
 
@@ -171,6 +151,9 @@ const meetWindowManager = createMeetWindowManager({
   createWindow: () => createMeetWindow().map((window): ManagedMeetWindow => window),
   focusApp: () => {
     app.focus({ steal: true });
+  },
+  onWindowClosed: (meetUrl) => {
+    autoOpenScheduler?.handleMeetWindowClosed(meetUrl);
   },
 });
 
@@ -273,14 +256,14 @@ const openMeetUrl = async (value: string): Promise<Result<void, AppError>> => {
 
 const ignoreAutoOpenError = (_error: AppError): void => undefined;
 
-const registerIpc = (autoOpenScheduler: AutoOpenScheduler) => {
+const registerIpc = (scheduler: AutoOpenScheduler) => {
   calendarSyncService.subscribe((snapshot) => {
     const result = serializeResultForRenderer(ok(snapshot));
     menuBarController?.updateMeetings(snapshot);
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.calendarUpdated, result);
     }
-    void autoOpenScheduler
+    void scheduler
       .evaluate(snapshot)
       .then((autoOpenResult) => autoOpenResult.match(() => undefined, ignoreAutoOpenError))
       .catch(() => undefined);
@@ -330,13 +313,17 @@ void app.whenReady().then(() => {
   }
   configureMeetSessionPermissions(session.fromPartition(meetSessionPartition));
   configureAppUpdater();
-  const autoOpenScheduler = createAutoOpenScheduler({
+  const scheduler = createAutoOpenScheduler({
     activatedAt: new Date(),
+    autoJoinMeetUrl: meetWindowManager.autoJoinMeetUrl,
     deduper: createLaunchDeduper(),
+    hasBlockingMeetWindow: meetWindowManager.hasOpenMeetWindowExcept,
+    joinDeduper: createLaunchDeduper(),
     openMeetUrl,
     settings: appSettings,
   });
-  registerIpc(autoOpenScheduler);
+  autoOpenScheduler = scheduler;
+  registerIpc(scheduler);
   createMenuBar();
   calendarSyncService.startPolling();
 

@@ -64,7 +64,9 @@ export type MeetEventsSnapshot = {
 };
 
 export type AppSettings = {
+  autoJoinEnabled: boolean;
   autoOpenEnabled: boolean;
+  joinOffsetSeconds: number;
   notifyBeforeMinutes: number;
   openOffsetSeconds: number;
   launchAtLogin: boolean;

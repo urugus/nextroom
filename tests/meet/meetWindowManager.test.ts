@@ -52,6 +52,7 @@ const noop = (): void => undefined;
 
 const createFakeMeetWindow = (
   loadURL: (url: string) => Promise<void> = () => Promise.resolve(),
+  executeJavaScript: (code: string) => Promise<unknown> = () => Promise.resolve({ ok: true }),
 ): FakeMeetWindow => {
   let closedListener = noop;
   let destroyed = false;
@@ -82,6 +83,9 @@ const createFakeMeetWindow = (
       minimized = value;
     },
     show: vi.fn(),
+    webContents: {
+      executeJavaScript: vi.fn(executeJavaScript),
+    },
   };
 };
 
@@ -220,16 +224,18 @@ describe("createMeetWindowManager", () => {
   it("forgets a window after it closes", async () => {
     const firstWindow = createFakeMeetWindow();
     const secondWindow = createFakeMeetWindow();
+    const onWindowClosed = vi.fn();
     const createWindow = vi
       .fn()
       .mockReturnValueOnce(ok(firstWindow))
       .mockReturnValueOnce(ok(secondWindow));
-    const manager = createMeetWindowManager({ createWindow });
+    const manager = createMeetWindowManager({ createWindow, onWindowClosed });
 
     await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
     firstWindow.close();
     await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
 
+    expect(onWindowClosed).toHaveBeenCalledWith("https://meet.google.com/abc-defg-hij");
     expect(createWindow).toHaveBeenCalledTimes(2);
     expect(secondWindow.loadURL).toHaveBeenCalledWith("https://meet.google.com/abc-defg-hij");
   });
@@ -250,6 +256,52 @@ describe("createMeetWindowManager", () => {
     expect(failingWindow.destroy).toHaveBeenCalledTimes(1);
     expect(createWindow).toHaveBeenCalledTimes(2);
     expect(retryWindow.loadURL).toHaveBeenCalledWith("https://meet.google.com/abc-defg-hij");
+  });
+
+  it("auto-joins through the Meet page without creating a second window", async () => {
+    const meetWindow = createFakeMeetWindow();
+    const createWindow = vi.fn(() => ok(meetWindow));
+    const manager = createMeetWindowManager({ createWindow });
+
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+    const result = await manager.autoJoinMeetUrl("https://meet.google.com/abc-defg-hij");
+
+    expect(result.isOk()).toBe(true);
+    expect(createWindow).toHaveBeenCalledTimes(1);
+    expect(meetWindow.webContents.executeJavaScript).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns an error when auto-join cannot find a join button", async () => {
+    const meetWindow = createFakeMeetWindow(
+      () => Promise.resolve(),
+      () => Promise.resolve({ ok: false, reason: "Meet join button was not found." }),
+    );
+    const manager = createMeetWindowManager({ createWindow: vi.fn(() => ok(meetWindow)) });
+
+    const result = await manager.autoJoinMeetUrl("https://meet.google.com/abc-defg-hij");
+
+    expect(result._unsafeUnwrapErr()).toMatchObject({
+      cause: "Meet join button was not found.",
+      type: "MeetWindowFailed",
+    });
+  });
+
+  it("reports open Meet windows other than the candidate URL", async () => {
+    const firstWindow = createFakeMeetWindow();
+    const secondWindow = createFakeMeetWindow();
+    const createWindow = vi
+      .fn()
+      .mockReturnValueOnce(ok(firstWindow))
+      .mockReturnValueOnce(ok(secondWindow));
+    const manager = createMeetWindowManager({ createWindow });
+
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+
+    expect(manager.hasOpenMeetWindowExcept("https://meet.google.com/abc-defg-hij")).toBe(false);
+
+    await manager.openMeetUrl("https://meet.google.com/xyz-abcd-efg");
+
+    expect(manager.hasOpenMeetWindowExcept("https://meet.google.com/abc-defg-hij")).toBe(true);
   });
 });
 
