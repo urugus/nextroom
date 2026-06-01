@@ -4,6 +4,7 @@ import type { Menu, MenuItemConstructorOptions, NativeImage, Tray } from "electr
 import type { Result } from "neverthrow";
 
 export type MenuBarController = {
+  openMenu: () => void;
   updateMeetings: (snapshot: MeetEventsSnapshot) => void;
 };
 
@@ -99,6 +100,7 @@ export const createMenuBarController = ({
 }: MenuBarControllerInput): MenuBarController => {
   const tray = createTray(icon);
   let meetings: MeetEvent[] = [];
+  let currentMenu: Menu | undefined;
 
   const rebuildMenu = (): void => {
     const menu = buildMenuFromTemplate(
@@ -131,6 +133,7 @@ export const createMenuBarController = ({
       }),
     );
 
+    currentMenu = menu;
     tray.setToolTip("NextRoom");
     tray.setContextMenu(menu);
   };
@@ -138,6 +141,11 @@ export const createMenuBarController = ({
   rebuildMenu();
 
   return {
+    openMenu: () => {
+      if (currentMenu !== undefined) {
+        tray.popUpContextMenu(currentMenu);
+      }
+    },
     updateMeetings: (snapshot) => {
       meetings = snapshot.meetings;
       rebuildMenu();

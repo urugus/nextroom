@@ -13,6 +13,12 @@ import { createMeetWindowManager, type ManagedMeetWindow } from "@main/meet/meet
 import { createMenuBarController, type MenuBarController } from "@main/menuBar/menuBarController";
 import { createGoogleAuthService } from "@main/oauth/googleAuthService";
 import { createOAuthClient } from "@main/oauth/oauthClient";
+import {
+  createMenuOpenRequestQueue,
+  findMenuOpenProtocolUrl,
+  isMenuOpenProtocolUrl,
+  nextRoomProtocolScheme,
+} from "@main/protocol/menuOpenProtocol";
 import { type AutoOpenScheduler, createAutoOpenScheduler } from "@main/scheduler/autoOpenScheduler";
 import { createLaunchDeduper } from "@main/scheduler/launchDeduper";
 import {
@@ -44,10 +50,36 @@ const keytar = nodeRequire("keytar") as typeof import("keytar");
 let mainWindow: ElectronBrowserWindow | undefined;
 let menuBarController: MenuBarController | undefined;
 let autoOpenScheduler: AutoOpenScheduler | undefined;
+const menuOpenRequestQueue = createMenuOpenRequestQueue({
+  tryOpenMenu: () => {
+    if (menuBarController === undefined) return false;
+
+    menuBarController.openMenu();
+    return true;
+  },
+});
 const meetUrlSchema = z.string().url();
 const settingsFileName = "settings.json";
 const menuBarLogFileName = "menu-bar.log";
 let appSettings: AppSettings = { ...defaultAppSettings };
+const appCanStart = app.requestSingleInstanceLock();
+
+app.on("open-url", (event, url) => {
+  if (!isMenuOpenProtocolUrl(url)) return;
+
+  event.preventDefault();
+  menuOpenRequestQueue.requestOpen();
+});
+
+if (findMenuOpenProtocolUrl(process.argv) !== undefined) {
+  menuOpenRequestQueue.requestOpen();
+}
+
+app.on("second-instance", (_event, argv) => {
+  if (findMenuOpenProtocolUrl(argv) === undefined) return;
+
+  menuOpenRequestQueue.requestOpen();
+});
 
 const settingsPath = (): string => join(app.getPath("userData"), settingsFileName);
 
@@ -243,6 +275,7 @@ const createMenuBar = (): void => {
     },
     syncNow: () => calendarSyncService.syncNow(),
   });
+  menuOpenRequestQueue.drain();
 };
 
 const openMeetUrl = async (value: string): Promise<Result<void, AppError>> => {
@@ -306,35 +339,40 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
   );
 };
 
-void app.whenReady().then(() => {
-  appSettings = loadAppSettings();
-  if (process.platform === "darwin") {
-    app.dock?.hide();
-  }
-  configureMeetSessionPermissions(session.fromPartition(meetSessionPartition));
-  configureAppUpdater();
-  const scheduler = createAutoOpenScheduler({
-    activatedAt: new Date(),
-    autoJoinMeetUrl: meetWindowManager.autoJoinMeetUrl,
-    deduper: createLaunchDeduper(),
-    hasBlockingMeetWindow: meetWindowManager.hasOpenMeetWindowExcept,
-    joinDeduper: createLaunchDeduper(),
-    openMeetUrl,
-    // updateAppSettings mutates this object in place so the scheduler observes runtime changes.
-    settings: appSettings,
-  });
-  autoOpenScheduler = scheduler;
-  registerIpc(scheduler);
-  createMenuBar();
-  calendarSyncService.startPolling();
-
-  void checkForAppUpdates();
-
-  app.on("activate", () => {
-    if (mainWindow === undefined || mainWindow.isDestroyed()) {
-      showSettingsWindow();
+if (!appCanStart) {
+  app.quit();
+} else {
+  void app.whenReady().then(() => {
+    app.setAsDefaultProtocolClient(nextRoomProtocolScheme);
+    appSettings = loadAppSettings();
+    if (process.platform === "darwin") {
+      app.dock?.hide();
     }
+    configureMeetSessionPermissions(session.fromPartition(meetSessionPartition));
+    configureAppUpdater();
+    const scheduler = createAutoOpenScheduler({
+      activatedAt: new Date(),
+      autoJoinMeetUrl: meetWindowManager.autoJoinMeetUrl,
+      deduper: createLaunchDeduper(),
+      hasBlockingMeetWindow: meetWindowManager.hasOpenMeetWindowExcept,
+      joinDeduper: createLaunchDeduper(),
+      openMeetUrl,
+      // updateAppSettings mutates this object in place so the scheduler observes runtime changes.
+      settings: appSettings,
+    });
+    autoOpenScheduler = scheduler;
+    registerIpc(scheduler);
+    createMenuBar();
+    calendarSyncService.startPolling();
+
+    void checkForAppUpdates();
+
+    app.on("activate", () => {
+      if (mainWindow === undefined || mainWindow.isDestroyed()) {
+        showSettingsWindow();
+      }
+    });
   });
-});
+}
 
 app.on("window-all-closed", () => undefined);

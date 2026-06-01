@@ -47,6 +47,14 @@
       "hardenedRuntime": true,
       "notarize": true
     },
+    "protocols": [
+      {
+        "name": "NextRoom",
+        "schemes": [
+          "nextroom"
+        ]
+      }
+    ],
     "publish": [
       {
         "provider": "github",
