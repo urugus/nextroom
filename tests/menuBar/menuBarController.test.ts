@@ -80,6 +80,7 @@ describe("createMenuBarController", () => {
   it("rebuilds the tray menu when meetings are updated", () => {
     const setContextMenu = vi.fn();
     const tray = {
+      popUpContextMenu: vi.fn(),
       setContextMenu,
       setToolTip: vi.fn(),
     } as unknown as Tray;
@@ -109,6 +110,33 @@ describe("createMenuBarController", () => {
     );
   });
 
+  it("opens the current tray menu", () => {
+    const popUpContextMenu = vi.fn();
+    const initialMenu = { label: "initial" } as unknown as Menu;
+    const updatedMenu = { label: "updated" } as unknown as Menu;
+    const builtMenus = [initialMenu, updatedMenu];
+    const tray = {
+      popUpContextMenu,
+      setContextMenu: vi.fn(),
+      setToolTip: vi.fn(),
+    } as unknown as Tray;
+    const controller = createMenuBarController({
+      buildMenuFromTemplate: vi.fn(() => builtMenus.shift() ?? updatedMenu),
+      createTray: vi.fn(() => tray),
+      icon: "icon" as unknown as NativeImage,
+      openMeetUrl: vi.fn(() => Promise.resolve(ok(undefined))),
+      quitApp: vi.fn(),
+      reportError: vi.fn(),
+      showSettingsWindow: vi.fn(),
+      syncNow: vi.fn(() => Promise.resolve(ok({ meetings: [] }))),
+    });
+
+    controller.updateMeetings({ meetings: [meeting] });
+    controller.openMenu();
+
+    expect(popUpContextMenu).toHaveBeenCalledWith(updatedMenu);
+  });
+
   it("reports meeting open and sync failures from tray actions", async () => {
     const reportError = vi.fn();
     const menus: MenuItemConstructorOptions[][] = [];
@@ -122,6 +150,7 @@ describe("createMenuBarController", () => {
       createTray: vi.fn(
         () =>
           ({
+            popUpContextMenu: vi.fn(),
             setContextMenu: vi.fn(),
             setToolTip: vi.fn(),
           }) as unknown as Tray,
