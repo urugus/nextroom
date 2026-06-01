@@ -9,6 +9,7 @@ const settings: AppSettings = {
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
+  menuShortcutAccelerator: "Command+Alt+N",
   launchAtLogin: false,
   calendarId: "primary",
   timezone: "Asia/Tokyo",

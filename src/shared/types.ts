@@ -69,9 +69,16 @@ export type AppSettings = {
   joinOffsetSeconds: number;
   notifyBeforeMinutes: number;
   openOffsetSeconds: number;
+  menuShortcutAccelerator: string | null;
   launchAtLogin: boolean;
   calendarId: "primary";
   timezone: string;
+};
+
+export type MenuShortcutStatus = {
+  accelerator: string | null;
+  state: "off" | "registered" | "failed";
+  error?: SerializedAppError;
 };
 
 export type LaunchRecord = {

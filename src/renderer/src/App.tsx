@@ -6,6 +6,7 @@ import type {
   AppUpdateStatus,
   MeetEvent,
   MeetEventsSnapshot,
+  MenuShortcutStatus,
 } from "@shared/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Dashboard } from "./screens/Dashboard";
@@ -19,6 +20,7 @@ const defaultSettings: AppSettings = {
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
+  menuShortcutAccelerator: "Command+Alt+N",
   launchAtLogin: false,
   calendarId: "primary",
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
@@ -41,6 +43,9 @@ export const App = () => {
   const [accountStatus, setAccountStatus] = useState<AccountStatus>(disconnectedStatus);
   const [meetingsSnapshot, setMeetingsSnapshot] = useState<MeetEventsSnapshot>({ meetings: [] });
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const [menuShortcutStatus, setMenuShortcutStatus] = useState<MenuShortcutStatus | undefined>(
+    undefined,
+  );
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
   const [openingMeetUrl, setOpeningMeetUrl] = useState<string | undefined>(undefined);
@@ -86,6 +91,11 @@ export const App = () => {
     const currentSettings = applyResultError(await window.meetLauncher.getSettings());
     if (currentSettings !== undefined) applySettings(currentSettings);
   }, [applyResultError, applySettings]);
+
+  const refreshMenuShortcutStatus = useCallback(async () => {
+    const currentStatus = applyResultError(await window.meetLauncher.getMenuShortcutStatus());
+    if (currentStatus !== undefined) setMenuShortcutStatus(currentStatus);
+  }, [applyResultError]);
 
   useEffect(() => {
     let mounted = true;
@@ -136,6 +146,7 @@ export const App = () => {
       await refreshStatus();
       await refreshMeetings();
       await refreshSettings();
+      await refreshMenuShortcutStatus();
     })();
 
     return window.meetLauncher.onCalendarUpdated((result) => {
@@ -145,7 +156,13 @@ export const App = () => {
         void refreshStatus();
       }
     });
-  }, [applyResultError, refreshMeetings, refreshSettings, refreshStatus]);
+  }, [
+    applyResultError,
+    refreshMeetings,
+    refreshMenuShortcutStatus,
+    refreshSettings,
+    refreshStatus,
+  ]);
 
   useEffect(() => {
     const meetingKeys = new Set(meetingsSnapshot.meetings.map((meeting) => meeting.occurrenceKey));
@@ -247,6 +264,11 @@ export const App = () => {
   const updateJoinOffsetMinutes = (minutes: number) =>
     updateSettings({ joinOffsetSeconds: minutes * 60 });
 
+  const updateMenuShortcutAccelerator = async (menuShortcutAccelerator: string | null) => {
+    await updateSettings({ menuShortcutAccelerator });
+    await refreshMenuShortcutStatus();
+  };
+
   const openMeeting = async (meeting: MeetEvent) => {
     if (openingMeetingRef.current) return;
 
@@ -297,6 +319,7 @@ export const App = () => {
       errorMessage={errorMessage}
       pendingAction={pendingAction}
       settings={settings}
+      menuShortcutStatus={menuShortcutStatus}
       syncedAt={meetingsSnapshot.syncedAt}
       openingMeetUrl={openingMeetUrl}
       nextMeetingNotification={nextMeetingNotification}
@@ -306,6 +329,7 @@ export const App = () => {
       onRunHomebrewUpdate={runHomebrewUpdate}
       onAutoJoinEnabledChange={updateAutoJoinEnabled}
       onJoinOffsetMinutesChange={updateJoinOffsetMinutes}
+      onMenuShortcutAcceleratorChange={updateMenuShortcutAccelerator}
       onOpenMeeting={openMeeting}
       onOpenOffsetMinutesChange={updateOpenOffsetMinutes}
       onSyncCalendar={syncCalendar}

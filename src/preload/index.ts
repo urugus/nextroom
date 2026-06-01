@@ -5,6 +5,7 @@ import type {
   AppSettings,
   AppUpdateStatus,
   MeetEventsSnapshot,
+  MenuShortcutStatus,
 } from "../shared/types";
 
 type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -31,6 +32,8 @@ const api: MeetLauncherApi = {
   getSettings: () => invoke<ApiResult<AppSettings>>(IPC_CHANNELS.settingsGet),
   updateSettings: (settings) =>
     invoke<ApiResult<AppSettings>>(IPC_CHANNELS.settingsUpdate, settings),
+  getMenuShortcutStatus: () =>
+    invoke<ApiResult<MenuShortcutStatus>>(IPC_CHANNELS.settingsMenuShortcutStatusGet),
   getUpdateStatus: () => invoke<ApiResult<AppUpdateStatus>>(IPC_CHANNELS.updatesGetStatus),
   checkForUpdates: () => invoke<ApiResult<AppUpdateStatus>>(IPC_CHANNELS.updatesCheck),
   runHomebrewUpdate: () =>

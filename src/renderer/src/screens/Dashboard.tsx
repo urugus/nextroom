@@ -1,9 +1,17 @@
-import type { AccountStatus, AppSettings, AppUpdateStatus, MeetEvent } from "@shared/types";
+import type {
+  AccountStatus,
+  AppSettings,
+  AppUpdateStatus,
+  MeetEvent,
+  MenuShortcutStatus,
+} from "@shared/types";
+import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from "react";
 
 type DashboardProps = {
   accountStatus: AccountStatus;
   errorMessage?: string;
   nextMeetingNotification?: MeetEvent;
+  menuShortcutStatus?: MenuShortcutStatus;
   openingMeetUrl?: string;
   pendingAction?: "connect" | "disconnect" | "sync";
   settings: AppSettings;
@@ -13,6 +21,7 @@ type DashboardProps = {
   onConnectAccount: () => Promise<unknown>;
   onDisconnectAccount: () => Promise<unknown>;
   onJoinOffsetMinutesChange: (minutes: number) => Promise<unknown>;
+  onMenuShortcutAcceleratorChange: (accelerator: string | null) => Promise<unknown>;
   onOpenMeeting: (meeting: MeetEvent) => Promise<unknown>;
   onOpenOffsetMinutesChange: (minutes: number) => Promise<unknown>;
   onRunHomebrewUpdate?: () => Promise<unknown>;
@@ -88,15 +97,150 @@ const updateStatusMetaFor = (updateStatus?: AppUpdateStatus): UpdateStatusMeta =
   }
 };
 
+const modifierKeyNames = new Set(["Alt", "Control", "Meta", "Shift"]);
+
+const keyNameForCode = (code: string): string | undefined => {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) return code;
+
+  switch (code) {
+    case "Space":
+      return "Space";
+    case "ArrowUp":
+      return "Up";
+    case "ArrowDown":
+      return "Down";
+    case "ArrowLeft":
+      return "Left";
+    case "ArrowRight":
+      return "Right";
+    case "Minus":
+      return "Minus";
+    case "Equal":
+      return "Plus";
+    case "Comma":
+      return "Comma";
+    case "Period":
+      return "Period";
+    case "Slash":
+      return "Slash";
+    case "Semicolon":
+      return "Semicolon";
+    case "Quote":
+      return "Quote";
+    case "BracketLeft":
+      return "LeftBracket";
+    case "BracketRight":
+      return "RightBracket";
+    case "Backslash":
+      return "Backslash";
+    case "Backquote":
+      return "Backquote";
+    default:
+      return undefined;
+  }
+};
+
+const keyNameForAccelerator = (key: string): string | undefined => {
+  if (/^[a-z]$/i.test(key)) return key.toUpperCase();
+  if (/^[0-9]$/.test(key)) return key;
+  if (/^F([1-9]|1[0-9]|2[0-4])$/.test(key)) return key;
+
+  switch (key) {
+    case " ":
+    case "Spacebar":
+      return "Space";
+    case "ArrowUp":
+      return "Up";
+    case "ArrowDown":
+      return "Down";
+    case "ArrowLeft":
+      return "Left";
+    case "ArrowRight":
+      return "Right";
+    case "-":
+      return "Minus";
+    case "=":
+      return "Plus";
+    case ",":
+      return "Comma";
+    case ".":
+      return "Period";
+    case "/":
+      return "Slash";
+    case ";":
+      return "Semicolon";
+    case "'":
+      return "Quote";
+    case "[":
+      return "LeftBracket";
+    case "]":
+      return "RightBracket";
+    case "\\":
+      return "Backslash";
+    case "`":
+      return "Backquote";
+    default:
+      return undefined;
+  }
+};
+
+const acceleratorFromKeyboardEvent = (
+  event: ReactKeyboardEvent<HTMLButtonElement>,
+): string | undefined => {
+  if (modifierKeyNames.has(event.key)) return undefined;
+  if (!event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) return undefined;
+
+  const key = keyNameForCode(event.code) ?? keyNameForAccelerator(event.key);
+  if (key === undefined) return undefined;
+
+  const parts = [
+    event.metaKey ? "Command" : undefined,
+    event.ctrlKey ? "Control" : undefined,
+    event.altKey ? "Alt" : undefined,
+    event.shiftKey ? "Shift" : undefined,
+    key,
+  ].filter((part): part is string => part !== undefined);
+
+  return parts.join("+");
+};
+
+const formatAccelerator = (accelerator: string | null): string => {
+  if (accelerator === null) return "Off";
+
+  return accelerator
+    .split("+")
+    .map((part) => {
+      switch (part) {
+        case "Command":
+        case "CommandOrControl":
+          return "⌘";
+        case "Control":
+          return "⌃";
+        case "Alt":
+        case "Option":
+          return "⌥";
+        case "Shift":
+          return "⇧";
+        default:
+          return part;
+      }
+    })
+    .join(" ");
+};
+
 export const Dashboard = ({
   accountStatus,
   errorMessage,
+  menuShortcutStatus,
   nextMeetingNotification,
   onAutoJoinEnabledChange,
   onCheckForUpdates,
   onConnectAccount,
   onDisconnectAccount,
   onJoinOffsetMinutesChange,
+  onMenuShortcutAcceleratorChange,
   onOpenMeeting,
   onRunHomebrewUpdate,
   onSyncCalendar,
@@ -108,6 +252,8 @@ export const Dashboard = ({
   updateErrorMessage,
   updateStatus,
 }: DashboardProps) => {
+  const [recordingShortcut, setRecordingShortcut] = useState(false);
+  const shortcutRecordButtonRef = useRef<HTMLButtonElement>(null);
   const actionInProgress = pendingAction !== undefined || accountStatus.syncing;
   const statusText = accountStatus.connected
     ? "Google Calendar connected"
@@ -138,6 +284,33 @@ export const Dashboard = ({
   const homebrewUpdating = updateStatus?.status === "homebrew-updating";
   const checkButtonLabel = updateChecking ? "Checking" : "Check for updates";
   const homebrewButtonLabel = homebrewUpdating ? "Updating" : "Update with Homebrew";
+  const menuShortcutFailed =
+    menuShortcutStatus?.state === "failed" &&
+    menuShortcutStatus.accelerator === settings.menuShortcutAccelerator;
+
+  useEffect(() => {
+    if (recordingShortcut) {
+      shortcutRecordButtonRef.current?.focus();
+    }
+  }, [recordingShortcut]);
+
+  const handleShortcutKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+    if (!recordingShortcut) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (event.key === "Escape") {
+      setRecordingShortcut(false);
+      return;
+    }
+
+    const accelerator = acceleratorFromKeyboardEvent(event);
+    if (accelerator === undefined) return;
+
+    setRecordingShortcut(false);
+    void onMenuShortcutAcceleratorChange(accelerator);
+  };
 
   return (
     <main className="preferences-shell">
@@ -267,6 +440,45 @@ export const Dashboard = ({
               />
               <span>{joinOffsetMinutes} min</span>
             </label>
+          </div>
+        </div>
+      </section>
+
+      <section className="preferences-group" aria-labelledby="shortcuts-title">
+        <h2 id="shortcuts-title">Shortcuts</h2>
+        <div className="preference-list">
+          <div className="preference-row">
+            <div className="preference-copy">
+              <strong>Menu shortcut</strong>
+              <span>
+                {recordingShortcut
+                  ? "Recording"
+                  : formatAccelerator(settings.menuShortcutAccelerator)}
+              </span>
+              {menuShortcutFailed ? (
+                <span className="warning-text">Shortcut is unavailable. Choose another one.</span>
+              ) : null}
+            </div>
+            <div className="preference-actions">
+              <button
+                type="button"
+                ref={shortcutRecordButtonRef}
+                aria-pressed={recordingShortcut}
+                onClick={() => setRecordingShortcut((current) => !current)}
+                onBlur={() => setRecordingShortcut(false)}
+                onKeyDown={handleShortcutKeyDown}
+              >
+                {recordingShortcut ? "Cancel" : "Record"}
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={settings.menuShortcutAccelerator === null}
+                onClick={() => void onMenuShortcutAcceleratorChange(null)}
+              >
+                Clear
+              </button>
+            </div>
           </div>
         </div>
       </section>

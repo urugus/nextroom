@@ -9,6 +9,7 @@ export const defaultAppSettings: AppSettings = {
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
+  menuShortcutAccelerator: "Command+Alt+N",
   launchAtLogin: false,
   calendarId: "primary",
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
@@ -31,6 +32,7 @@ const settingsSchema = z
     joinOffsetSeconds: minuteOffsetSchema("joinOffsetSeconds").optional(),
     notifyBeforeMinutes: z.number().int().min(0).optional(),
     openOffsetSeconds: minuteOffsetSchema("openOffsetSeconds").optional(),
+    menuShortcutAccelerator: z.string().trim().min(1).max(80).nullable().optional(),
     launchAtLogin: z.boolean().optional(),
     calendarId: z.literal("primary").optional(),
     timezone: z.string().min(1).optional(),
@@ -38,11 +40,19 @@ const settingsSchema = z
   .strict();
 
 const settingsUpdateSchema = settingsSchema
-  .pick({ autoJoinEnabled: true, joinOffsetSeconds: true, openOffsetSeconds: true })
+  .pick({
+    autoJoinEnabled: true,
+    joinOffsetSeconds: true,
+    menuShortcutAccelerator: true,
+    openOffsetSeconds: true,
+  })
   .strict();
 
 type SettingsUpdate = Partial<
-  Pick<AppSettings, "autoJoinEnabled" | "joinOffsetSeconds" | "openOffsetSeconds">
+  Pick<
+    AppSettings,
+    "autoJoinEnabled" | "joinOffsetSeconds" | "menuShortcutAccelerator" | "openOffsetSeconds"
+  >
 >;
 
 export const parseStoredAppSettings = (value: unknown): AppSettings => {
