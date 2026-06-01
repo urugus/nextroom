@@ -37,21 +37,8 @@ const compareByStartAt = (left: MeetEvent, right: MeetEvent): number =>
   new Date(left.startAt).getTime() - new Date(right.startAt).getTime();
 
 const sortedByStartAt = (meetings: MeetEvent[]): MeetEvent[] => {
-  const sortedMeetings: MeetEvent[] = [];
-
-  for (const event of meetings) {
-    const insertAt = sortedMeetings.findIndex(
-      (candidate) => compareByStartAt(event, candidate) < 0,
-    );
-
-    if (insertAt === -1) {
-      sortedMeetings.push(event);
-    } else {
-      sortedMeetings.splice(insertAt, 0, event);
-    }
-  }
-
-  return sortedMeetings;
+  // oxlint-disable-next-line unicorn/no-array-sort -- toSorted is not in this project's TS lib.
+  return [...meetings].sort(compareByStartAt);
 };
 
 export const createAutoOpenScheduler = ({

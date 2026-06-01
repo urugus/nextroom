@@ -320,6 +320,7 @@ void app.whenReady().then(() => {
     hasBlockingMeetWindow: meetWindowManager.hasOpenMeetWindowExcept,
     joinDeduper: createLaunchDeduper(),
     openMeetUrl,
+    // updateAppSettings mutates this object in place so the scheduler observes runtime changes.
     settings: appSettings,
   });
   autoOpenScheduler = scheduler;
