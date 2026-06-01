@@ -5,6 +5,10 @@ import { createKeychainTokenStore } from "@main/adapters/keychainTokenStore";
 import { createGoogleCalendarClient } from "@main/calendar/calendarClient";
 import { createCalendarSyncService } from "@main/calendar/calendarSyncService";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
+import {
+  configureMeetSessionPermissions,
+  meetSessionPartition,
+} from "@main/meet/meetSessionPermissions";
 import { createMeetWindowManager, type ManagedMeetWindow } from "@main/meet/meetWindowManager";
 import { createMenuBarController, type MenuBarController } from "@main/menuBar/menuBarController";
 import { createGoogleAuthService } from "@main/oauth/googleAuthService";
@@ -154,7 +158,7 @@ const createMeetWindow = fromThrowable(
       minHeight: 640,
       title: "Meet",
       webPreferences: {
-        partition: "persist:meet",
+        partition: meetSessionPartition,
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
@@ -258,18 +262,6 @@ const createMenuBar = (): void => {
   });
 };
 
-const configureMeetSessionPermissions = () => {
-  session
-    .fromPartition("persist:meet")
-    .setPermissionRequestHandler((webContents, permission, callback) => {
-      const currentUrl = webContents.getURL();
-      const allowed =
-        currentUrl.startsWith("https://meet.google.com/") &&
-        (permission === "media" || permission === "notifications");
-      callback(allowed);
-    });
-};
-
 const openMeetUrl = async (value: string): Promise<Result<void, AppError>> => {
   const canonicalized = canonicalizeMeetUrl(value);
   if (canonicalized.isErr()) {
@@ -336,7 +328,7 @@ void app.whenReady().then(() => {
   if (process.platform === "darwin") {
     app.dock?.hide();
   }
-  configureMeetSessionPermissions();
+  configureMeetSessionPermissions(session.fromPartition(meetSessionPartition));
   configureAppUpdater();
   const autoOpenScheduler = createAutoOpenScheduler({
     activatedAt: new Date(),
