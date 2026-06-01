@@ -11,6 +11,7 @@ describe("app settings", () => {
     expect(parseStoredAppSettings({ openOffsetSeconds: 5 * 60 })).toMatchObject({
       autoJoinEnabled: false,
       joinOffsetSeconds: 0,
+      menuShortcutAccelerator: "Command+Alt+N",
       openOffsetSeconds: 5 * 60,
     });
   });
@@ -31,6 +32,17 @@ describe("app settings", () => {
   it("accepts partial auto-join setting updates", () => {
     expect(parseSettingsUpdate({ autoJoinEnabled: true })._unsafeUnwrap()).toEqual({
       autoJoinEnabled: true,
+    });
+  });
+
+  it("accepts menu shortcut updates and clearing", () => {
+    expect(
+      parseSettingsUpdate({ menuShortcutAccelerator: "Command+Alt+M" })._unsafeUnwrap(),
+    ).toEqual({
+      menuShortcutAccelerator: "Command+Alt+M",
+    });
+    expect(parseSettingsUpdate({ menuShortcutAccelerator: null })._unsafeUnwrap()).toEqual({
+      menuShortcutAccelerator: null,
     });
   });
 

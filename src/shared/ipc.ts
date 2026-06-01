@@ -1,11 +1,20 @@
 import type { Result } from "neverthrow";
 import type { AppError, SerializedAppError } from "./errors";
 import { serializeAppError } from "./errors";
-import type { AccountStatus, AppSettings, AppUpdateStatus, MeetEventsSnapshot } from "./types";
+import type {
+  AccountStatus,
+  AppSettings,
+  AppUpdateStatus,
+  MeetEventsSnapshot,
+  MenuShortcutStatus,
+} from "./types";
 
 export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: SerializedAppError };
 export type SettingsUpdate = Partial<
-  Pick<AppSettings, "autoJoinEnabled" | "joinOffsetSeconds" | "openOffsetSeconds">
+  Pick<
+    AppSettings,
+    "autoJoinEnabled" | "joinOffsetSeconds" | "menuShortcutAccelerator" | "openOffsetSeconds"
+  >
 >;
 
 export const IPC_CHANNELS = {
@@ -18,6 +27,7 @@ export const IPC_CHANNELS = {
   meetOpen: "meet:open",
   settingsGet: "settings:get",
   settingsUpdate: "settings:update",
+  settingsMenuShortcutStatusGet: "settings:menuShortcutStatusGet",
   updatesGetStatus: "updates:getStatus",
   updatesCheck: "updates:check",
   updatesRunHomebrewUpdate: "updates:runHomebrewUpdate",
@@ -34,6 +44,7 @@ export type MeetLauncherApi = {
   openMeetUrl: (meetUrl: string) => Promise<ApiResult<void>>;
   getSettings: () => Promise<ApiResult<AppSettings>>;
   updateSettings: (settings: SettingsUpdate) => Promise<ApiResult<AppSettings>>;
+  getMenuShortcutStatus: () => Promise<ApiResult<MenuShortcutStatus>>;
   getUpdateStatus: () => Promise<ApiResult<AppUpdateStatus>>;
   checkForUpdates: () => Promise<ApiResult<AppUpdateStatus>>;
   runHomebrewUpdate: () => Promise<ApiResult<AppUpdateStatus>>;

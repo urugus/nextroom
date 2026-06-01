@@ -29,28 +29,36 @@ import {
   validateAppSettings,
 } from "@main/settings/appSettings";
 import {
+  createMenuShortcutRegistrar,
+  type MenuShortcutRegistrar,
+} from "@main/shortcuts/menuShortcut";
+import {
   checkForAppUpdates,
   configureAppUpdater,
   getAppUpdateStatus,
   runHomebrewAppUpdate,
 } from "@main/updater/appUpdater";
-import type { AppError } from "@shared/errors";
+import { type AppError, serializeAppError } from "@shared/errors";
 import { IPC_CHANNELS } from "@shared/ipc";
-import type { AppSettings } from "@shared/types";
+import type { AppSettings, MenuShortcutStatus } from "@shared/types";
 import type { BrowserWindow as ElectronBrowserWindow } from "electron";
 import { err, fromThrowable, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { serializeResultForRenderer } from "./ipc/result";
 
 const nodeRequire = createRequire(import.meta.url);
-const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, session, shell } = nodeRequire(
-  "electron",
-) as typeof import("electron");
+const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, nativeImage, session, shell } =
+  nodeRequire("electron") as typeof import("electron");
 const keytar = nodeRequire("keytar") as typeof import("keytar");
 
 let mainWindow: ElectronBrowserWindow | undefined;
 let menuBarController: MenuBarController | undefined;
+let menuShortcutRegistrar: MenuShortcutRegistrar | undefined;
 let autoOpenScheduler: AutoOpenScheduler | undefined;
+let menuShortcutStatus: MenuShortcutStatus = {
+  accelerator: defaultAppSettings.menuShortcutAccelerator,
+  state: "off",
+};
 const menuOpenRequestQueue = createMenuOpenRequestQueue({
   tryOpenMenu: () => {
     if (menuBarController === undefined) return false;
@@ -103,6 +111,26 @@ const saveAppSettings = (settings: AppSettings): Result<AppSettings, AppError> =
   }
 };
 
+const menuShortcutStatusFor = (
+  accelerator: string | null,
+  result: Result<void, AppError>,
+): MenuShortcutStatus => {
+  if (accelerator === null) {
+    return { accelerator: null, state: "off" };
+  }
+
+  return result.match(
+    () => ({ accelerator, state: "registered" }),
+    (error) => ({ accelerator, error: serializeAppError(error), state: "failed" }),
+  );
+};
+
+const updateMenuShortcutRegistration = (accelerator: string | null): Result<void, AppError> => {
+  const result = menuShortcutRegistrar?.updateShortcut(accelerator) ?? ok(undefined);
+  menuShortcutStatus = menuShortcutStatusFor(accelerator, result);
+  return result;
+};
+
 const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
   const parsed = parseSettingsUpdate(value);
   if (parsed.isErr()) return err(parsed.error);
@@ -111,8 +139,32 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
   const validated = validateAppSettings(nextSettings);
   if (validated.isErr()) return validated;
 
+  const previousShortcutAccelerator = appSettings.menuShortcutAccelerator;
+  const previousShortcutStatus = menuShortcutStatus;
+  const shortcutChanged =
+    "menuShortcutAccelerator" in parsed.value &&
+    nextSettings.menuShortcutAccelerator !== previousShortcutAccelerator;
+
+  if (shortcutChanged) {
+    const registered = updateMenuShortcutRegistration(nextSettings.menuShortcutAccelerator);
+    if (registered.isErr()) {
+      menuShortcutStatus = previousShortcutStatus;
+      return err(registered.error);
+    }
+  }
+
   const saved = saveAppSettings(nextSettings);
-  if (saved.isErr()) return saved;
+  if (saved.isErr()) {
+    if (shortcutChanged) {
+      const restored = updateMenuShortcutRegistration(previousShortcutAccelerator);
+      if (restored.isErr()) {
+        reportMenuBarError("Failed to restore the previous menu shortcut.", restored.error);
+        menuShortcutRegistrar?.unregister();
+        menuShortcutStatus = menuShortcutStatusFor(previousShortcutAccelerator, restored);
+      }
+    }
+    return saved;
+  }
 
   Object.assign(appSettings, nextSettings);
   return ok(appSettings);
@@ -280,6 +332,24 @@ const createMenuBar = (): void => {
   menuOpenRequestQueue.drain();
 };
 
+const openMenuFromShortcut = (): void => {
+  if (menuBarController === undefined) {
+    menuOpenRequestQueue.requestOpen();
+    return;
+  }
+
+  menuBarController.openMenu();
+};
+
+const createMenuShortcut = (): void => {
+  menuShortcutRegistrar = createMenuShortcutRegistrar({
+    globalShortcut,
+    openMenu: openMenuFromShortcut,
+    reportError: reportMenuBarError,
+  });
+  updateMenuShortcutRegistration(appSettings.menuShortcutAccelerator);
+};
+
 const openMeetUrl = async (value: string): Promise<Result<void, AppError>> => {
   const canonicalized = canonicalizeMeetUrl(value);
   if (canonicalized.isErr()) {
@@ -329,6 +399,9 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
   ipcMain.handle(IPC_CHANNELS.settingsGet, () => serializeResultForRenderer(ok(appSettings)));
   ipcMain.handle(IPC_CHANNELS.settingsUpdate, (_event, settings: unknown) =>
     serializeResultForRenderer(updateAppSettings(settings)),
+  );
+  ipcMain.handle(IPC_CHANNELS.settingsMenuShortcutStatusGet, () =>
+    serializeResultForRenderer(ok(menuShortcutStatus)),
   );
   ipcMain.handle(IPC_CHANNELS.updatesGetStatus, () =>
     serializeResultForRenderer(ok(getAppUpdateStatus())),
@@ -380,6 +453,7 @@ if (!appCanStart) {
     autoOpenScheduler = scheduler;
     registerIpc(scheduler);
     createMenuBar();
+    createMenuShortcut();
     calendarSyncService.startPolling();
 
     void checkForAppUpdates();
@@ -393,3 +467,6 @@ if (!appCanStart) {
 }
 
 app.on("window-all-closed", () => undefined);
+app.on("will-quit", () => {
+  menuShortcutRegistrar?.unregister();
+});

@@ -6,6 +6,7 @@ import type {
   AppUpdateStatus,
   MeetEvent,
   MeetEventsSnapshot,
+  MenuShortcutStatus,
 } from "@shared/types";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
@@ -24,9 +25,15 @@ const settings: AppSettings = {
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
+  menuShortcutAccelerator: "Command+Alt+N",
   launchAtLogin: false,
   calendarId: "primary",
   timezone: "Asia/Tokyo",
+};
+
+const menuShortcutStatus: MenuShortcutStatus = {
+  accelerator: "Command+Alt+N",
+  state: "registered",
 };
 
 const meetings: ApiResult<MeetEventsSnapshot> = {
@@ -71,6 +78,7 @@ const installMeetLauncher = (
         Promise.resolve({ ok: true, value: { connected: false, syncing: false } }),
       ),
       getAccountStatus: vi.fn(() => Promise.resolve(status)),
+      getMenuShortcutStatus: vi.fn(() => Promise.resolve({ ok: true, value: menuShortcutStatus })),
       getSettings: vi.fn(() => Promise.resolve({ ok: true, value: settings })),
       getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       listUpcomingMeetings: vi.fn(() => Promise.resolve(meetingsResult)),
@@ -100,6 +108,7 @@ const installMeetLauncherWithStatus = (status: ApiResult<AccountStatus>) => {
       getAccountStatus: vi.fn(() =>
         Promise.resolve({ ok: true, value: { connected: false, syncing: false } }),
       ),
+      getMenuShortcutStatus: vi.fn(() => Promise.resolve({ ok: true, value: menuShortcutStatus })),
       getSettings: vi.fn(() => Promise.resolve({ ok: true, value: settings })),
       getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
       listUpcomingMeetings: vi.fn(() => Promise.resolve({ ok: true, value: { meetings: [] } })),
@@ -439,6 +448,9 @@ describe("App", () => {
             ok: true,
             value: { connected: true, syncing: false },
           }),
+        getMenuShortcutStatus: vi.fn(() =>
+          Promise.resolve({ ok: true, value: menuShortcutStatus }),
+        ),
         getSettings: vi.fn(() => Promise.resolve({ ok: true, value: settings })),
         getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true, value: updateStatus })),
         listUpcomingMeetings: vi.fn(() => Promise.resolve({ ok: true, value: { meetings: [] } })),

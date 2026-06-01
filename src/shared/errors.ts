@@ -9,6 +9,7 @@ export type AppError =
   | { type: "PermissionDenied"; permission: "camera" | "microphone" | "screen"; cause?: unknown }
   | { type: "MainWindowFailed"; cause: unknown }
   | { type: "MeetWindowFailed"; cause: unknown }
+  | { type: "ShortcutRegistrationFailed"; accelerator: string; cause: unknown }
   | { type: "UpdateFailed"; cause: unknown };
 
 export type SerializedAppError = {
@@ -28,6 +29,7 @@ const recoverableByType = {
   PermissionDenied: true,
   MainWindowFailed: true,
   MeetWindowFailed: true,
+  ShortcutRegistrationFailed: true,
   UpdateFailed: true,
 } satisfies Record<AppError["type"], boolean>;
 
@@ -67,6 +69,8 @@ export const appErrorMessage = (error: AppError): string => {
       return `NextRoom window failed: ${unknownToMessage(error.cause)}`;
     case "MeetWindowFailed":
       return `Google Meet window failed: ${unknownToMessage(error.cause)}`;
+    case "ShortcutRegistrationFailed":
+      return `Menu shortcut ${error.accelerator} could not be registered: ${unknownToMessage(error.cause)}`;
     case "UpdateFailed":
       return `App update failed: ${unknownToMessage(error.cause)}`;
   }

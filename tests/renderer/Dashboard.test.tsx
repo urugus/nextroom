@@ -48,6 +48,7 @@ const settings: AppSettings = {
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
+  menuShortcutAccelerator: "Command+Alt+N",
   launchAtLogin: false,
   calendarId: "primary",
   timezone: "Asia/Tokyo",
@@ -58,6 +59,7 @@ const dashboardActions = () => ({
   onConnectAccount: vi.fn(),
   onDisconnectAccount: vi.fn(),
   onJoinOffsetMinutesChange: vi.fn(),
+  onMenuShortcutAcceleratorChange: vi.fn(),
   onOpenMeeting: vi.fn(),
   onOpenOffsetMinutesChange: vi.fn(),
   onSyncCalendar: vi.fn(),
@@ -261,5 +263,50 @@ describe("Dashboard", () => {
 
     expect(onAutoJoinEnabledChange).toHaveBeenCalledWith(false);
     expect(onJoinOffsetMinutesChange).toHaveBeenCalledWith(4);
+  });
+
+  it("records and clears the menu shortcut", () => {
+    const onMenuShortcutAcceleratorChange = vi.fn();
+    render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        onMenuShortcutAcceleratorChange={onMenuShortcutAcceleratorChange}
+        settings={settings}
+      />,
+    );
+
+    expect(screen.getByText("⌘ ⌥ N")).toBeInTheDocument();
+
+    const recordButton = screen.getByRole("button", { name: "Record" });
+    fireEvent.click(recordButton);
+    fireEvent.keyDown(recordButton, { altKey: true, code: "KeyM", key: "Dead", metaKey: true });
+
+    expect(onMenuShortcutAcceleratorChange).toHaveBeenCalledWith("Command+Alt+M");
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+
+    expect(onMenuShortcutAcceleratorChange).toHaveBeenCalledWith(null);
+  });
+
+  it("shows when the configured menu shortcut is unavailable", () => {
+    render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        menuShortcutStatus={{
+          accelerator: "Command+Alt+N",
+          error: {
+            message: "Menu shortcut Command+Alt+N could not be registered.",
+            recoverable: true,
+            type: "ShortcutRegistrationFailed",
+          },
+          state: "failed",
+        }}
+        settings={settings}
+      />,
+    );
+
+    expect(screen.getByText("Shortcut is unavailable. Choose another one.")).toBeInTheDocument();
   });
 });
