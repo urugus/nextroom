@@ -1,10 +1,12 @@
 import { createLaunchDeduper } from "@main/scheduler/launchDeduper";
-import { decideLaunch } from "@main/scheduler/meetingScheduler";
+import { decideAutoJoin, decideLaunch } from "@main/scheduler/meetingScheduler";
 import type { AppSettings, MeetEvent } from "@shared/types";
 import { describe, expect, it } from "vitest";
 
 const settings: AppSettings = {
+  autoJoinEnabled: false,
   autoOpenEnabled: true,
+  joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
   launchAtLogin: false,
@@ -53,5 +55,31 @@ describe("meeting scheduler", () => {
     );
 
     expect(result._unsafeUnwrap()).toEqual({ type: "open", event });
+  });
+
+  it("auto-joins a meeting once its configured offset is due", () => {
+    const deduper = createLaunchDeduper();
+    const result = decideAutoJoin(
+      event,
+      { ...settings, autoJoinEnabled: true, joinOffsetSeconds: 3 * 60 },
+      deduper,
+      new Date("2026-05-28T09:57:00+09:00"),
+    );
+
+    expect(result._unsafeUnwrap()).toEqual({ type: "join", event });
+  });
+
+  it("ignores auto-join when it is disabled", () => {
+    const result = decideAutoJoin(
+      event,
+      settings,
+      createLaunchDeduper(),
+      new Date("2026-05-28T10:00:00+09:00"),
+    );
+
+    expect(result._unsafeUnwrap()).toEqual({
+      type: "ignore",
+      reason: "auto-join-disabled",
+    });
   });
 });

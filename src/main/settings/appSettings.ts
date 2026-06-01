@@ -1,0 +1,76 @@
+import type { AppError } from "@shared/errors";
+import type { AppSettings } from "@shared/types";
+import { err, ok, type Result } from "neverthrow";
+import { z } from "zod";
+
+export const defaultAppSettings: AppSettings = {
+  autoJoinEnabled: false,
+  autoOpenEnabled: true,
+  joinOffsetSeconds: 0,
+  notifyBeforeMinutes: 1,
+  openOffsetSeconds: 0,
+  launchAtLogin: false,
+  calendarId: "primary",
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+};
+
+const minuteOffsetSchema = (fieldName: string) =>
+  z
+    .number()
+    .int()
+    .min(0)
+    .max(10 * 60)
+    .refine((value) => value % 60 === 0, {
+      message: `${fieldName} must be a whole number of minutes`,
+    });
+
+const settingsSchema = z
+  .object({
+    autoJoinEnabled: z.boolean().optional(),
+    autoOpenEnabled: z.boolean().optional(),
+    joinOffsetSeconds: minuteOffsetSchema("joinOffsetSeconds").optional(),
+    notifyBeforeMinutes: z.number().int().min(0).optional(),
+    openOffsetSeconds: minuteOffsetSchema("openOffsetSeconds").optional(),
+    launchAtLogin: z.boolean().optional(),
+    calendarId: z.literal("primary").optional(),
+    timezone: z.string().min(1).optional(),
+  })
+  .strict();
+
+const settingsUpdateSchema = settingsSchema
+  .pick({ autoJoinEnabled: true, joinOffsetSeconds: true, openOffsetSeconds: true })
+  .strict();
+
+type SettingsUpdate = Partial<
+  Pick<AppSettings, "autoJoinEnabled" | "joinOffsetSeconds" | "openOffsetSeconds">
+>;
+
+export const parseStoredAppSettings = (value: unknown): AppSettings => {
+  const parsed = settingsSchema.safeParse(value);
+  if (!parsed.success) return { ...defaultAppSettings };
+
+  const settings = { ...defaultAppSettings, ...parsed.data };
+  return settings.joinOffsetSeconds > settings.openOffsetSeconds
+    ? { ...settings, joinOffsetSeconds: settings.openOffsetSeconds }
+    : settings;
+};
+
+export const parseSettingsUpdate = (value: unknown): Result<SettingsUpdate, AppError> => {
+  const parsed = settingsUpdateSchema.safeParse(value);
+  if (!parsed.success) {
+    return err({ type: "DatabaseFailed", cause: parsed.error.message });
+  }
+
+  return ok(parsed.data);
+};
+
+export const validateAppSettings = (settings: AppSettings): Result<AppSettings, AppError> => {
+  if (settings.joinOffsetSeconds > settings.openOffsetSeconds) {
+    return err({
+      type: "DatabaseFailed",
+      cause: "joinOffsetSeconds must be less than or equal to openOffsetSeconds",
+    });
+  }
+
+  return ok(settings);
+};

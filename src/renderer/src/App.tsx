@@ -1,5 +1,5 @@
 import { unknownToMessage } from "@shared/errors";
-import type { ApiResult } from "@shared/ipc";
+import type { ApiResult, SettingsUpdate } from "@shared/ipc";
 import type {
   AccountStatus,
   AppSettings,
@@ -14,7 +14,9 @@ import "./styles.css";
 const disconnectedStatus: AccountStatus = { connected: false, syncing: false };
 const meetingNotificationTickMs = 30_000;
 const defaultSettings: AppSettings = {
+  autoJoinEnabled: false,
   autoOpenEnabled: true,
+  joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
   launchAtLogin: false,
@@ -49,7 +51,8 @@ export const App = () => {
   const [updateErrorMessage, setUpdateErrorMessage] = useState<string | undefined>(undefined);
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | undefined>(undefined);
   const openingMeetingRef = useRef(false);
-  const latestOpenOffsetSecondsRef = useRef(defaultSettings.openOffsetSeconds);
+  const latestSettingsRef = useRef(defaultSettings);
+  const latestSettingsSaveRef = useRef(0);
 
   const applyResultError = useCallback(<T,>(result: ApiResult<T>): T | undefined => {
     if (result.ok) return result.value;
@@ -63,7 +66,7 @@ export const App = () => {
   }, []);
 
   const applySettings = useCallback((nextSettings: AppSettings) => {
-    latestOpenOffsetSecondsRef.current = nextSettings.openOffsetSeconds;
+    latestSettingsRef.current = nextSettings;
     setSettings(nextSettings);
   }, []);
 
@@ -200,16 +203,16 @@ export const App = () => {
     }
   };
 
-  const updateOpenOffsetMinutes = async (minutes: number) => {
-    const nextOpenOffsetSeconds = minutes * 60;
-    latestOpenOffsetSecondsRef.current = nextOpenOffsetSeconds;
-    setSettings((current) => ({ ...current, openOffsetSeconds: nextOpenOffsetSeconds }));
+  const updateSettings = async (nextSettings: SettingsUpdate) => {
+    const saveId = latestSettingsSaveRef.current + 1;
+    latestSettingsSaveRef.current = saveId;
+    const optimisticSettings = { ...latestSettingsRef.current, ...nextSettings };
+    latestSettingsRef.current = optimisticSettings;
+    setSettings(optimisticSettings);
 
     try {
-      const updated = await window.meetLauncher.updateSettings({
-        openOffsetSeconds: nextOpenOffsetSeconds,
-      });
-      if (latestOpenOffsetSecondsRef.current !== nextOpenOffsetSeconds) return;
+      const updated = await window.meetLauncher.updateSettings(nextSettings);
+      if (latestSettingsSaveRef.current !== saveId) return;
 
       if (!updated.ok) {
         setErrorMessage(updated.error.message);
@@ -219,12 +222,30 @@ export const App = () => {
 
       applySettings(updated.value);
     } catch (cause) {
-      if (latestOpenOffsetSecondsRef.current === nextOpenOffsetSeconds) {
+      if (latestSettingsSaveRef.current === saveId) {
         setErrorMessage(caughtErrorMessage(cause, "Settings update failed."));
         await refreshSettings();
       }
     }
   };
+
+  const updateOpenOffsetMinutes = async (minutes: number) => {
+    const nextOpenOffsetSeconds = minutes * 60;
+    const nextJoinOffsetSeconds = Math.min(
+      latestSettingsRef.current.joinOffsetSeconds,
+      nextOpenOffsetSeconds,
+    );
+
+    await updateSettings({
+      joinOffsetSeconds: nextJoinOffsetSeconds,
+      openOffsetSeconds: nextOpenOffsetSeconds,
+    });
+  };
+
+  const updateAutoJoinEnabled = (autoJoinEnabled: boolean) => updateSettings({ autoJoinEnabled });
+
+  const updateJoinOffsetMinutes = (minutes: number) =>
+    updateSettings({ joinOffsetSeconds: minutes * 60 });
 
   const openMeeting = async (meeting: MeetEvent) => {
     if (openingMeetingRef.current) return;
@@ -283,6 +304,8 @@ export const App = () => {
       onConnectAccount={connectAccount}
       onDisconnectAccount={disconnectAccount}
       onRunHomebrewUpdate={runHomebrewUpdate}
+      onAutoJoinEnabledChange={updateAutoJoinEnabled}
+      onJoinOffsetMinutesChange={updateJoinOffsetMinutes}
       onOpenMeeting={openMeeting}
       onOpenOffsetMinutesChange={updateOpenOffsetMinutes}
       onSyncCalendar={syncCalendar}

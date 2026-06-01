@@ -43,7 +43,9 @@ const updateUnsupported: AppUpdateStatus = {
 };
 
 const settings: AppSettings = {
+  autoJoinEnabled: false,
   autoOpenEnabled: true,
+  joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
   launchAtLogin: false,
@@ -51,16 +53,22 @@ const settings: AppSettings = {
   timezone: "Asia/Tokyo",
 };
 
+const dashboardActions = () => ({
+  onAutoJoinEnabledChange: vi.fn(),
+  onConnectAccount: vi.fn(),
+  onDisconnectAccount: vi.fn(),
+  onJoinOffsetMinutesChange: vi.fn(),
+  onOpenMeeting: vi.fn(),
+  onOpenOffsetMinutesChange: vi.fn(),
+  onSyncCalendar: vi.fn(),
+});
+
 describe("Dashboard", () => {
   it("renders disconnected account settings", () => {
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
-        onConnectAccount={vi.fn()}
-        onDisconnectAccount={vi.fn()}
-        onOpenMeeting={vi.fn()}
-        onOpenOffsetMinutesChange={vi.fn()}
-        onSyncCalendar={vi.fn()}
+        {...dashboardActions()}
         settings={settings}
       />,
     );
@@ -79,11 +87,7 @@ describe("Dashboard", () => {
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
         errorMessage="Calendar API failed"
-        onConnectAccount={vi.fn()}
-        onDisconnectAccount={vi.fn()}
-        onOpenMeeting={vi.fn()}
-        onOpenOffsetMinutesChange={vi.fn()}
-        onSyncCalendar={vi.fn()}
+        {...dashboardActions()}
         settings={settings}
       />,
     );
@@ -97,13 +101,9 @@ describe("Dashboard", () => {
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
+        {...dashboardActions()}
         onCheckForUpdates={onCheckForUpdates}
-        onConnectAccount={vi.fn()}
-        onDisconnectAccount={vi.fn()}
         onRunHomebrewUpdate={onRunHomebrewUpdate}
-        onOpenMeeting={vi.fn()}
-        onOpenOffsetMinutesChange={vi.fn()}
-        onSyncCalendar={vi.fn()}
         settings={settings}
         updateStatus={updateAvailable}
       />,
@@ -124,12 +124,8 @@ describe("Dashboard", () => {
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
+        {...dashboardActions()}
         onCheckForUpdates={vi.fn()}
-        onConnectAccount={vi.fn()}
-        onDisconnectAccount={vi.fn()}
-        onOpenMeeting={vi.fn()}
-        onOpenOffsetMinutesChange={vi.fn()}
-        onSyncCalendar={vi.fn()}
         settings={settings}
         updateStatus={updateChecking}
       />,
@@ -147,13 +143,9 @@ describe("Dashboard", () => {
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
+        {...dashboardActions()}
         onCheckForUpdates={vi.fn()}
-        onConnectAccount={vi.fn()}
-        onDisconnectAccount={vi.fn()}
-        onOpenMeeting={vi.fn()}
-        onOpenOffsetMinutesChange={vi.fn()}
         onRunHomebrewUpdate={vi.fn()}
-        onSyncCalendar={vi.fn()}
         settings={settings}
         updateStatus={updateHomebrewUpdating}
       />,
@@ -173,11 +165,7 @@ describe("Dashboard", () => {
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
-        onConnectAccount={vi.fn()}
-        onDisconnectAccount={vi.fn()}
-        onOpenMeeting={vi.fn()}
-        onOpenOffsetMinutesChange={vi.fn()}
-        onSyncCalendar={vi.fn()}
+        {...dashboardActions()}
         settings={settings}
         updateStatus={updateUnsupported}
       />,
@@ -195,11 +183,7 @@ describe("Dashboard", () => {
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
-        onConnectAccount={vi.fn()}
-        onDisconnectAccount={vi.fn()}
-        onOpenMeeting={vi.fn()}
-        onOpenOffsetMinutesChange={vi.fn()}
-        onSyncCalendar={vi.fn()}
+        {...dashboardActions()}
         settings={settings}
         updateStatus={updateError}
       />,
@@ -215,11 +199,7 @@ describe("Dashboard", () => {
     render(
       <Dashboard
         accountStatus={{ connected: false, syncing: false }}
-        onConnectAccount={vi.fn()}
-        onDisconnectAccount={vi.fn()}
-        onOpenMeeting={vi.fn()}
-        onOpenOffsetMinutesChange={vi.fn()}
-        onSyncCalendar={vi.fn()}
+        {...dashboardActions()}
         settings={settings}
         updateErrorMessage="Update status is unavailable."
       />,
@@ -235,11 +215,8 @@ describe("Dashboard", () => {
     render(
       <Dashboard
         accountStatus={{ connected: true, syncing: false }}
-        onConnectAccount={vi.fn()}
-        onDisconnectAccount={vi.fn()}
-        onOpenMeeting={vi.fn()}
+        {...dashboardActions()}
         onOpenOffsetMinutesChange={onOpenOffsetMinutesChange}
-        onSyncCalendar={vi.fn()}
         settings={{ ...settings, openOffsetSeconds: 5 * 60 }}
       />,
     );
@@ -251,5 +228,38 @@ describe("Dashboard", () => {
     fireEvent.change(slider, { target: { value: "10" } });
 
     expect(onOpenOffsetMinutesChange).toHaveBeenCalledWith(10);
+  });
+
+  it("updates the Meet auto-join settings", () => {
+    const onAutoJoinEnabledChange = vi.fn();
+    const onJoinOffsetMinutesChange = vi.fn();
+    render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        onAutoJoinEnabledChange={onAutoJoinEnabledChange}
+        onJoinOffsetMinutesChange={onJoinOffsetMinutesChange}
+        settings={{
+          ...settings,
+          autoJoinEnabled: true,
+          joinOffsetSeconds: 2 * 60,
+          openOffsetSeconds: 5 * 60,
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText("Join 2 min before")).toHaveLength(2);
+    const toggle = screen.getByRole("checkbox", { name: "Auto-join Meet" });
+    const slider = screen.getByRole("slider", { name: "Meet auto-join offset" });
+
+    expect(toggle).toBeChecked();
+    expect(slider).toHaveValue("2");
+    expect(slider).toHaveAttribute("max", "5");
+
+    fireEvent.click(toggle);
+    fireEvent.change(slider, { target: { value: "4" } });
+
+    expect(onAutoJoinEnabledChange).toHaveBeenCalledWith(false);
+    expect(onJoinOffsetMinutesChange).toHaveBeenCalledWith(4);
   });
 });

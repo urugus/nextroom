@@ -8,9 +8,11 @@ type DashboardProps = {
   pendingAction?: "connect" | "disconnect" | "sync";
   settings: AppSettings;
   syncedAt?: string;
+  onAutoJoinEnabledChange: (enabled: boolean) => Promise<unknown>;
   onCheckForUpdates?: () => Promise<unknown>;
   onConnectAccount: () => Promise<unknown>;
   onDisconnectAccount: () => Promise<unknown>;
+  onJoinOffsetMinutesChange: (minutes: number) => Promise<unknown>;
   onOpenMeeting: (meeting: MeetEvent) => Promise<unknown>;
   onOpenOffsetMinutesChange: (minutes: number) => Promise<unknown>;
   onRunHomebrewUpdate?: () => Promise<unknown>;
@@ -90,9 +92,11 @@ export const Dashboard = ({
   accountStatus,
   errorMessage,
   nextMeetingNotification,
+  onAutoJoinEnabledChange,
   onCheckForUpdates,
   onConnectAccount,
   onDisconnectAccount,
+  onJoinOffsetMinutesChange,
   onOpenMeeting,
   onRunHomebrewUpdate,
   onSyncCalendar,
@@ -121,8 +125,11 @@ export const Dashboard = ({
   const notificationOpening =
     nextMeetingNotification !== undefined && openingMeetUrl === nextMeetingNotification.meetUrl;
   const openOffsetMinutes = Math.trunc(settings.openOffsetSeconds / 60);
+  const joinOffsetMinutes = Math.trunc(settings.joinOffsetSeconds / 60);
   const openOffsetLabel =
     openOffsetMinutes === 0 ? "Open at start time" : `Open ${openOffsetMinutes} min before`;
+  const joinOffsetLabel =
+    joinOffsetMinutes === 0 ? "Join at start time" : `Join ${joinOffsetMinutes} min before`;
   const updateStatusMeta =
     updateErrorText !== undefined
       ? { busy: false, label: "Failed", tone: "error" as const }
@@ -224,6 +231,41 @@ export const Dashboard = ({
                 }
               />
               <span>{openOffsetMinutes} min</span>
+            </label>
+          </div>
+          <div className="preference-row">
+            <div className="preference-copy">
+              <strong>Auto-join Meet</strong>
+              <span>{settings.autoJoinEnabled ? joinOffsetLabel : "Off"}</span>
+            </div>
+            <label className="toggle-control">
+              <input
+                type="checkbox"
+                checked={settings.autoJoinEnabled}
+                aria-label="Auto-join Meet"
+                onChange={(event) => void onAutoJoinEnabledChange(event.currentTarget.checked)}
+              />
+            </label>
+          </div>
+          <div className="preference-row">
+            <div className="preference-copy">
+              <strong>Auto-join offset</strong>
+              <span>{joinOffsetLabel}</span>
+            </div>
+            <label className="range-control">
+              <input
+                type="range"
+                min="0"
+                max={openOffsetMinutes}
+                step="1"
+                value={joinOffsetMinutes}
+                disabled={!settings.autoJoinEnabled}
+                aria-label="Meet auto-join offset"
+                onChange={(event) =>
+                  void onJoinOffsetMinutesChange(Number(event.currentTarget.value))
+                }
+              />
+              <span>{joinOffsetMinutes} min</span>
             </label>
           </div>
         </div>

@@ -4,7 +4,9 @@ import { serializeAppError } from "./errors";
 import type { AccountStatus, AppSettings, AppUpdateStatus, MeetEventsSnapshot } from "./types";
 
 export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: SerializedAppError };
-export type SettingsUpdate = Pick<AppSettings, "openOffsetSeconds">;
+export type SettingsUpdate = Partial<
+  Pick<AppSettings, "autoJoinEnabled" | "joinOffsetSeconds" | "openOffsetSeconds">
+>;
 
 export const IPC_CHANNELS = {
   accountGetStatus: "account:getStatus",

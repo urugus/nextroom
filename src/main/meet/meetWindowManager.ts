@@ -4,6 +4,12 @@ import { err, ok, type Result } from "neverthrow";
 
 type AlwaysOnTopLevel = "screen-saver";
 
+type AutoJoinResult = { ok: true } | { ok: false; reason: string };
+
+type ManagedWebContents = {
+  executeJavaScript: (code: string) => Promise<unknown>;
+};
+
 export type ManagedMeetWindow = {
   destroy: () => void;
   focus: () => void;
@@ -14,6 +20,7 @@ export type ManagedMeetWindow = {
   restore: () => void;
   setAlwaysOnTop: (flag: boolean, level?: AlwaysOnTopLevel) => void;
   show: () => void;
+  webContents: ManagedWebContents;
 };
 
 type MeetWindowManagerInput = {
@@ -21,10 +28,13 @@ type MeetWindowManagerInput = {
   createWindow: () => Result<ManagedMeetWindow, AppError>;
   focusApp?: () => void;
   focusDurationMs?: number;
+  onWindowClosed?: (meetUrl: string) => void;
   setTimeoutFn?: typeof setTimeout;
 };
 
 export type MeetWindowManager = {
+  autoJoinMeetUrl: (value: string) => Promise<Result<void, AppError>>;
+  hasOpenMeetWindowExcept: (value: string) => boolean;
   openMeetUrl: (value: string) => Promise<Result<void, AppError>>;
 };
 
@@ -63,11 +73,85 @@ export const focusMeetWindow = (
   focusResetTimers.set(meetWindow, resetTimer);
 };
 
+const autoJoinScript = `
+new Promise((resolve) => {
+  const deadline = Date.now() + 15_000;
+  const mediaControlPattern =
+    /camera|microphone|mic|カメラ|マイク|音声|ビデオ|video|audio/i;
+  const joinPattern =
+    /join now|ask to join|join meeting|参加|今すぐ参加|参加をリクエスト|参加を依頼/i;
+
+  const labelFor = (element) =>
+    [
+      element.getAttribute("aria-label"),
+      element.getAttribute("data-tooltip"),
+      element.getAttribute("title"),
+      element.textContent,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+  const findJoinButton = () => {
+    const candidates = Array.from(document.querySelectorAll("button, [role='button']"));
+
+    return candidates.find((element) => {
+      const label = labelFor(element);
+      const disabled =
+        element.hasAttribute("disabled") || element.getAttribute("aria-disabled") === "true";
+
+      return !disabled && joinPattern.test(label) && !mediaControlPattern.test(label);
+    });
+  };
+
+  let observer;
+  let interval;
+
+  const cleanup = () => {
+    observer?.disconnect();
+    window.clearInterval(interval);
+  };
+
+  const tick = () => {
+    if (location.hostname === "accounts.google.com") {
+      cleanup();
+      resolve({ ok: false, reason: "Meet login is required." });
+      return;
+    }
+
+    const button = findJoinButton();
+    if (button !== undefined) {
+      button.click();
+      cleanup();
+      resolve({ ok: true });
+      return;
+    }
+
+    if (Date.now() >= deadline) {
+      cleanup();
+      resolve({ ok: false, reason: "Meet join button was not found." });
+    }
+  };
+
+  observer = new MutationObserver(tick);
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+  interval = window.setInterval(tick, 500);
+  tick();
+});
+`;
+
+const isAutoJoinResult = (value: unknown): value is AutoJoinResult =>
+  typeof value === "object" &&
+  value !== null &&
+  "ok" in value &&
+  (value.ok === true ||
+    (value.ok === false && "reason" in value && typeof value.reason === "string"));
+
 export const createMeetWindowManager = ({
   clearTimeoutFn = clearTimeout,
   createWindow,
   focusApp,
   focusDurationMs,
+  onWindowClosed,
   setTimeoutFn = setTimeout,
 }: MeetWindowManagerInput): MeetWindowManager => {
   const meetWindows = new Map<MeetUrl, ManagedMeetWindow>();
@@ -75,49 +159,87 @@ export const createMeetWindowManager = ({
   const removeWindow = (meetUrl: MeetUrl, meetWindow: ManagedMeetWindow): void => {
     if (meetWindows.get(meetUrl) === meetWindow) {
       meetWindows.delete(meetUrl);
+      onWindowClosed?.(meetUrl);
+    }
+  };
+
+  const openMeetWindow = async (
+    value: string,
+  ): Promise<Result<{ meetUrl: MeetUrl; meetWindow: ManagedMeetWindow }, AppError>> => {
+    const canonicalized = canonicalizeMeetUrl(value);
+    if (canonicalized.isErr()) {
+      return err(canonicalized.error);
+    }
+
+    const meetUrl = canonicalized.value;
+    const existingWindow = meetWindows.get(meetUrl);
+    if (existingWindow !== undefined && !existingWindow.isDestroyed()) {
+      focusMeetWindow(existingWindow, focusApp, setTimeoutFn, clearTimeoutFn, focusDurationMs);
+      return ok({ meetUrl, meetWindow: existingWindow });
+    }
+
+    if (existingWindow !== undefined) {
+      meetWindows.delete(meetUrl);
+    }
+
+    const created = createWindow();
+    if (created.isErr()) {
+      return err(created.error);
+    }
+
+    const meetWindow = created.value;
+    meetWindows.set(meetUrl, meetWindow);
+    meetWindow.on("closed", () => {
+      removeWindow(meetUrl, meetWindow);
+    });
+
+    try {
+      await meetWindow.loadURL(meetUrl);
+      focusMeetWindow(meetWindow, focusApp, setTimeoutFn, clearTimeoutFn, focusDurationMs);
+      return ok({ meetUrl, meetWindow });
+    } catch (cause) {
+      removeWindow(meetUrl, meetWindow);
+      if (!meetWindow.isDestroyed()) {
+        meetWindow.destroy();
+      }
+      return err({ type: "MeetWindowFailed", cause });
     }
   };
 
   return {
-    openMeetUrl: async (value) => {
-      const canonicalized = canonicalizeMeetUrl(value);
-      if (canonicalized.isErr()) {
-        return err(canonicalized.error);
-      }
-
-      const meetUrl = canonicalized.value;
-      const existingWindow = meetWindows.get(meetUrl);
-      if (existingWindow !== undefined && !existingWindow.isDestroyed()) {
-        focusMeetWindow(existingWindow, focusApp, setTimeoutFn, clearTimeoutFn, focusDurationMs);
-        return ok(undefined);
-      }
-
-      if (existingWindow !== undefined) {
-        meetWindows.delete(meetUrl);
-      }
-
-      const created = createWindow();
-      if (created.isErr()) {
-        return err(created.error);
-      }
-
-      const meetWindow = created.value;
-      meetWindows.set(meetUrl, meetWindow);
-      meetWindow.on("closed", () => {
-        removeWindow(meetUrl, meetWindow);
-      });
+    autoJoinMeetUrl: async (value) => {
+      const opened = await openMeetWindow(value);
+      if (opened.isErr()) return err(opened.error);
 
       try {
-        await meetWindow.loadURL(meetUrl);
-        focusMeetWindow(meetWindow, focusApp, setTimeoutFn, clearTimeoutFn, focusDurationMs);
-        return ok(undefined);
-      } catch (cause) {
-        removeWindow(meetUrl, meetWindow);
-        if (!meetWindow.isDestroyed()) {
-          meetWindow.destroy();
+        const result = await opened.value.meetWindow.webContents.executeJavaScript(autoJoinScript);
+        if (isAutoJoinResult(result)) {
+          if (result.ok) return ok(undefined);
+
+          return err({ type: "MeetWindowFailed", cause: result.reason });
         }
+
+        return err({
+          type: "MeetWindowFailed",
+          cause: "Meet join automation returned an unexpected result.",
+        });
+      } catch (cause) {
         return err({ type: "MeetWindowFailed", cause });
       }
+    },
+    hasOpenMeetWindowExcept: (value) => {
+      const canonicalized = canonicalizeMeetUrl(value);
+      if (canonicalized.isErr()) {
+        return [...meetWindows.values()].some((meetWindow) => !meetWindow.isDestroyed());
+      }
+
+      return [...meetWindows].some(
+        ([meetUrl, meetWindow]) => meetUrl !== canonicalized.value && !meetWindow.isDestroyed(),
+      );
+    },
+    openMeetUrl: async (value) => {
+      const opened = await openMeetWindow(value);
+      return opened.map(() => undefined);
     },
   };
 };
