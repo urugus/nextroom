@@ -3,6 +3,7 @@ import {
   findMenuOpenProtocolUrl,
   isMenuOpenProtocolUrl,
   nextRoomMenuUrl,
+  protocolClientRegistrationOptions,
 } from "@main/protocol/menuOpenProtocol";
 import { describe, expect, it, vi } from "vitest";
 
@@ -16,6 +17,30 @@ describe("isMenuOpenProtocolUrl", () => {
     expect(isMenuOpenProtocolUrl("nextroom://settings")).toBe(false);
     expect(isMenuOpenProtocolUrl("https://nextroom.local/menu")).toBe(false);
     expect(isMenuOpenProtocolUrl("not a url")).toBe(false);
+  });
+});
+
+describe("protocolClientRegistrationOptions", () => {
+  it("uses the default packaged app registration", () => {
+    expect(
+      protocolClientRegistrationOptions({
+        argv: ["/Applications/NextRoom.app/Contents/MacOS/NextRoom"],
+        execPath: "/Applications/NextRoom.app/Contents/MacOS/NextRoom",
+      }),
+    ).toEqual({ args: [] });
+  });
+
+  it("uses the Electron executable and app entrypoint in default-app development mode", () => {
+    expect(
+      protocolClientRegistrationOptions({
+        argv: ["/path/to/electron", "/path/to/out/main/index.js"],
+        defaultApp: true,
+        execPath: "/path/to/electron",
+      }),
+    ).toEqual({
+      args: ["/path/to/out/main/index.js"],
+      executable: "/path/to/electron",
+    });
   });
 });
 

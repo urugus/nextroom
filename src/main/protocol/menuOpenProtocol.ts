@@ -7,6 +7,27 @@ export type MenuOpenRequestQueue = {
   requestOpen: () => void;
 };
 
+export type ProtocolClientRegistrationOptions = {
+  args: string[];
+  executable?: string;
+};
+
+export const protocolClientRegistrationOptions = ({
+  argv,
+  defaultApp,
+  execPath,
+}: {
+  argv: readonly string[];
+  defaultApp?: boolean;
+  execPath: string;
+}): ProtocolClientRegistrationOptions =>
+  defaultApp === true && argv[1] !== undefined
+    ? {
+        args: [argv[1]],
+        executable: execPath,
+      }
+    : { args: [] };
+
 export const isMenuOpenProtocolUrl = (value: string): boolean => {
   try {
     const url = new URL(value);

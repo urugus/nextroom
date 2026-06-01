@@ -18,6 +18,7 @@ import {
   findMenuOpenProtocolUrl,
   isMenuOpenProtocolUrl,
   nextRoomProtocolScheme,
+  protocolClientRegistrationOptions,
 } from "@main/protocol/menuOpenProtocol";
 import { type AutoOpenScheduler, createAutoOpenScheduler } from "@main/scheduler/autoOpenScheduler";
 import { createLaunchDeduper } from "@main/scheduler/launchDeduper";
@@ -63,6 +64,7 @@ const settingsFileName = "settings.json";
 const menuBarLogFileName = "menu-bar.log";
 let appSettings: AppSettings = { ...defaultAppSettings };
 const appCanStart = app.requestSingleInstanceLock();
+const electronProcess = process as NodeJS.Process & { defaultApp?: boolean };
 
 app.on("open-url", (event, url) => {
   if (!isMenuOpenProtocolUrl(url)) return;
@@ -339,11 +341,26 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
   );
 };
 
+const registerProtocolClient = (): void => {
+  const options = protocolClientRegistrationOptions({
+    argv: process.argv,
+    defaultApp: electronProcess.defaultApp,
+    execPath: process.execPath,
+  });
+
+  if (options.executable !== undefined) {
+    app.setAsDefaultProtocolClient(nextRoomProtocolScheme, options.executable, options.args);
+    return;
+  }
+
+  app.setAsDefaultProtocolClient(nextRoomProtocolScheme);
+};
+
 if (!appCanStart) {
   app.quit();
 } else {
   void app.whenReady().then(() => {
-    app.setAsDefaultProtocolClient(nextRoomProtocolScheme);
+    registerProtocolClient();
     appSettings = loadAppSettings();
     if (process.platform === "darwin") {
       app.dock?.hide();
