@@ -271,6 +271,83 @@ describe("createMeetWindowManager", () => {
     expect(meetWindow.webContents.executeJavaScript).toHaveBeenCalledTimes(1);
   });
 
+  it("focuses the latest open Meet window when the app is activated", async () => {
+    vi.useFakeTimers();
+    const firstWindow = createFakeMeetWindow();
+    const secondWindow = createFakeMeetWindow();
+    const createWindow = vi
+      .fn()
+      .mockReturnValueOnce(ok(firstWindow))
+      .mockReturnValueOnce(ok(secondWindow));
+    const focusApp = vi.fn();
+    const manager = createMeetWindowManager({ createWindow, focusApp });
+
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+    await manager.openMeetUrl("https://meet.google.com/xyz-abcd-efg");
+    vi.mocked(firstWindow.focus).mockClear();
+    vi.mocked(secondWindow.focus).mockClear();
+    focusApp.mockClear();
+
+    expect(manager.focusOpenMeetWindow()).toBe(true);
+
+    expect(focusApp).toHaveBeenCalledTimes(1);
+    expect(firstWindow.focus).not.toHaveBeenCalled();
+    expect(secondWindow.focus).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips destroyed Meet windows when focusing an open Meet window", async () => {
+    vi.useFakeTimers();
+    const firstWindow = createFakeMeetWindow();
+    const secondWindow = createFakeMeetWindow();
+    const createWindow = vi
+      .fn()
+      .mockReturnValueOnce(ok(firstWindow))
+      .mockReturnValueOnce(ok(secondWindow));
+    const manager = createMeetWindowManager({ createWindow });
+
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+    await manager.openMeetUrl("https://meet.google.com/xyz-abcd-efg");
+    vi.mocked(firstWindow.focus).mockClear();
+    vi.mocked(secondWindow.focus).mockClear();
+    secondWindow.setDestroyed(true);
+
+    expect(manager.focusOpenMeetWindow()).toBe(true);
+
+    expect(firstWindow.focus).toHaveBeenCalledTimes(1);
+    expect(secondWindow.focus).not.toHaveBeenCalled();
+  });
+
+  it("does not focus anything when no Meet window is open", () => {
+    const manager = createMeetWindowManager({
+      createWindow: vi.fn(() => ok(createFakeMeetWindow())),
+    });
+
+    expect(manager.focusOpenMeetWindow()).toBe(false);
+  });
+
+  it("does not focus anything when all tracked Meet windows are destroyed", async () => {
+    vi.useFakeTimers();
+    const firstWindow = createFakeMeetWindow();
+    const secondWindow = createFakeMeetWindow();
+    const createWindow = vi
+      .fn()
+      .mockReturnValueOnce(ok(firstWindow))
+      .mockReturnValueOnce(ok(secondWindow));
+    const manager = createMeetWindowManager({ createWindow });
+
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+    await manager.openMeetUrl("https://meet.google.com/xyz-abcd-efg");
+    vi.mocked(firstWindow.focus).mockClear();
+    vi.mocked(secondWindow.focus).mockClear();
+    firstWindow.setDestroyed(true);
+    secondWindow.setDestroyed(true);
+
+    expect(manager.focusOpenMeetWindow()).toBe(false);
+
+    expect(firstWindow.focus).not.toHaveBeenCalled();
+    expect(secondWindow.focus).not.toHaveBeenCalled();
+  });
+
   it("returns an error when auto-join cannot find a join button", async () => {
     const meetWindow = createFakeMeetWindow(
       () => Promise.resolve(),

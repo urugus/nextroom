@@ -36,6 +36,7 @@ type MeetWindowManagerInput = {
 
 export type MeetWindowManager = {
   autoJoinMeetUrl: (value: string) => Promise<Result<void, AppError>>;
+  focusOpenMeetWindow: () => boolean;
   hasOpenMeetWindowExcept: (value: string) => boolean;
   openMeetUrl: (value: string) => Promise<Result<void, AppError>>;
   updateUpdateStatus: (status: AppUpdateStatus) => void;
@@ -233,6 +234,21 @@ export const createMeetWindowManager = ({
       } catch (cause) {
         return err({ type: "MeetWindowFailed", cause });
       }
+    },
+    focusOpenMeetWindow: () => {
+      const windows = [...meetWindows.values()];
+      let meetWindow: ManagedMeetWindow | undefined;
+      for (let index = windows.length - 1; index >= 0; index -= 1) {
+        const candidate = windows[index];
+        if (!candidate.isDestroyed()) {
+          meetWindow = candidate;
+          break;
+        }
+      }
+      if (meetWindow === undefined) return false;
+
+      focusMeetWindow(meetWindow, focusApp, setTimeoutFn, clearTimeoutFn, focusDurationMs);
+      return true;
     },
     hasOpenMeetWindowExcept: (value) => {
       const canonicalized = canonicalizeMeetUrl(value);
