@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="NextRoom logo">
+  <defs>
+    <linearGradient id="tileFill" x1="228" x2="796" y1="207" y2="835" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fffff8" />
+      <stop offset="0.58" stop-color="#fbfbef" />
+      <stop offset="1" stop-color="#f1f1df" />
+    </linearGradient>
+    <linearGradient id="frontPanel" x1="350" x2="622" y1="246" y2="749" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffd31b" />
+      <stop offset="0.52" stop-color="#ffc400" />
+      <stop offset="1" stop-color="#f3b800" />
+    </linearGradient>
+    <linearGradient id="backFrame" x1="556" x2="720" y1="289" y2="674" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffb331" />
+      <stop offset="0.55" stop-color="#ff9414" />
+      <stop offset="1" stop-color="#ffbd3d" />
+    </linearGradient>
+    <linearGradient id="backInner" x1="595" x2="694" y1="314" y2="653" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f99412" />
+      <stop offset="0.48" stop-color="#ff9311" />
+      <stop offset="0.83" stop-color="#ffd198" />
+      <stop offset="1" stop-color="#fff3de" />
+    </linearGradient>
+    <linearGradient id="frontGlow" x1="414" x2="606" y1="331" y2="623" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffe35a" stop-opacity="0.34" />
+      <stop offset="1" stop-color="#fff8bc" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <rect x="206" y="214" width="612" height="632" rx="132" fill="#17202a" opacity="0.06" />
+  <rect x="192" y="196" width="640" height="660" rx="142" fill="#17202a" opacity="0.08" />
+  <rect x="178" y="166" width="668" height="690" rx="148" fill="url(#tileFill)" />
+  <rect x="179" y="167" width="666" height="688" rx="147" fill="none" stroke="#eef0e3" stroke-width="2" />
+
+  <rect x="574" y="308" width="164" height="386" rx="58" fill="#d98200" opacity="0.18" />
+  <path
+    d="M365 342c0-39 29-72 68-77l174-21c41-5 77 27 77 68v390c0 40-36 70-75 62l-182-39c-36-8-62-40-62-77V342Z"
+    fill="#d98200"
+    opacity="0.14"
+  />
+  <rect x="556" y="286" width="164" height="386" rx="58" fill="url(#backFrame)" />
+  <rect x="594" y="316" width="101" height="326" rx="45" fill="url(#backInner)" opacity="0.98" />
+  <path
+    d="M344 321c0-39 29-72 68-77l174-21c41-5 77 27 77 68v390c0 40-36 70-75 62l-182-39c-36-8-62-40-62-77V321Z"
+    fill="url(#frontPanel)"
+  />
+  <path
+    d="M345 321c0-39 29-72 68-77l174-21c41-5 77 27 77 68v390c0 40-36 70-75 62l-182-39c-36-8-62-40-62-77V321Z"
+    fill="url(#frontGlow)"
+  />
+  <path
+    d="M344 624v-95c20 64 82 118 181 151l69 23c13 4 26 5 38 2-13 25-40 42-69 36l-157-34c-36-8-62-40-62-76v-7Z"
+    fill="#eeb000"
+    opacity="0.2"
+  />
+</svg>

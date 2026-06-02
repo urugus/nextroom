@@ -11,6 +11,7 @@ import {
 } from "@main/meet/meetSessionPermissions";
 import { createMeetWindowManager, type ManagedMeetWindow } from "@main/meet/meetWindowManager";
 import { createMenuBarController, type MenuBarController } from "@main/menuBar/menuBarController";
+import { createTrayIcon } from "@main/menuBar/trayIcon";
 import { createGoogleAuthService } from "@main/oauth/googleAuthService";
 import { createOAuthClient } from "@main/oauth/oauthClient";
 import {
@@ -421,18 +422,6 @@ const showSettingsWindow = (): Result<ElectronBrowserWindow, AppError> => {
   return created;
 };
 
-const createTrayIcon = () => {
-  const image = nativeImage
-    .createFromPath(join(__dirname, "../../assets/nextroom-logo.png"))
-    .resize({ height: 18, width: 18 });
-
-  if (process.platform === "darwin") {
-    image.setTemplateImage(true);
-  }
-
-  return image;
-};
-
 const reportMenuBarError = (message: string, cause: unknown): void => {
   try {
     const logDirectory = app.getPath("logs");
@@ -450,7 +439,10 @@ const createMenuBar = (): void => {
   menuBarController = createMenuBarController({
     buildMenuFromTemplate: (template) => Menu.buildFromTemplate(template),
     createTray: (icon) => new Tray(icon),
-    icon: createTrayIcon(),
+    icon: createTrayIcon({
+      iconPath: join(__dirname, "../../assets/nextroom-tray-icon.png"),
+      nativeImage,
+    }),
     openMeetUrl,
     quitApp: () => {
       app.quit();
