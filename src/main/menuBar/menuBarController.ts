@@ -28,8 +28,87 @@ const formatMeetingTime = (value: string): string =>
     minute: "2-digit",
   }).format(new Date(value));
 
+const monthLabels = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+const meetingDateKey = (value: string): string => {
+  const date = new Date(value);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+};
+
+const formatMeetingDate = (value: string): string => {
+  const date = new Date(value);
+  return `${monthLabels[date.getMonth()]} ${date.getDate()} (${weekdayLabels[date.getDay()]})`;
+};
+
 const meetingLabel = (meeting: MeetEvent): string =>
   `${formatMeetingTime(meeting.startAt)} ${meeting.summary}`;
+
+const compareByStartAt = (left: MeetEvent, right: MeetEvent): number =>
+  new Date(left.startAt).getTime() - new Date(right.startAt).getTime();
+
+const sortedByStartAt = (meetings: MeetEvent[]): MeetEvent[] => {
+  const sorted: MeetEvent[] = [];
+
+  for (const meeting of meetings) {
+    const index = sorted.findIndex((candidate) => compareByStartAt(meeting, candidate) < 0);
+    if (index === -1) {
+      sorted.push(meeting);
+    } else {
+      sorted.splice(index, 0, meeting);
+    }
+  }
+
+  return sorted;
+};
+
+const meetingMenuItems = (
+  meetings: MeetEvent[],
+  openMeetUrl: (meetUrl: string) => void,
+): MenuItemConstructorOptions[] => {
+  let previousDateKey: string | undefined;
+
+  return sortedByStartAt(meetings).flatMap((meeting): MenuItemConstructorOptions[] => {
+    const dateKey = meetingDateKey(meeting.startAt);
+    const dateHeader =
+      dateKey === previousDateKey
+        ? []
+        : [
+            {
+              enabled: false,
+              label: formatMeetingDate(meeting.startAt),
+            } satisfies MenuItemConstructorOptions,
+          ];
+
+    previousDateKey = dateKey;
+
+    return [
+      ...dateHeader,
+      {
+        click: () => {
+          openMeetUrl(meeting.meetUrl);
+        },
+        label: meetingLabel(meeting),
+      },
+    ];
+  });
+};
 
 export const buildMenuBarTemplate = ({
   meetings,
@@ -66,14 +145,7 @@ export const buildMenuBarTemplate = ({
           label: "No upcoming Google Meet meetings",
         } satisfies MenuItemConstructorOptions,
       ]
-    : meetings.map(
-        (meeting): MenuItemConstructorOptions => ({
-          click: () => {
-            openMeetUrl(meeting.meetUrl);
-          },
-          label: meetingLabel(meeting),
-        }),
-      )),
+    : meetingMenuItems(meetings, openMeetUrl)),
   {
     type: "separator",
   },

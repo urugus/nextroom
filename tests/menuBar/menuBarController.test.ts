@@ -64,6 +64,66 @@ describe("buildMenuBarTemplate", () => {
     expect(openMeetUrl).toHaveBeenCalledWith("https://meet.google.com/abc-defg-hij");
   });
 
+  it("groups meeting items by local start date", () => {
+    const sameDayMeeting: MeetEvent = {
+      ...meeting,
+      endAt: "2026-05-28T15:30:00",
+      eventId: "event-2",
+      meetUrl: "https://meet.google.com/def-ghij-klm",
+      occurrenceKey: "primary:event-2:2026-05-28T15:00:00",
+      startAt: "2026-05-28T15:00:00",
+      summary: "Design review",
+    };
+    const nextDayMeeting: MeetEvent = {
+      ...meeting,
+      endAt: "2026-05-29T09:30:00",
+      eventId: "event-3",
+      meetUrl: "https://meet.google.com/nop-qrst-uvw",
+      occurrenceKey: "primary:event-3:2026-05-29T09:00:00",
+      startAt: "2026-05-29T09:00:00",
+      summary: "Planning",
+    };
+    const openMeetUrl = vi.fn();
+    const template = buildMenuBarTemplate({
+      meetings: [nextDayMeeting, meeting, sameDayMeeting],
+      openMeetUrl,
+      quitApp: vi.fn(),
+      runUpdate: vi.fn(),
+      showSettingsWindow: vi.fn(),
+      syncNow: vi.fn(),
+    });
+
+    const labels = template.map((item) => item.label);
+    expect(labels).toEqual([
+      "NextRoom",
+      undefined,
+      "Upcoming Meet meetings",
+      "May 28 (Thu)",
+      "10:00 Product sync",
+      "15:00 Design review",
+      "May 29 (Fri)",
+      "09:00 Planning",
+      undefined,
+      "Sync Now",
+      "Settings...",
+      undefined,
+      "Quit",
+    ]);
+    const firstDateHeader = template.find((item) => item.label === "May 28 (Thu)");
+    const secondDateHeader = template.find((item) => item.label === "May 29 (Fri)");
+
+    expect(firstDateHeader).toEqual(expect.objectContaining({ enabled: false }));
+    expect(firstDateHeader?.click).toBeUndefined();
+    expect(secondDateHeader).toEqual(expect.objectContaining({ enabled: false }));
+    expect(secondDateHeader?.click).toBeUndefined();
+
+    clickItem(
+      template.find((item) => item.label === "15:00 Design review") as MenuItemConstructorOptions,
+    );
+
+    expect(openMeetUrl).toHaveBeenCalledWith("https://meet.google.com/def-ghij-klm");
+  });
+
   it("builds a disabled empty item when there are no upcoming meetings", () => {
     const template = buildMenuBarTemplate({
       meetings: [],
