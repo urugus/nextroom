@@ -51,9 +51,11 @@ Homebrew tap 更新には、`urugus/homebrew-tap` へ push できる repository 
 
 `package.json` の `build.appId` は署名、Keychain、将来の自動更新に影響するため、公開後は変更しない。所有ドメインに基づく Bundle ID に変える場合は、初回の一般公開前に行う。
 
+現在のリリースは Developer ID 署名と Notarization を使わない無料配布方針のため、macOS Keychain は更新後のアプリを別の実行主体として扱い、再許可を求める場合がある。アプリ側では起動直後の Google refresh token 読み取りをまとめてプロンプト回数を減らすが、更新後の再許可そのものをなくすには Developer ID 署名と Notarization が必要。
+
 ## Homebrew
 
-NextRoom のアプリ内更新は macOS の自己置換 updater ではなく、Homebrew cask に委譲する。署名・公証なしでも Gatekeeper に止められにくいように、アプリは `~/Applications` 配置を前提にする。GitHub Release の更新有無だけを確認し、更新が見つかった場合は detached background process で次の固定コマンド相当を実行する。
+NextRoom のアプリ内更新は macOS の自己置換 updater ではなく、Homebrew cask に委譲する。アプリは `~/Applications` 配置を前提にする。GitHub Release の更新有無だけを確認し、更新が見つかった場合は detached background process で次の固定コマンド相当を実行する。
 
 ```sh
 brew update
