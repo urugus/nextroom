@@ -19,11 +19,59 @@ export const createKeychainTokenStore = (
   keychain: KeychainLike,
   service = "nextroom",
   account = "google-refresh-token",
-): TokenStore => ({
-  getRefreshToken: () =>
-    ResultAsync.fromPromise(keychain.getPassword(service, account), toKeychainError),
-  setRefreshToken: (refreshToken) =>
-    ResultAsync.fromPromise(keychain.setPassword(service, account, refreshToken), toKeychainError),
-  clearRefreshToken: () =>
-    ResultAsync.fromPromise(keychain.deletePassword(service, account), toKeychainError),
-});
+): TokenStore => {
+  let inFlightRefreshTokenRead: Promise<string | null> | undefined;
+  let inFlightRefreshTokenMutation: Promise<void> | undefined;
+
+  const trackRefreshTokenMutation = <T>(request: Promise<T>): Promise<T> => {
+    inFlightRefreshTokenRead = undefined;
+    let mutation: Promise<void>;
+    mutation = request
+      .then(
+        () => undefined,
+        () => undefined,
+      )
+      .finally(() => {
+        if (inFlightRefreshTokenMutation === mutation) {
+          inFlightRefreshTokenMutation = undefined;
+        }
+      });
+    inFlightRefreshTokenMutation = mutation;
+
+    return request;
+  };
+
+  const readRefreshToken = async (): Promise<string | null> => {
+    if (inFlightRefreshTokenMutation !== undefined) {
+      await inFlightRefreshTokenMutation;
+    }
+    if (inFlightRefreshTokenRead !== undefined) return inFlightRefreshTokenRead;
+
+    const request = keychain.getPassword(service, account).finally(() => {
+      if (inFlightRefreshTokenRead === request) {
+        inFlightRefreshTokenRead = undefined;
+      }
+    });
+    inFlightRefreshTokenRead = request;
+
+    return request;
+  };
+
+  return {
+    getRefreshToken: () => ResultAsync.fromPromise(readRefreshToken(), toKeychainError),
+    setRefreshToken: (refreshToken) =>
+      ResultAsync.fromPromise(
+        trackRefreshTokenMutation(
+          Promise.resolve().then(() => keychain.setPassword(service, account, refreshToken)),
+        ),
+        toKeychainError,
+      ),
+    clearRefreshToken: () =>
+      ResultAsync.fromPromise(
+        trackRefreshTokenMutation(
+          Promise.resolve().then(() => keychain.deletePassword(service, account)),
+        ),
+        toKeychainError,
+      ),
+  };
+};
