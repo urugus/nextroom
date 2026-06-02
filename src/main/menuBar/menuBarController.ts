@@ -64,18 +64,8 @@ const compareByStartAt = (left: MeetEvent, right: MeetEvent): number =>
   new Date(left.startAt).getTime() - new Date(right.startAt).getTime();
 
 const sortedByStartAt = (meetings: MeetEvent[]): MeetEvent[] => {
-  const sorted: MeetEvent[] = [];
-
-  for (const meeting of meetings) {
-    const index = sorted.findIndex((candidate) => compareByStartAt(meeting, candidate) < 0);
-    if (index === -1) {
-      sorted.push(meeting);
-    } else {
-      sorted.splice(index, 0, meeting);
-    }
-  }
-
-  return sorted;
+  // oxlint-disable-next-line unicorn/no-array-sort -- toSorted is not in this project's TS lib.
+  return [...meetings].sort(compareByStartAt);
 };
 
 const meetingMenuItems = (
