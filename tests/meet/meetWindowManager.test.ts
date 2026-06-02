@@ -303,6 +303,28 @@ describe("createMeetWindowManager", () => {
 
     expect(manager.hasOpenMeetWindowExcept("https://meet.google.com/abc-defg-hij")).toBe(true);
   });
+
+  it("publishes update status to open Meet windows", async () => {
+    const meetWindow = createFakeMeetWindow();
+    meetWindow.updateUpdateStatus = vi.fn();
+    const manager = createMeetWindowManager({ createWindow: vi.fn(() => ok(meetWindow)) });
+
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+    manager.updateUpdateStatus({
+      availableVersion: "0.2.0",
+      canCheck: true,
+      canRunHomebrewUpdate: true,
+      currentVersion: "0.1.0",
+      status: "available",
+    });
+
+    expect(meetWindow.updateUpdateStatus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        availableVersion: "0.2.0",
+        status: "available",
+      }),
+    );
+  });
 });
 
 describe("isMeetOrigin", () => {

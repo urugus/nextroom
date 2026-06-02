@@ -4,18 +4,24 @@ type AutoUpdaterHandler = (...args: unknown[]) => void;
 
 type AppUpdaterTestContext = {
   accessMock: ReturnType<typeof vi.fn>;
+  autoUpdaterMock: {
+    checkForUpdates: ReturnType<typeof vi.fn>;
+  };
   autoUpdaterHandlers: Map<string, AutoUpdaterHandler>;
   closeSyncMock: ReturnType<typeof vi.fn>;
   execFileMock: ReturnType<typeof vi.fn>;
   module: typeof import("@main/updater/appUpdater");
+  readFileSyncMock: ReturnType<typeof vi.fn>;
   openSyncMock: ReturnType<typeof vi.fn>;
   sendMock: ReturnType<typeof vi.fn>;
   spawnHandlers: Map<string, AutoUpdaterHandler>;
   spawnMock: ReturnType<typeof vi.fn>;
+  writeFileSyncMock: ReturnType<typeof vi.fn>;
 };
 
 const createAppUpdaterTestContext = async (
   accessImpl: (path: string) => Promise<void> = () => Promise.resolve(),
+  storedUpdateCheckState?: unknown,
 ): Promise<AppUpdaterTestContext> => {
   vi.resetModules();
 
@@ -64,6 +70,15 @@ const createAppUpdaterTestContext = async (
   const mkdirMock = vi.fn(() => Promise.resolve());
   const openSyncMock = vi.fn(() => 42);
   const closeSyncMock = vi.fn();
+  const readFileSyncMock = vi.fn(() => {
+    if (storedUpdateCheckState === undefined) {
+      throw new Error("missing state");
+    }
+
+    return JSON.stringify(storedUpdateCheckState);
+  });
+  const writeFileSyncMock = vi.fn();
+  const mkdirSyncMock = vi.fn();
 
   vi.doMock("node:child_process", async (importOriginal) => {
     const actual = await importOriginal<typeof import("node:child_process")>();
@@ -88,9 +103,15 @@ const createAppUpdaterTestContext = async (
       default: {
         ...actual,
         closeSync: closeSyncMock,
+        mkdirSync: mkdirSyncMock,
         openSync: openSyncMock,
+        readFileSync: readFileSyncMock,
+        writeFileSync: writeFileSyncMock,
       },
+      mkdirSync: mkdirSyncMock,
       openSync: openSyncMock,
+      readFileSync: readFileSyncMock,
+      writeFileSync: writeFileSyncMock,
     };
   });
   vi.doMock("node:fs/promises", async (importOriginal) => {
@@ -125,14 +146,17 @@ const createAppUpdaterTestContext = async (
 
   return {
     accessMock,
+    autoUpdaterMock,
     autoUpdaterHandlers,
     closeSyncMock,
     execFileMock,
     module,
     openSyncMock,
+    readFileSyncMock,
     sendMock,
     spawnHandlers,
     spawnMock,
+    writeFileSyncMock,
   };
 };
 
@@ -257,5 +281,63 @@ describe("appUpdater Homebrew updates", () => {
       "updates:status-changed",
       expect.objectContaining({ status: "error" }),
     );
+  });
+});
+
+describe("appUpdater daily update checks", () => {
+  it("runs an automatic update check when no check has been recorded today", async () => {
+    const context = await createAppUpdaterTestContext();
+    const checkedAt = new Date(2026, 5, 2, 9);
+
+    const result = await context.module.checkForAppUpdatesIfDue(checkedAt);
+
+    expect(result.isOk()).toBe(true);
+    expect(context.autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(context.writeFileSyncMock).toHaveBeenCalledWith(
+      "/Users/tester/Library/Application Support/NextRoom/update-check-state.json",
+      expect.stringContaining('"lastCheckedLocalDate": "2026-06-02"'),
+    );
+    expect(context.module.getAppUpdateStatus()).toMatchObject({
+      lastCheckedAt: checkedAt.toISOString(),
+    });
+  });
+
+  it("skips an automatic update check when today has already been checked", async () => {
+    const context = await createAppUpdaterTestContext(() => Promise.resolve(), {
+      lastCheckedAt: "2026-06-02T00:00:00.000Z",
+      lastCheckedLocalDate: "2026-06-02",
+    });
+
+    const result = await context.module.checkForAppUpdatesIfDue(new Date(2026, 5, 2, 18));
+
+    expect(result.isOk()).toBe(true);
+    expect(context.autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled();
+  });
+
+  it("runs an automatic update check when the local date changes", async () => {
+    const context = await createAppUpdaterTestContext(() => Promise.resolve(), {
+      lastCheckedAt: "2026-06-02T00:00:00.000Z",
+      lastCheckedLocalDate: "2026-06-02",
+    });
+
+    await context.module.checkForAppUpdatesIfDue(new Date(2026, 5, 3, 9));
+
+    expect(context.autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(context.writeFileSyncMock).toHaveBeenCalledWith(
+      "/Users/tester/Library/Application Support/NextRoom/update-check-state.json",
+      expect.stringContaining('"lastCheckedLocalDate": "2026-06-03"'),
+    );
+  });
+
+  it("allows manual update checks even after today's automatic check", async () => {
+    const context = await createAppUpdaterTestContext(() => Promise.resolve(), {
+      lastCheckedAt: "2026-06-02T00:00:00.000Z",
+      lastCheckedLocalDate: "2026-06-02",
+    });
+
+    await context.module.checkForAppUpdatesIfDue(new Date(2026, 5, 2, 9));
+    await context.module.checkForAppUpdates();
+
+    expect(context.autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1);
   });
 });

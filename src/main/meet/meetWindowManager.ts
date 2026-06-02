@@ -1,5 +1,6 @@
 import { canonicalizeMeetUrl, type MeetUrl } from "@main/calendar/meetExtractor";
 import type { AppError } from "@shared/errors";
+import type { AppUpdateStatus } from "@shared/types";
 import { err, ok, type Result } from "neverthrow";
 
 type AlwaysOnTopLevel = "screen-saver";
@@ -20,6 +21,7 @@ export type ManagedMeetWindow = {
   restore: () => void;
   setAlwaysOnTop: (flag: boolean, level?: AlwaysOnTopLevel) => void;
   show: () => void;
+  updateUpdateStatus?: (status: AppUpdateStatus) => void;
   webContents: ManagedWebContents;
 };
 
@@ -36,6 +38,7 @@ export type MeetWindowManager = {
   autoJoinMeetUrl: (value: string) => Promise<Result<void, AppError>>;
   hasOpenMeetWindowExcept: (value: string) => boolean;
   openMeetUrl: (value: string) => Promise<Result<void, AppError>>;
+  updateUpdateStatus: (status: AppUpdateStatus) => void;
 };
 
 const focusResetTimers = new WeakMap<ManagedMeetWindow, ReturnType<typeof setTimeout>>();
@@ -155,6 +158,7 @@ export const createMeetWindowManager = ({
   setTimeoutFn = setTimeout,
 }: MeetWindowManagerInput): MeetWindowManager => {
   const meetWindows = new Map<MeetUrl, ManagedMeetWindow>();
+  let updateStatus: AppUpdateStatus | undefined;
 
   const removeWindow = (meetUrl: MeetUrl, meetWindow: ManagedMeetWindow): void => {
     if (meetWindows.get(meetUrl) === meetWindow) {
@@ -188,6 +192,9 @@ export const createMeetWindowManager = ({
     }
 
     const meetWindow = created.value;
+    if (updateStatus !== undefined) {
+      meetWindow.updateUpdateStatus?.(updateStatus);
+    }
     meetWindows.set(meetUrl, meetWindow);
     meetWindow.on("closed", () => {
       removeWindow(meetUrl, meetWindow);
@@ -240,6 +247,14 @@ export const createMeetWindowManager = ({
     openMeetUrl: async (value) => {
       const opened = await openMeetWindow(value);
       return opened.map(() => undefined);
+    },
+    updateUpdateStatus: (status) => {
+      updateStatus = status;
+      meetWindows.forEach((meetWindow) => {
+        if (!meetWindow.isDestroyed()) {
+          meetWindow.updateUpdateStatus?.(status);
+        }
+      });
     },
   };
 };
