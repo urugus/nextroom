@@ -602,7 +602,6 @@ if (!appCanStart) {
     createMenuShortcut();
     subscribeAppUpdateStatus((status) => {
       menuBarController?.updateUpdateStatus(status);
-      meetWindowManager.updateUpdateStatus(status);
     });
     calendarSyncService.startPolling();
 

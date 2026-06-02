@@ -22,6 +22,7 @@ type AppUpdaterTestContext = {
 const createAppUpdaterTestContext = async (
   accessImpl: (path: string) => Promise<void> = () => Promise.resolve(),
   storedUpdateCheckState?: unknown,
+  checkForUpdatesImpl: () => Promise<void> = () => Promise.resolve(),
 ): Promise<AppUpdaterTestContext> => {
   vi.resetModules();
 
@@ -42,7 +43,7 @@ const createAppUpdaterTestContext = async (
   const autoUpdaterMock = {
     autoDownload: true,
     autoInstallOnAppQuit: true,
-    checkForUpdates: vi.fn(() => Promise.resolve()),
+    checkForUpdates: vi.fn(checkForUpdatesImpl),
     on: vi.fn((event: string, handler: AutoUpdaterHandler) => {
       autoUpdaterHandlers.set(event, handler);
     }),
@@ -339,5 +340,28 @@ describe("appUpdater daily update checks", () => {
     await context.module.checkForAppUpdates();
 
     expect(context.autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not record today's automatic check when the check fails", async () => {
+    const context = await createAppUpdaterTestContext(
+      () => Promise.resolve(),
+      undefined,
+      () => Promise.reject(new Error("network error")),
+    );
+
+    const result = await context.module.checkForAppUpdatesIfDue(new Date(2026, 5, 2, 9));
+
+    expect(result.isErr()).toBe(true);
+    expect(context.writeFileSyncMock).not.toHaveBeenCalled();
+  });
+
+  it("protects immediate status subscribers from throwing during registration", async () => {
+    const context = await createAppUpdaterTestContext();
+
+    expect(() => {
+      context.module.subscribeAppUpdateStatus(() => {
+        throw new Error("listener failed");
+      });
+    }).not.toThrow();
   });
 });

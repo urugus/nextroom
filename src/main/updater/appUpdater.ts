@@ -272,7 +272,11 @@ export const getAppUpdateStatus = (): AppUpdateStatus => {
 export const subscribeAppUpdateStatus = (listener: (status: AppUpdateStatus) => void) => {
   loadUpdateCheckState();
   statusListeners.add(listener);
-  listener(currentStatus());
+  try {
+    listener(currentStatus());
+  } catch {
+    // Internal update indicators must not break the updater state machine.
+  }
 
   return () => {
     statusListeners.delete(listener);
@@ -319,8 +323,8 @@ export const checkForAppUpdates = async (): Promise<Result<AppUpdateStatus, AppE
   }
 
   try {
-    recordUpdateCheck(new Date());
     await autoUpdater.checkForUpdates();
+    recordUpdateCheck(new Date());
     return ok(currentStatus());
   } catch (cause) {
     updateState({
@@ -340,8 +344,8 @@ export const checkForAppUpdatesIfDue = async (
   }
 
   try {
-    recordUpdateCheck(now);
     await autoUpdater.checkForUpdates();
+    recordUpdateCheck(now);
     return ok(currentStatus());
   } catch (cause) {
     updateState({
