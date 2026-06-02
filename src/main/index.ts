@@ -590,7 +590,14 @@ if (!appCanStart) {
     });
     autoOpenScheduler = scheduler;
     registerIpc(scheduler);
-    createMenuBar();
+    try {
+      createMenuBar();
+    } catch (cause) {
+      reportMenuBarError("Failed to create the menu bar.", cause);
+      app.quit();
+      return;
+    }
+
     createMenuShortcut();
     subscribeAppUpdateStatus((status) => {
       menuBarController?.updateUpdateStatus(status);
