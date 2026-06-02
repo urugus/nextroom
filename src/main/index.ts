@@ -608,9 +608,7 @@ if (!appCanStart) {
     startDailyUpdateChecks();
 
     app.on("activate", () => {
-      if (mainWindow === undefined || mainWindow.isDestroyed()) {
-        showSettingsWindow();
-      }
+      meetWindowManager.focusOpenMeetWindow();
     });
   });
 }
