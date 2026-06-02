@@ -34,27 +34,40 @@ import {
 } from "@main/shortcuts/menuShortcut";
 import {
   checkForAppUpdates,
+  checkForAppUpdatesIfDue,
   configureAppUpdater,
   getAppUpdateStatus,
   runHomebrewAppUpdate,
+  subscribeAppUpdateStatus,
 } from "@main/updater/appUpdater";
 import { type AppError, serializeAppError } from "@shared/errors";
 import { IPC_CHANNELS } from "@shared/ipc";
-import type { AppSettings, MenuShortcutStatus } from "@shared/types";
+import type { AppSettings, AppUpdateStatus, MenuShortcutStatus } from "@shared/types";
 import type { BrowserWindow as ElectronBrowserWindow } from "electron";
 import { err, fromThrowable, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { serializeResultForRenderer } from "./ipc/result";
 
 const nodeRequire = createRequire(import.meta.url);
-const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, nativeImage, session, shell } =
-  nodeRequire("electron") as typeof import("electron");
+const {
+  app,
+  BrowserWindow,
+  Menu,
+  Tray,
+  WebContentsView,
+  globalShortcut,
+  ipcMain,
+  nativeImage,
+  session,
+  shell,
+} = nodeRequire("electron") as typeof import("electron");
 const keytar = nodeRequire("keytar") as typeof import("keytar");
 
 let mainWindow: ElectronBrowserWindow | undefined;
 let menuBarController: MenuBarController | undefined;
 let menuShortcutRegistrar: MenuShortcutRegistrar | undefined;
 let autoOpenScheduler: AutoOpenScheduler | undefined;
+let updateCheckTimer: NodeJS.Timeout | undefined;
 let menuShortcutStatus: MenuShortcutStatus = {
   accelerator: defaultAppSettings.menuShortcutAccelerator,
   state: "off",
@@ -215,21 +228,143 @@ const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "Mee
     (cause): AppError => ({ type: errorType, cause }),
   )();
 
+const meetShellHeight = 38;
+
+const meetShellHtml = (): string => `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      :root {
+        color: #1d1d1f;
+        background: #f5f5f7;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+      }
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      .bar {
+        -webkit-app-region: drag;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        height: ${meetShellHeight}px;
+        padding: 0 12px 0 78px;
+        border-bottom: 1px solid #d6d6d8;
+        background: #f5f5f7;
+      }
+      button {
+        -webkit-app-region: no-drag;
+        display: none;
+        min-height: 24px;
+        border: 1px solid #0071e3;
+        border-radius: 6px;
+        background: #007aff;
+        color: #ffffff;
+        cursor: pointer;
+        font: inherit;
+        font-size: 12px;
+        line-height: 1;
+        padding: 4px 10px;
+      }
+      button:disabled {
+        border-color: #c4c4c6;
+        background: #e5e5e7;
+        color: #6e6e73;
+        cursor: progress;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <button type="button" id="update-button">Update</button>
+    </div>
+    <script>
+      const button = document.getElementById("update-button");
+      const render = (status) => {
+        const visible = status?.status === "available" || status?.status === "homebrew-updating";
+        button.style.display = visible ? "inline-flex" : "none";
+        button.disabled = status?.status === "homebrew-updating";
+        button.textContent = status?.status === "homebrew-updating" ? "Updating" : "Update";
+      };
+      window.meetLauncher?.getUpdateStatus().then((result) => {
+        if (result.ok) render(result.value);
+      });
+      window.meetLauncher?.onUpdateStatusChanged(render);
+      button.addEventListener("click", () => {
+        button.disabled = true;
+        button.textContent = "Updating";
+        window.meetLauncher?.runHomebrewUpdate().then((result) => {
+          if (!result.ok) {
+            button.disabled = false;
+            button.textContent = "Update";
+          }
+        }).catch(() => {
+          button.disabled = false;
+          button.textContent = "Update";
+        });
+      });
+    </script>
+  </body>
+</html>`;
+
 const createMeetWindow = fromThrowable(
-  () =>
-    new BrowserWindow({
+  () => {
+    const window = new BrowserWindow({
       width: 1280,
       height: 820,
       minWidth: 960,
       minHeight: 640,
       title: "Meet",
+      titleBarStyle: "hiddenInset",
+      webPreferences: {
+        preload: join(__dirname, "../preload/index.cjs"),
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    const meetView = new WebContentsView({
       webPreferences: {
         partition: meetSessionPartition,
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
       },
-    }),
+    });
+    const layout = (): void => {
+      const bounds = window.getContentBounds();
+      meetView.setBounds({
+        height: Math.max(0, bounds.height - meetShellHeight),
+        width: bounds.width,
+        x: 0,
+        y: meetShellHeight,
+      });
+    };
+
+    window.contentView.addChildView(meetView);
+    window.on("resize", layout);
+    window.on("resized", layout);
+    layout();
+    void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(meetShellHtml())}`);
+
+    return {
+      destroy: () => window.destroy(),
+      focus: () => window.focus(),
+      isDestroyed: () => window.isDestroyed(),
+      isMinimized: () => window.isMinimized(),
+      loadURL: (url: string) => meetView.webContents.loadURL(url),
+      on: (event: "closed", listener: () => void) => window.on(event, listener),
+      restore: () => window.restore(),
+      setAlwaysOnTop: (flag: boolean, level?: "screen-saver") => window.setAlwaysOnTop(flag, level),
+      show: () => window.show(),
+      updateUpdateStatus: (status: AppUpdateStatus) => {
+        window.webContents.send(IPC_CHANNELS.updatesStatusChanged, status);
+      },
+      webContents: meetView.webContents,
+    };
+  },
   (cause): AppError => ({ type: "MeetWindowFailed", cause }),
 );
 
@@ -321,6 +456,7 @@ const createMenuBar = (): void => {
       app.quit();
     },
     reportError: reportMenuBarError,
+    runUpdate: () => runHomebrewAppUpdate(),
     showSettingsWindow: () => {
       const result = showSettingsWindow();
       if (result.isErr()) {
@@ -330,6 +466,16 @@ const createMenuBar = (): void => {
     syncNow: () => calendarSyncService.syncNow(),
   });
   menuOpenRequestQueue.drain();
+};
+
+const startDailyUpdateChecks = (): void => {
+  void checkForAppUpdatesIfDue();
+  updateCheckTimer = setInterval(
+    () => {
+      void checkForAppUpdatesIfDue();
+    },
+    60 * 60 * 1_000,
+  );
 };
 
 const openMenuFromShortcut = (): void => {
@@ -454,9 +600,12 @@ if (!appCanStart) {
     registerIpc(scheduler);
     createMenuBar();
     createMenuShortcut();
+    subscribeAppUpdateStatus((status) => {
+      menuBarController?.updateUpdateStatus(status);
+    });
     calendarSyncService.startPolling();
 
-    void checkForAppUpdates();
+    startDailyUpdateChecks();
 
     app.on("activate", () => {
       if (mainWindow === undefined || mainWindow.isDestroyed()) {
@@ -468,5 +617,8 @@ if (!appCanStart) {
 
 app.on("window-all-closed", () => undefined);
 app.on("will-quit", () => {
+  if (updateCheckTimer !== undefined) {
+    clearInterval(updateCheckTimer);
+  }
   menuShortcutRegistrar?.unregister();
 });

@@ -1,11 +1,12 @@
 import type { AppError } from "@shared/errors";
-import type { MeetEvent, MeetEventsSnapshot } from "@shared/types";
+import type { AppUpdateStatus, MeetEvent, MeetEventsSnapshot } from "@shared/types";
 import type { Menu, MenuItemConstructorOptions, NativeImage, Tray } from "electron";
 import type { Result } from "neverthrow";
 
 export type MenuBarController = {
   openMenu: () => void;
   updateMeetings: (snapshot: MeetEventsSnapshot) => void;
+  updateUpdateStatus: (status: AppUpdateStatus) => void;
 };
 
 type MenuBarControllerInput = {
@@ -15,6 +16,7 @@ type MenuBarControllerInput = {
   openMeetUrl: (meetUrl: string) => Promise<Result<void, AppError>>;
   quitApp: () => void;
   reportError: (message: string, cause: unknown) => void;
+  runUpdate: () => Promise<Result<AppUpdateStatus, AppError>>;
   showSettingsWindow: () => void;
   syncNow: () => Promise<Result<MeetEventsSnapshot, AppError>>;
 };
@@ -33,14 +35,18 @@ export const buildMenuBarTemplate = ({
   meetings,
   openMeetUrl,
   quitApp,
+  runUpdate,
   showSettingsWindow,
   syncNow,
+  updateStatus,
 }: {
   meetings: MeetEvent[];
   openMeetUrl: (meetUrl: string) => void;
   quitApp: () => void;
+  runUpdate: () => void;
   showSettingsWindow: () => void;
   syncNow: () => void;
+  updateStatus?: AppUpdateStatus;
 }): MenuItemConstructorOptions[] => [
   {
     enabled: false,
@@ -75,6 +81,22 @@ export const buildMenuBarTemplate = ({
     click: syncNow,
     label: "Sync Now",
   },
+  ...(updateStatus?.status === "available"
+    ? [
+        {
+          click: runUpdate,
+          label: "Update",
+        } satisfies MenuItemConstructorOptions,
+      ]
+    : []),
+  ...(updateStatus?.status === "homebrew-updating"
+    ? [
+        {
+          enabled: false,
+          label: "Updating",
+        } satisfies MenuItemConstructorOptions,
+      ]
+    : []),
   {
     click: showSettingsWindow,
     label: "Settings...",
@@ -95,11 +117,13 @@ export const createMenuBarController = ({
   openMeetUrl,
   quitApp,
   reportError,
+  runUpdate,
   showSettingsWindow,
   syncNow,
 }: MenuBarControllerInput): MenuBarController => {
   const tray = createTray(icon);
   let meetings: MeetEvent[] = [];
+  let updateStatus: AppUpdateStatus | undefined;
   let currentMenu: Menu | undefined;
 
   const rebuildMenu = (): void => {
@@ -118,6 +142,17 @@ export const createMenuBarController = ({
             });
         },
         quitApp,
+        runUpdate: () => {
+          void runUpdate()
+            .then((result) => {
+              if (result.isErr()) {
+                reportError("Failed to update from the menu bar.", result.error);
+              }
+            })
+            .catch((cause: unknown) => {
+              reportError("Failed to update from the menu bar.", cause);
+            });
+        },
         showSettingsWindow,
         syncNow: () => {
           void syncNow()
@@ -130,6 +165,7 @@ export const createMenuBarController = ({
               reportError("Failed to sync Calendar from the menu bar.", cause);
             });
         },
+        updateStatus,
       }),
     );
 
@@ -148,6 +184,10 @@ export const createMenuBarController = ({
     },
     updateMeetings: (snapshot) => {
       meetings = snapshot.meetings;
+      rebuildMenu();
+    },
+    updateUpdateStatus: (status) => {
+      updateStatus = status;
       rebuildMenu();
     },
   };

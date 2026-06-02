@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { closeSync, openSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -10,17 +10,29 @@ import { app, BrowserWindow } from "electron";
 import electronUpdater from "electron-updater";
 import { err, ok, type Result } from "neverthrow";
 
-type UpdaterState = Omit<AppUpdateStatus, "canCheck" | "canRunHomebrewUpdate" | "currentVersion">;
+type UpdaterState = Omit<
+  AppUpdateStatus,
+  "canCheck" | "canRunHomebrewUpdate" | "currentVersion" | "lastCheckedAt"
+>;
+
+type UpdateCheckState = {
+  lastCheckedAt?: string;
+  lastCheckedLocalDate?: string;
+};
 
 const { autoUpdater } = electronUpdater;
 const execFileAsync = promisify(execFile);
 const brewCandidates = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"];
 const updateLogFileName = "homebrew-update.log";
+const updateCheckStateFileName = "update-check-state.json";
 
 let configured = false;
+let updateCheckStateLoaded = false;
+let updateCheckState: UpdateCheckState = {};
 let updaterState: UpdaterState = {
   status: app.isPackaged ? "idle" : "unsupported",
 };
+const statusListeners = new Set<(status: AppUpdateStatus) => void>();
 
 const actionFlagsFor = (status: AppUpdateStatus["status"]) => ({
   canCheck: app.isPackaged && status !== "checking" && status !== "homebrew-updating",
@@ -29,17 +41,28 @@ const actionFlagsFor = (status: AppUpdateStatus["status"]) => ({
 
 const currentStatus = (): AppUpdateStatus => ({
   currentVersion: app.getVersion(),
+  lastCheckedAt: updateCheckState.lastCheckedAt,
   ...updaterState,
   ...actionFlagsFor(updaterState.status),
 });
 
-const publishStatus = (nextState: UpdaterState) => {
-  updaterState = nextState;
-  const updateStatus = currentStatus();
-
+const broadcastStatus = (updateStatus: AppUpdateStatus): void => {
   BrowserWindow.getAllWindows().forEach((window) => {
     window.webContents.send(IPC_CHANNELS.updatesStatusChanged, updateStatus);
   });
+
+  statusListeners.forEach((listener) => {
+    try {
+      listener(updateStatus);
+    } catch {
+      // Internal update indicators must not break the updater state machine.
+    }
+  });
+};
+
+const publishStatus = (nextState: UpdaterState) => {
+  updaterState = nextState;
+  broadcastStatus(currentStatus());
 };
 
 const updateState = (nextState: UpdaterState) => {
@@ -48,6 +71,55 @@ const updateState = (nextState: UpdaterState) => {
 };
 
 const errorFrom = (cause: unknown): AppError => ({ type: "UpdateFailed", cause });
+
+const updateCheckStatePath = (): string => join(app.getPath("userData"), updateCheckStateFileName);
+
+const localDateKeyFor = (value: Date): string => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const isUpdateCheckState = (value: unknown): value is UpdateCheckState =>
+  typeof value === "object" &&
+  value !== null &&
+  (!("lastCheckedAt" in value) || typeof value.lastCheckedAt === "string") &&
+  (!("lastCheckedLocalDate" in value) || typeof value.lastCheckedLocalDate === "string");
+
+const loadUpdateCheckState = (): UpdateCheckState => {
+  if (updateCheckStateLoaded) return updateCheckState;
+  updateCheckStateLoaded = true;
+
+  try {
+    const parsed = JSON.parse(readFileSync(updateCheckStatePath(), "utf8"));
+    updateCheckState = isUpdateCheckState(parsed) ? parsed : {};
+  } catch {
+    updateCheckState = {};
+  }
+
+  return updateCheckState;
+};
+
+const saveUpdateCheckState = (state: UpdateCheckState): void => {
+  updateCheckState = state;
+
+  try {
+    mkdirSync(app.getPath("userData"), { recursive: true });
+    writeFileSync(updateCheckStatePath(), `${JSON.stringify(state, null, 2)}\n`);
+  } catch {
+    // A failed recency write must not block update checks.
+  }
+};
+
+const recordUpdateCheck = (now: Date): void => {
+  saveUpdateCheckState({
+    lastCheckedAt: now.toISOString(),
+    lastCheckedLocalDate: localDateKeyFor(now),
+  });
+  broadcastStatus(currentStatus());
+};
 
 const homebrewAppDir = () => join(app.getPath("home"), "Applications");
 
@@ -192,7 +264,24 @@ const spawnDetachedHomebrewUpdate = async (brewPath: string, expectedVersion: st
   }
 };
 
-export const getAppUpdateStatus = (): AppUpdateStatus => currentStatus();
+export const getAppUpdateStatus = (): AppUpdateStatus => {
+  loadUpdateCheckState();
+  return currentStatus();
+};
+
+export const subscribeAppUpdateStatus = (listener: (status: AppUpdateStatus) => void) => {
+  loadUpdateCheckState();
+  statusListeners.add(listener);
+  try {
+    listener(currentStatus());
+  } catch {
+    // Internal update indicators must not break the updater state machine.
+  }
+
+  return () => {
+    statusListeners.delete(listener);
+  };
+};
 
 export const configureAppUpdater = () => {
   if (configured) return;
@@ -227,12 +316,36 @@ export const configureAppUpdater = () => {
 };
 
 export const checkForAppUpdates = async (): Promise<Result<AppUpdateStatus, AppError>> => {
+  loadUpdateCheckState();
+
   if (!app.isPackaged) {
     return ok(currentStatus());
   }
 
   try {
     await autoUpdater.checkForUpdates();
+    recordUpdateCheck(new Date());
+    return ok(currentStatus());
+  } catch (cause) {
+    updateState({
+      errorMessage: updateErrorMessageFrom(cause),
+      status: "error",
+    });
+    return err(errorFrom(cause));
+  }
+};
+
+export const checkForAppUpdatesIfDue = async (
+  now: Date = new Date(),
+): Promise<Result<AppUpdateStatus, AppError>> => {
+  const state = loadUpdateCheckState();
+  if (!app.isPackaged || state.lastCheckedLocalDate === localDateKeyFor(now)) {
+    return ok(currentStatus());
+  }
+
+  try {
+    await autoUpdater.checkForUpdates();
+    recordUpdateCheck(now);
     return ok(currentStatus());
   } catch (cause) {
     updateState({

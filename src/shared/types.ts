@@ -102,6 +102,7 @@ export type AppUpdateStatus = {
   availableVersion?: string;
   releaseDate?: string;
   releaseName?: string;
+  lastCheckedAt?: string;
   errorMessage?: string;
   updateMessage?: string;
   canCheck: boolean;

@@ -1,6 +1,6 @@
 import { buildMenuBarTemplate, createMenuBarController } from "@main/menuBar/menuBarController";
 import type { AppError } from "@shared/errors";
-import type { MeetEvent } from "@shared/types";
+import type { AppUpdateStatus, MeetEvent } from "@shared/types";
 import type { Menu, MenuItemConstructorOptions, NativeImage, Tray } from "electron";
 import { err, ok } from "neverthrow";
 import { describe, expect, it, vi } from "vitest";
@@ -17,6 +17,29 @@ const meeting: MeetEvent = {
   updatedAt: "2026-05-28T09:00:00",
 };
 
+const updateAvailable: AppUpdateStatus = {
+  availableVersion: "0.2.0",
+  canCheck: true,
+  canRunHomebrewUpdate: true,
+  currentVersion: "0.1.0",
+  status: "available",
+};
+
+const updateChecking: AppUpdateStatus = {
+  canCheck: false,
+  canRunHomebrewUpdate: false,
+  currentVersion: "0.1.0",
+  status: "checking",
+};
+
+const updateHomebrewUpdating: AppUpdateStatus = {
+  availableVersion: "0.2.0",
+  canCheck: false,
+  canRunHomebrewUpdate: false,
+  currentVersion: "0.1.0",
+  status: "homebrew-updating",
+};
+
 const clickItem = (item: MenuItemConstructorOptions): void => {
   item.click?.(undefined as never, undefined as never, undefined as never);
 };
@@ -28,6 +51,7 @@ describe("buildMenuBarTemplate", () => {
       meetings: [meeting],
       openMeetUrl,
       quitApp: vi.fn(),
+      runUpdate: vi.fn(),
       showSettingsWindow: vi.fn(),
       syncNow: vi.fn(),
     });
@@ -45,6 +69,7 @@ describe("buildMenuBarTemplate", () => {
       meetings: [],
       openMeetUrl: vi.fn(),
       quitApp: vi.fn(),
+      runUpdate: vi.fn(),
       showSettingsWindow: vi.fn(),
       syncNow: vi.fn(),
     });
@@ -64,6 +89,7 @@ describe("buildMenuBarTemplate", () => {
       meetings: [],
       openMeetUrl: vi.fn(),
       quitApp: vi.fn(),
+      runUpdate: vi.fn(),
       showSettingsWindow,
       syncNow,
     });
@@ -73,6 +99,50 @@ describe("buildMenuBarTemplate", () => {
 
     expect(syncNow).toHaveBeenCalledTimes(1);
     expect(showSettingsWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows an Update item only when an update is available", () => {
+    const runUpdate = vi.fn();
+    const availableTemplate = buildMenuBarTemplate({
+      meetings: [],
+      openMeetUrl: vi.fn(),
+      quitApp: vi.fn(),
+      runUpdate,
+      showSettingsWindow: vi.fn(),
+      syncNow: vi.fn(),
+      updateStatus: updateAvailable,
+    });
+    const checkingTemplate = buildMenuBarTemplate({
+      meetings: [],
+      openMeetUrl: vi.fn(),
+      quitApp: vi.fn(),
+      runUpdate,
+      showSettingsWindow: vi.fn(),
+      syncNow: vi.fn(),
+      updateStatus: updateChecking,
+    });
+    const updatingTemplate = buildMenuBarTemplate({
+      meetings: [],
+      openMeetUrl: vi.fn(),
+      quitApp: vi.fn(),
+      runUpdate,
+      showSettingsWindow: vi.fn(),
+      syncNow: vi.fn(),
+      updateStatus: updateHomebrewUpdating,
+    });
+
+    clickItem(
+      availableTemplate.find((item) => item.label === "Update") as MenuItemConstructorOptions,
+    );
+
+    expect(runUpdate).toHaveBeenCalledTimes(1);
+    expect(checkingTemplate.find((item) => item.label === "Update")).toBeUndefined();
+    expect(updatingTemplate).toContainEqual(
+      expect.objectContaining({
+        enabled: false,
+        label: "Updating",
+      }),
+    );
   });
 });
 
@@ -96,6 +166,7 @@ describe("createMenuBarController", () => {
       openMeetUrl: vi.fn(() => Promise.resolve(ok(undefined))),
       quitApp: vi.fn(),
       reportError: vi.fn(),
+      runUpdate: vi.fn(() => Promise.resolve(ok(updateAvailable))),
       showSettingsWindow: vi.fn(),
       syncNow: vi.fn(() => Promise.resolve(ok({ meetings: [] }))),
     });
@@ -127,6 +198,7 @@ describe("createMenuBarController", () => {
       openMeetUrl: vi.fn(() => Promise.resolve(ok(undefined))),
       quitApp: vi.fn(),
       reportError: vi.fn(),
+      runUpdate: vi.fn(() => Promise.resolve(ok(updateAvailable))),
       showSettingsWindow: vi.fn(),
       syncNow: vi.fn(() => Promise.resolve(ok({ meetings: [] }))),
     });
@@ -159,6 +231,7 @@ describe("createMenuBarController", () => {
       openMeetUrl: vi.fn(() => Promise.resolve(err(meetWindowError))),
       quitApp: vi.fn(),
       reportError,
+      runUpdate: vi.fn(() => Promise.resolve(ok(updateAvailable))),
       showSettingsWindow: vi.fn(),
       syncNow: vi.fn(() => Promise.resolve(err(syncError))),
     });
@@ -181,5 +254,34 @@ describe("createMenuBarController", () => {
         expect.objectContaining({ type: "CalendarApiFailed" }),
       );
     });
+  });
+
+  it("rebuilds the tray menu when update status changes", () => {
+    const menus: MenuItemConstructorOptions[][] = [];
+    const controller = createMenuBarController({
+      buildMenuFromTemplate: (template) => {
+        menus.push(template);
+        return template as unknown as Menu;
+      },
+      createTray: vi.fn(
+        () =>
+          ({
+            popUpContextMenu: vi.fn(),
+            setContextMenu: vi.fn(),
+            setToolTip: vi.fn(),
+          }) as unknown as Tray,
+      ),
+      icon: "icon" as unknown as NativeImage,
+      openMeetUrl: vi.fn(() => Promise.resolve(ok(undefined))),
+      quitApp: vi.fn(),
+      reportError: vi.fn(),
+      runUpdate: vi.fn(() => Promise.resolve(ok(updateAvailable))),
+      showSettingsWindow: vi.fn(),
+      syncNow: vi.fn(() => Promise.resolve(ok({ meetings: [] }))),
+    });
+
+    controller.updateUpdateStatus(updateAvailable);
+
+    expect(menus.at(-1)).toContainEqual(expect.objectContaining({ label: "Update" }));
   });
 });
