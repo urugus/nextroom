@@ -272,6 +272,7 @@ describe("createMeetWindowManager", () => {
   });
 
   it("focuses the latest open Meet window when the app is activated", async () => {
+    vi.useFakeTimers();
     const firstWindow = createFakeMeetWindow();
     const secondWindow = createFakeMeetWindow();
     const createWindow = vi
@@ -295,6 +296,7 @@ describe("createMeetWindowManager", () => {
   });
 
   it("skips destroyed Meet windows when focusing an open Meet window", async () => {
+    vi.useFakeTimers();
     const firstWindow = createFakeMeetWindow();
     const secondWindow = createFakeMeetWindow();
     const createWindow = vi
@@ -324,6 +326,7 @@ describe("createMeetWindowManager", () => {
   });
 
   it("does not focus anything when all tracked Meet windows are destroyed", async () => {
+    vi.useFakeTimers();
     const firstWindow = createFakeMeetWindow();
     const secondWindow = createFakeMeetWindow();
     const createWindow = vi
