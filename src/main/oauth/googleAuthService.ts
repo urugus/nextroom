@@ -1,6 +1,6 @@
 import type { TokenStore } from "@main/adapters/keychainTokenStore";
 import type { AppError } from "@shared/errors";
-import { err, ok, type Result } from "neverthrow";
+import { err, ok, type Result, ResultAsync } from "neverthrow";
 import { createOAuthCallbackReceiver } from "./loopbackServer";
 import type { OAuthClient, TokenSet } from "./oauthClient";
 import { createOauthState, createPkcePair } from "./pkce";
@@ -23,6 +23,7 @@ type GoogleAuthServiceInput = {
   tokenStore: TokenStore;
   oauthClient: OAuthClient;
   openExternal: (url: string) => Promise<boolean | undefined>;
+  createCallbackReceiver?: typeof createOAuthCallbackReceiver;
   now?: () => number;
 };
 
@@ -48,12 +49,21 @@ const cacheAccessToken = (tokenSet: TokenSet): AccessTokenCache => ({
   expiresAt: tokenSet.expiresAt,
 });
 
+const oauthFailed = (cause: unknown): AppError => ({ type: "OAuthFailed", cause });
+
+const missingClientIdError = (): AppError =>
+  oauthFailed("NEXTROOM_GOOGLE_CLIENT_ID is not configured.");
+
+const flattenResultPromise = <T>(request: Promise<Result<T, AppError>>): ResultAsync<T, AppError> =>
+  ResultAsync.fromPromise(request, oauthFailed).andThen((result) => result);
+
 export const createGoogleAuthService = ({
   clientId,
   clientSecret,
   tokenStore,
   oauthClient,
   openExternal,
+  createCallbackReceiver = createOAuthCallbackReceiver,
   now = () => Date.now(),
 }: GoogleAuthServiceInput): GoogleAuthService => {
   let cachedAccessToken: AccessTokenCache | undefined;
@@ -61,12 +71,12 @@ export const createGoogleAuthService = ({
   return {
     connect: async () => {
       if (clientId === undefined || clientId.length === 0) {
-        return err({ type: "OAuthFailed", cause: "NEXTROOM_GOOGLE_CLIENT_ID is not configured." });
+        return err(missingClientIdError());
       }
 
       const state = createOauthState();
       const pkce = createPkcePair();
-      const receiver = await createOAuthCallbackReceiver(state);
+      const receiver = await createCallbackReceiver(state);
       if (receiver.isErr()) return err(receiver.error);
 
       try {
@@ -76,45 +86,40 @@ export const createGoogleAuthService = ({
           state,
           codeChallenge: pkce.codeChallenge,
         });
-        let opened: boolean | undefined;
-        try {
-          opened = await openExternal(authorizationUrl.toString());
-        } catch (cause) {
-          return err({ type: "OAuthFailed", cause });
-        }
-        if (opened === false) {
-          return err({ type: "OAuthFailed", cause: "Could not open system browser." });
-        }
 
-        const code = await receiver.value.waitForCode();
-        if (code.isErr()) return err(code.error);
-
-        const tokenSet = await oauthClient.exchangeAuthorizationCode({
-          clientId,
-          clientSecret,
-          code: code.value,
-          codeVerifier: pkce.codeVerifier,
-          redirectUri: receiver.value.redirectUri,
-        });
-        if (tokenSet.isErr()) return err(tokenSet.error);
-        if (tokenSet.value.refreshToken === undefined) {
-          return err({ type: "OAuthFailed", cause: "Google did not return a refresh token." });
-        }
-
-        const stored = await tokenStore.setRefreshToken(tokenSet.value.refreshToken);
-        if (stored.isErr()) return err(stored.error);
-
-        cachedAccessToken = cacheAccessToken(tokenSet.value);
-        return ok(undefined);
+        return await ResultAsync.fromThrowable(
+          openExternal,
+          oauthFailed,
+        )(authorizationUrl.toString())
+          .andThen((opened) =>
+            opened === false ? err(oauthFailed("Could not open system browser.")) : ok(undefined),
+          )
+          .andThen(() => flattenResultPromise(receiver.value.waitForCode()))
+          .andThen((code) =>
+            oauthClient.exchangeAuthorizationCode({
+              clientId,
+              clientSecret,
+              code,
+              codeVerifier: pkce.codeVerifier,
+              redirectUri: receiver.value.redirectUri,
+            }),
+          )
+          .andThen((tokenSet) =>
+            tokenSet.refreshToken === undefined
+              ? err(oauthFailed("Google did not return a refresh token."))
+              : tokenStore.setRefreshToken(tokenSet.refreshToken).map(() => tokenSet),
+          )
+          .map((tokenSet) => {
+            cachedAccessToken = cacheAccessToken(tokenSet);
+            return undefined;
+          });
       } finally {
         receiver.value.close();
       }
     },
     disconnect: async () => {
       cachedAccessToken = undefined;
-      const cleared = await tokenStore.clearRefreshToken();
-      if (cleared.isErr()) return err(cleared.error);
-      return ok(undefined);
+      return await tokenStore.clearRefreshToken().map(() => undefined);
     },
     getAccessToken: async () => {
       if (isUsableAccessToken(cachedAccessToken, now)) {
@@ -122,33 +127,38 @@ export const createGoogleAuthService = ({
       }
 
       if (clientId === undefined || clientId.length === 0) {
-        return err({ type: "OAuthFailed", cause: "NEXTROOM_GOOGLE_CLIENT_ID is not configured." });
+        return err(missingClientIdError());
       }
 
-      const refreshToken = await tokenStore.getRefreshToken();
-      if (refreshToken.isErr()) return err(refreshToken.error);
-      if (refreshToken.value === null) return ok(null);
+      return await tokenStore.getRefreshToken().andThen((refreshToken) => {
+        if (refreshToken === null) return ok(null);
 
-      const refreshed = await oauthClient.refreshAccessToken({
-        clientId,
-        clientSecret,
-        refreshToken: refreshToken.value,
+        return oauthClient
+          .refreshAccessToken({
+            clientId,
+            clientSecret,
+            refreshToken,
+          })
+          .map((tokenSet) => {
+            cachedAccessToken = cacheAccessToken(tokenSet);
+            return cachedAccessToken.accessToken;
+          })
+          .orElse((error) => {
+            cachedAccessToken = undefined;
+            if (tokenRefreshShouldClearStoredToken(error)) {
+              return ResultAsync.fromSafePromise(
+                tokenStore.clearRefreshToken().match(
+                  () => undefined,
+                  () => undefined,
+                ),
+              ).andThen(() => err(error));
+            }
+            return err(error);
+          });
       });
-      if (refreshed.isErr()) {
-        cachedAccessToken = undefined;
-        if (tokenRefreshShouldClearStoredToken(refreshed.error)) {
-          await tokenStore.clearRefreshToken();
-        }
-        return err(refreshed.error);
-      }
-
-      cachedAccessToken = cacheAccessToken(refreshed.value);
-      return ok(cachedAccessToken.accessToken);
     },
     isConnected: async () => {
-      const refreshToken = await tokenStore.getRefreshToken();
-      if (refreshToken.isErr()) return err(refreshToken.error);
-      return ok(refreshToken.value !== null);
+      return await tokenStore.getRefreshToken().map((refreshToken) => refreshToken !== null);
     },
   };
 };
