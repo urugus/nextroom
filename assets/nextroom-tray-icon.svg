@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="NextRoom tray icon">
+  <rect x="34" y="13" width="15" height="38" rx="5" fill="#000" opacity="0.72" />
+  <path
+    d="M15 18c0-4 3-7 7-8l22-3c5-1 9 3 9 8v43c0 4-4 8-9 7l-25-6c-3-1-5-4-5-7L15 18Z"
+    fill="#000"
+  />
+</svg>
