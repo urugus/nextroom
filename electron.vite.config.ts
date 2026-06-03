@@ -25,6 +25,8 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve("src/preload/index.ts"),
+          meetShell: resolve("src/preload/meetShell.ts"),
+          screenSharePicker: resolve("src/preload/screenSharePicker.ts"),
         },
         output: {
           entryFileNames: "[name].cjs",

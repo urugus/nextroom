@@ -7,6 +7,7 @@ import type {
   AppUpdateStatus,
   MeetEventsSnapshot,
   MenuShortcutStatus,
+  ScreenShareSource,
 } from "./types";
 
 export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: SerializedAppError };
@@ -28,11 +29,20 @@ export const IPC_CHANNELS = {
   settingsGet: "settings:get",
   settingsUpdate: "settings:update",
   settingsMenuShortcutStatusGet: "settings:menuShortcutStatusGet",
+  screenShareCancel: "screenShare:cancel",
+  screenShareListSources: "screenShare:listSources",
+  screenShareSelectSource: "screenShare:selectSource",
   updatesGetStatus: "updates:getStatus",
   updatesCheck: "updates:check",
   updatesRunHomebrewUpdate: "updates:runHomebrewUpdate",
   updatesStatusChanged: "updates:status-changed",
 } as const;
+
+export type ScreenSharePickerApi = {
+  listSources: () => Promise<ScreenShareSource[]>;
+  selectSource: (sourceId: string) => Promise<void>;
+  cancel: () => Promise<void>;
+};
 
 export type MeetLauncherApi = {
   getAccountStatus: () => Promise<ApiResult<AccountStatus>>;

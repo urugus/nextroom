@@ -108,3 +108,11 @@ export type AppUpdateStatus = {
   canCheck: boolean;
   canRunHomebrewUpdate: boolean;
 };
+
+export type ScreenShareSource = {
+  id: string;
+  name: string;
+  kind: "screen" | "window";
+  thumbnailDataUrl: string;
+  appIconDataUrl?: string;
+};

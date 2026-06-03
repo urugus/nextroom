@@ -1,0 +1,4 @@
+interface:
+  display_name: "NextRoom Release Workflow"
+  short_description: "Plan, PR, merge, and release NextRoom changes."
+  default_prompt: "Use $nextroom-release-workflow to run the full NextRoom change and release workflow."
