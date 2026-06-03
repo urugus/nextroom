@@ -131,15 +131,18 @@ git tag -a "v<version>" -m "v<version>"
    push is usually rejected, so create a release PR from `codex/release-<version>`.
 7. For the release PR:
    - Use a concise Japanese PR body.
-   - Wait for `Verify`, `Verify pinned actions`, and release checks such as `Build macOS release`.
+   - Wait for PR checks such as `Verify` and `Verify pinned actions`.
    - Merge with `--merge --admin` so the tagged version commit stays in `main` history.
-8. Fetch after merge and verify:
+8. Fetch after merge and verify the PR/tag state:
 
 ```bash
 git fetch origin
 git ls-remote --tags origin "v<version>^{}"
 gh pr view <release-pr> --json state,mergedAt,mergeCommit
 ```
+
+9. After the tag has been pushed, verify the tag-triggered `Release` workflow separately. Its
+   `Build macOS release` job runs on `push` to `v*` tags or manual dispatch, not on the release PR.
 
 ## Handoff Checklist
 
