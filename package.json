@@ -42,7 +42,8 @@
       "entitlementsInherit": "build/entitlements.mac.inherit.plist",
       "extendInfo": {
         "NSCameraUsageDescription": "NextRoom needs camera access for Google Meet calls.",
-        "NSMicrophoneUsageDescription": "NextRoom needs microphone access for Google Meet calls."
+        "NSMicrophoneUsageDescription": "NextRoom needs microphone access for Google Meet calls.",
+        "NSScreenCaptureUsageDescription": "NextRoom needs screen recording access for Google Meet screen sharing."
       },
       "hardenedRuntime": true,
       "notarize": false

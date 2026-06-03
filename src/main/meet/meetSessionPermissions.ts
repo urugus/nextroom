@@ -11,7 +11,7 @@ type PermissionRequestHandler = NonNullable<Parameters<Session["setPermissionReq
 type PermissionCheckDetails = Parameters<PermissionCheckHandler>[3];
 type PermissionRequestDetails = Parameters<PermissionRequestHandler>[3];
 
-const allowedMeetPermissions = new Set<string>(["media", "notifications"]);
+const allowedMeetPermissions = new Set<string>(["display-capture", "media", "notifications"]);
 
 export const isMeetOrigin = (value: string | null | undefined): boolean => {
   if (value === null || value === undefined || value.length === 0) return false;

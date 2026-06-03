@@ -5,6 +5,10 @@ import { createKeychainTokenStore } from "@main/adapters/keychainTokenStore";
 import { createGoogleCalendarClient } from "@main/calendar/calendarClient";
 import { createCalendarSyncService } from "@main/calendar/calendarSyncService";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
+import {
+  type CapturableScreenShareSource,
+  configureMeetDisplayMediaHandler,
+} from "@main/meet/meetDisplayMedia";
 import { meetNavigationActionFor } from "@main/meet/meetNavigationPolicy";
 import {
   configureMeetSessionPermissions,
@@ -44,7 +48,12 @@ import {
 } from "@main/updater/appUpdater";
 import { type AppError, serializeAppError } from "@shared/errors";
 import { IPC_CHANNELS } from "@shared/ipc";
-import type { AppSettings, AppUpdateStatus, MenuShortcutStatus } from "@shared/types";
+import type {
+  AppSettings,
+  AppUpdateStatus,
+  MenuShortcutStatus,
+  ScreenShareSource,
+} from "@shared/types";
 import type { BrowserWindow as ElectronBrowserWindow, Session, WebContents } from "electron";
 import { err, fromThrowable, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -54,6 +63,8 @@ const nodeRequire = createRequire(import.meta.url);
 const {
   app,
   BrowserWindow,
+  dialog,
+  desktopCapturer,
   Menu,
   Tray,
   WebContentsView,
@@ -62,6 +73,7 @@ const {
   nativeImage,
   session,
   shell,
+  systemPreferences,
 } = nodeRequire("electron") as typeof import("electron");
 const keytar = nodeRequire("keytar") as typeof import("keytar");
 
@@ -393,6 +405,325 @@ const meetShellHtml = (): string => `<!doctype html>
   </body>
 </html>`;
 
+const screenSharePickerHtml = (): string => `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      :root {
+        color: #1d1d1f;
+        background: #f5f5f7;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px 22px 12px;
+        border-bottom: 1px solid #d6d6d8;
+        background: #fbfbfd;
+      }
+      h1 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 650;
+        line-height: 1.2;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+      }
+      button {
+        min-height: 30px;
+        border: 1px solid #c7c7cc;
+        border-radius: 6px;
+        background: #ffffff;
+        color: #1d1d1f;
+        cursor: pointer;
+        font: inherit;
+        font-size: 13px;
+        line-height: 1;
+        padding: 6px 12px;
+      }
+      button.primary {
+        border-color: #0071e3;
+        background: #007aff;
+        color: #ffffff;
+      }
+      button:disabled {
+        border-color: #c4c4c6;
+        background: #e5e5e7;
+        color: #6e6e73;
+        cursor: default;
+      }
+      main {
+        padding: 18px 22px 22px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+        gap: 14px;
+      }
+      .source {
+        display: grid;
+        grid-template-rows: 118px auto;
+        min-width: 0;
+        overflow: hidden;
+        border: 2px solid transparent;
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+        cursor: pointer;
+        padding: 0;
+        text-align: left;
+      }
+      .source[aria-selected="true"] {
+        border-color: #007aff;
+      }
+      .thumb {
+        width: 100%;
+        height: 118px;
+        object-fit: cover;
+        background: #e8e8ed;
+      }
+      .meta {
+        display: grid;
+        grid-template-columns: 20px 1fr;
+        gap: 8px;
+        align-items: center;
+        min-width: 0;
+        padding: 10px;
+      }
+      .icon {
+        width: 20px;
+        height: 20px;
+        object-fit: contain;
+      }
+      .fallback-icon {
+        display: grid;
+        place-items: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 5px;
+        background: #e8e8ed;
+        color: #424245;
+        font-size: 11px;
+        font-weight: 650;
+      }
+      .text {
+        min-width: 0;
+      }
+      .name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .kind {
+        margin-top: 3px;
+        color: #6e6e73;
+        font-size: 12px;
+        text-transform: capitalize;
+      }
+      .empty {
+        color: #6e6e73;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Share screen</h1>
+      <div class="actions">
+        <button type="button" id="cancel-button">Cancel</button>
+        <button type="button" id="share-button" class="primary" disabled>Share</button>
+      </div>
+    </header>
+    <main>
+      <div id="sources" class="grid"></div>
+    </main>
+    <script>
+      const sourcesEl = document.getElementById("sources");
+      const cancelButton = document.getElementById("cancel-button");
+      const shareButton = document.getElementById("share-button");
+      let selectedSourceId;
+
+      const renderIcon = (source) => {
+        if (source.appIconDataUrl) {
+          const icon = document.createElement("img");
+          icon.className = "icon";
+          icon.alt = "";
+          icon.src = source.appIconDataUrl;
+          return icon;
+        }
+
+        const fallback = document.createElement("div");
+        fallback.className = "fallback-icon";
+        fallback.textContent = source.kind === "screen" ? "S" : "W";
+        return fallback;
+      };
+
+      const selectSource = (sourceId) => {
+        selectedSourceId = sourceId;
+        for (const button of sourcesEl.querySelectorAll(".source")) {
+          button.setAttribute("aria-selected", String(button.dataset.sourceId === sourceId));
+        }
+        shareButton.disabled = false;
+      };
+
+      const renderSources = (sources) => {
+        sourcesEl.textContent = "";
+        if (sources.length === 0) {
+          const empty = document.createElement("p");
+          empty.className = "empty";
+          empty.textContent = "No screens or windows are available.";
+          sourcesEl.append(empty);
+          return;
+        }
+
+        for (const source of sources) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "source";
+          button.dataset.sourceId = source.id;
+          button.setAttribute("aria-selected", "false");
+
+          const thumbnail = document.createElement("img");
+          thumbnail.className = "thumb";
+          thumbnail.alt = "";
+          thumbnail.src = source.thumbnailDataUrl;
+
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          const text = document.createElement("div");
+          text.className = "text";
+          const name = document.createElement("div");
+          name.className = "name";
+          name.textContent = source.name;
+          const kind = document.createElement("div");
+          kind.className = "kind";
+          kind.textContent = source.kind;
+          text.append(name, kind);
+          meta.append(renderIcon(source), text);
+
+          button.append(thumbnail, meta);
+          button.addEventListener("click", () => selectSource(source.id));
+          button.addEventListener("dblclick", () => {
+            void window.screenSharePicker.selectSource(source.id);
+          });
+          sourcesEl.append(button);
+        }
+      };
+
+      cancelButton.addEventListener("click", () => {
+        void window.screenSharePicker.cancel();
+      });
+      shareButton.addEventListener("click", () => {
+        if (selectedSourceId !== undefined) {
+          void window.screenSharePicker.selectSource(selectedSourceId);
+        }
+      });
+
+      window.screenSharePicker.listSources().then(renderSources).catch(() => {
+        renderSources([]);
+      });
+    </script>
+  </body>
+</html>`;
+
+type ScreenSharePickerState = {
+  resolve: (source: ScreenShareSource | undefined) => void;
+  settled: boolean;
+  sources: ScreenShareSource[];
+  window: ElectronBrowserWindow;
+};
+let activeScreenSharePicker: ScreenSharePickerState | undefined;
+
+const finishScreenSharePicker = (
+  state: ScreenSharePickerState,
+  source: ScreenShareSource | undefined,
+): void => {
+  if (state.settled) return;
+
+  state.settled = true;
+  if (activeScreenSharePicker === state) {
+    activeScreenSharePicker = undefined;
+  }
+  state.resolve(source);
+
+  if (!state.window.isDestroyed()) {
+    state.window.destroy();
+  }
+};
+
+const openScreenSharePicker = (
+  sources: ScreenShareSource[],
+): Promise<ScreenShareSource | undefined> =>
+  new Promise((resolve) => {
+    if (activeScreenSharePicker !== undefined) {
+      finishScreenSharePicker(activeScreenSharePicker, undefined);
+    }
+
+    let window: ElectronBrowserWindow;
+    try {
+      window = new BrowserWindow({
+        width: 760,
+        height: 560,
+        minWidth: 560,
+        minHeight: 420,
+        show: false,
+        title: "Share screen",
+        webPreferences: {
+          preload: join(__dirname, "../preload/screenSharePicker.cjs"),
+          sandbox: true,
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
+      });
+    } catch (cause) {
+      reportMenuBarError("Failed to create the screen share picker.", cause);
+      resolve(undefined);
+      return;
+    }
+
+    const state: ScreenSharePickerState = {
+      resolve,
+      settled: false,
+      sources,
+      window,
+    };
+    activeScreenSharePicker = state;
+
+    const showPicker = (): void => {
+      if (!window.isDestroyed()) {
+        window.show();
+        window.focus();
+      }
+    };
+
+    lockAppControlledWindowNavigation(window.webContents);
+    window.on("closed", () => {
+      finishScreenSharePicker(state, undefined);
+    });
+    window.once("ready-to-show", showPicker);
+    void window
+      .loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(screenSharePickerHtml())}`)
+      .then(showPicker)
+      .catch((cause) => {
+        reportMenuBarError("Failed to load the screen share picker.", cause);
+        finishScreenSharePicker(state, undefined);
+      });
+  });
+
 const createMeetWindow = fromThrowable(
   () => {
     const window = new BrowserWindow({
@@ -604,7 +935,56 @@ const openMeetUrl = async (value: string): Promise<Result<void, AppError>> => {
 
 const ignoreAutoOpenError = (_error: AppError): void => undefined;
 
+const screenAccessStatus = ():
+  | "denied"
+  | "granted"
+  | "not-determined"
+  | "restricted"
+  | "unknown" => {
+  if (process.platform !== "darwin") return "granted";
+
+  return systemPreferences.getMediaAccessStatus("screen");
+};
+
+const notifyScreenAccessDenied = (): void => {
+  void dialog.showMessageBox({
+    buttons: ["OK"],
+    message: "Screen Recording permission is required to share your screen in Google Meet.",
+    title: "Screen sharing unavailable",
+    type: "warning",
+  });
+};
+
+const registerScreenSharePickerIpc = (): void => {
+  ipcMain.handle(IPC_CHANNELS.screenShareListSources, (event) => {
+    const state = activeScreenSharePicker;
+    if (state === undefined || event.sender !== state.window.webContents) return [];
+
+    return state.sources;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.screenShareSelectSource, (event, sourceId: unknown) => {
+    const state = activeScreenSharePicker;
+    if (state === undefined || event.sender !== state.window.webContents) return;
+    if (typeof sourceId !== "string") return;
+
+    finishScreenSharePicker(
+      state,
+      state.sources.find((source) => source.id === sourceId),
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.screenShareCancel, (event) => {
+    const state = activeScreenSharePicker;
+    if (state === undefined || event.sender !== state.window.webContents) return;
+
+    finishScreenSharePicker(state, undefined);
+  });
+};
+
 const registerIpc = (scheduler: AutoOpenScheduler) => {
+  registerScreenSharePickerIpc();
+
   calendarSyncService.subscribe((snapshot) => {
     const result = serializeResultForRenderer(ok(snapshot));
     menuBarController?.updateMeetings(snapshot);
@@ -681,7 +1061,20 @@ if (!appCanStart) {
     if (process.platform === "darwin") {
       app.dock?.hide();
     }
-    configureMeetSessionPermissions(session.fromPartition(meetSessionPartition));
+    const meetSession = session.fromPartition(meetSessionPartition);
+    configureMeetSessionPermissions(meetSession);
+    configureMeetDisplayMediaHandler({
+      chooseSource: openScreenSharePicker,
+      getScreenAccessStatus: screenAccessStatus,
+      getSources: () =>
+        desktopCapturer.getSources({
+          fetchWindowIcons: true,
+          thumbnailSize: { height: 180, width: 320 },
+          types: ["screen", "window"],
+        }) as Promise<CapturableScreenShareSource[]>,
+      meetSession,
+      notifyScreenAccessDenied,
+    });
     configureAppUpdater();
     const scheduler = createAutoOpenScheduler({
       activatedAt: new Date(),

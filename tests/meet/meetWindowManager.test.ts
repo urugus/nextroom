@@ -415,10 +415,10 @@ describe("isMeetOrigin", () => {
 });
 
 describe("isAllowedMeetPermission", () => {
-  it("allows only media and notifications", () => {
+  it("allows only display capture, media, and notifications", () => {
+    expect(isAllowedMeetPermission("display-capture")).toBe(true);
     expect(isAllowedMeetPermission("media")).toBe(true);
     expect(isAllowedMeetPermission("notifications")).toBe(true);
-    expect(isAllowedMeetPermission("display-capture")).toBe(false);
     expect(isAllowedMeetPermission("geolocation")).toBe(false);
   });
 });
@@ -433,10 +433,11 @@ describe("configureMeetSessionPermissions", () => {
     expect(session.setPermissionRequestHandler).toHaveBeenCalledTimes(1);
   });
 
-  it("allows media and notifications checks for Google Meet", () => {
+  it("allows display capture, media, and notifications checks for Google Meet", () => {
     const { check, session } = createFakeSession();
     configureMeetSessionPermissions(session);
 
+    expect(check("display-capture", "https://meet.google.com")).toBe(true);
     expect(check("media", "https://meet.google.com")).toBe(true);
     expect(check("notifications", "https://meet.google.com")).toBe(true);
   });
@@ -445,6 +446,7 @@ describe("configureMeetSessionPermissions", () => {
     const { check, session } = createFakeSession();
     configureMeetSessionPermissions(session);
 
+    expect(check("display-capture", "https://accounts.google.com")).toBe(false);
     expect(check("media", "https://accounts.google.com")).toBe(false);
     expect(
       check("media", "https://accounts.google.com", {
@@ -462,18 +464,23 @@ describe("configureMeetSessionPermissions", () => {
     ).toBe(false);
   });
 
-  it("rejects non-media and non-notification permission checks", () => {
+  it("rejects permissions outside the Meet allowlist", () => {
     const { check, session } = createFakeSession();
     configureMeetSessionPermissions(session);
 
-    expect(check("display-capture", "https://meet.google.com")).toBe(false);
     expect(check("geolocation", "https://meet.google.com")).toBe(false);
   });
 
-  it("allows media and notifications requests for Google Meet", () => {
+  it("allows display capture, media, and notifications requests for Google Meet", () => {
     const { request, session } = createFakeSession();
     configureMeetSessionPermissions(session);
 
+    expect(
+      request("display-capture", {
+        isMainFrame: true,
+        requestingUrl: "https://meet.google.com/abc-defg-hij",
+      }),
+    ).toBe(true);
     expect(
       request("media", {
         isMainFrame: true,
@@ -492,6 +499,16 @@ describe("configureMeetSessionPermissions", () => {
     const { request, session } = createFakeSession();
     configureMeetSessionPermissions(session);
 
+    expect(
+      request(
+        "display-capture",
+        {
+          isMainFrame: true,
+          requestingUrl: "https://accounts.google.com",
+        },
+        "https://accounts.google.com",
+      ),
+    ).toBe(false);
     expect(
       request(
         "media",
@@ -532,16 +549,10 @@ describe("configureMeetSessionPermissions", () => {
     ).toBe(false);
   });
 
-  it("rejects non-media and non-notification permission requests", () => {
+  it("rejects permission requests outside the Meet allowlist", () => {
     const { request, session } = createFakeSession();
     configureMeetSessionPermissions(session);
 
-    expect(
-      request("display-capture", {
-        isMainFrame: true,
-        requestingUrl: "https://meet.google.com/abc-defg-hij",
-      }),
-    ).toBe(false);
     expect(
       request("geolocation", {
         isMainFrame: true,
