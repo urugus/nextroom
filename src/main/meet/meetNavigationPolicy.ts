@@ -31,7 +31,10 @@ export const meetNavigationActionFor = (value: string): NavigationAction => {
     return { type: "allow" };
   }
 
-  if (url.protocol === "https:" || externalProtocols.has(url.protocol)) {
+  if (
+    (url.protocol === "https:" && url.hostname.length > 0) ||
+    externalProtocols.has(url.protocol)
+  ) {
     return { type: "openExternal", url: url.toString() };
   }
 

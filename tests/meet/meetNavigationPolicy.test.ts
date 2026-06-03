@@ -80,6 +80,9 @@ describe("meetWindowOpenActionFor", () => {
     expect(meetWindowOpenActionFor("http://meet.google.com/abc-defg-hij")).toEqual({
       type: "block",
     });
+    expect(meetWindowOpenActionFor("https:")).toEqual({
+      type: "block",
+    });
     expect(meetWindowOpenActionFor("file:///Users/example/secret")).toEqual({
       type: "block",
     });
