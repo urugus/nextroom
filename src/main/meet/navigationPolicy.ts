@@ -62,8 +62,14 @@ const applyNavigationDecision = (
 
   event.preventDefault();
   if (decision.action === "openExternal") {
-    void openExternal(decision.url);
+    runNavigationSideEffect(openExternal(decision.url));
   }
+};
+
+const ignoreNavigationSideEffectError = (_cause: unknown): void => undefined;
+
+const runNavigationSideEffect = (request: Promise<unknown>): void => {
+  void request.catch(ignoreNavigationSideEffectError);
 };
 
 export const configureMeetNavigationPolicy = ({
@@ -82,9 +88,9 @@ export const configureMeetNavigationPolicy = ({
   webContents.setWindowOpenHandler(({ url }) => {
     const decision = decideMeetNavigation(url);
     if (decision.action === "allow") {
-      void openAllowedPopup(url);
+      runNavigationSideEffect(openAllowedPopup(url));
     } else if (decision.action === "openExternal") {
-      void openExternal(decision.url);
+      runNavigationSideEffect(openExternal(decision.url));
     }
 
     return { action: "deny" };
