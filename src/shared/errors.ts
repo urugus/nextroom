@@ -7,6 +7,7 @@ export type AppError =
   | { type: "KeychainUnavailable"; cause: unknown }
   | { type: "DatabaseFailed"; cause: unknown }
   | { type: "PermissionDenied"; permission: "camera" | "microphone" | "screen"; cause?: unknown }
+  | { type: "IpcSenderRejected" }
   | { type: "MainWindowFailed"; cause: unknown }
   | { type: "MeetWindowFailed"; cause: unknown }
   | { type: "ShortcutRegistrationFailed"; accelerator: string; cause: unknown }
@@ -27,6 +28,7 @@ const recoverableByType = {
   KeychainUnavailable: true,
   DatabaseFailed: true,
   PermissionDenied: true,
+  IpcSenderRejected: false,
   MainWindowFailed: true,
   MeetWindowFailed: true,
   ShortcutRegistrationFailed: true,
@@ -65,6 +67,8 @@ export const appErrorMessage = (error: AppError): string => {
       return `Local database operation failed: ${unknownToMessage(error.cause)}`;
     case "PermissionDenied":
       return `Permission denied for ${error.permission}.`;
+    case "IpcSenderRejected":
+      return "Security check rejected an IPC request.";
     case "MainWindowFailed":
       return `NextRoom window failed: ${unknownToMessage(error.cause)}`;
     case "MeetWindowFailed":

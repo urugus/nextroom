@@ -173,13 +173,25 @@ const findBrewExecutable = async () => {
   return err(errorFrom("Homebrew was not found. Install NextRoom with Homebrew first."));
 };
 
+const compactEnv = (env: Record<string, string | undefined>): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
+
+const homebrewBaseEnv = (): Record<string, string> =>
+  compactEnv({
+    HOME: app.getPath("home"),
+    HOMEBREW_NO_ANALYTICS: "1",
+    HOMEBREW_NO_AUTO_UPDATE: "1",
+    LANG: process.env.LANG ?? "en_US.UTF-8",
+    PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    TMPDIR: process.env.TMPDIR,
+    USER: process.env.USER,
+  });
+
 const runBrew = async (brewPath: string, args: string[]) =>
   execFileAsync(brewPath, args, {
-    env: {
-      ...process.env,
-      HOMEBREW_NO_ANALYTICS: "1",
-      HOMEBREW_NO_AUTO_UPDATE: "1",
-    },
+    env: homebrewBaseEnv(),
     maxBuffer: 1024 * 1024,
     timeout: 10 * 60 * 1_000,
   });
@@ -221,12 +233,10 @@ const spawnDetachedHomebrewUpdate = async (brewPath: string, expectedVersion: st
   const logFd = openSync(homebrewUpdateLogPath(), "a");
 
   try {
-    const child = spawn("/bin/zsh", ["-lc", homebrewUpdateScript], {
+    const child = spawn("/bin/zsh", ["-c", homebrewUpdateScript], {
       detached: true,
       env: {
-        ...process.env,
-        HOMEBREW_NO_ANALYTICS: "1",
-        HOMEBREW_NO_AUTO_UPDATE: "1",
+        ...homebrewBaseEnv(),
         NEXTROOM_APPDIR: homebrewAppDir(),
         NEXTROOM_APP_PATH: homebrewAppPath(),
         NEXTROOM_BREW_PATH: brewPath,
