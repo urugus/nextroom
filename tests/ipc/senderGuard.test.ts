@@ -19,14 +19,25 @@ describe("isTrustedIpcSenderUrl", () => {
   });
 
   it("accepts packaged renderer index files", () => {
+    const appRendererFileUrl =
+      "file:///Applications/NextRoom.app/Contents/Resources/out/renderer/index.html";
+
     expect(
-      isTrustedIpcSenderUrl(
-        "file:///Applications/NextRoom.app/Contents/Resources/out/renderer/index.html",
-        {
-          meetShellUrl,
-        },
-      ),
+      isTrustedIpcSenderUrl(appRendererFileUrl, {
+        appRendererFileUrl,
+        meetShellUrl,
+      }),
     ).toBe(true);
+  });
+
+  it("rejects unrelated renderer index file paths", () => {
+    expect(
+      isTrustedIpcSenderUrl("file:///tmp/renderer/index.html", {
+        appRendererFileUrl:
+          "file:///Applications/NextRoom.app/Contents/Resources/out/renderer/index.html",
+        meetShellUrl,
+      }),
+    ).toBe(false);
   });
 
   it("rejects remote and arbitrary data URLs", () => {
@@ -62,9 +73,9 @@ describe("createIpcSenderGuard", () => {
     expect(
       guard.isTrustedEvent({
         sender: { id: 42 },
-        senderFrame: { url: "data:text/html,%3C!doctype%20html%3E" },
+        senderFrame: { url: "data:text/html,evil" },
       } as unknown as Parameters<typeof guard.isTrustedEvent>[0]),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       guard.isTrustedEvent({
         sender: { id: 42 },

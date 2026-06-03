@@ -1,6 +1,7 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from "electron";
 
 type SenderGuardInput = {
+  appRendererFileUrl?: string;
   appRendererUrl?: string;
   meetShellUrl: string;
 };
@@ -12,8 +13,6 @@ export type IpcSenderGuard = {
     options?: { dataShell?: boolean },
   ) => void;
 };
-
-const appRendererFilePathPattern = /\/renderer\/index\.html$/;
 
 const isTrustedDevRendererUrl = (value: string, appRendererUrl: string | undefined): boolean => {
   if (appRendererUrl === undefined) return false;
@@ -27,27 +26,30 @@ const isTrustedDevRendererUrl = (value: string, appRendererUrl: string | undefin
 
 export const isTrustedIpcSenderUrl = (
   value: string,
-  { appRendererUrl, meetShellUrl }: SenderGuardInput,
+  { appRendererFileUrl, appRendererUrl, meetShellUrl }: SenderGuardInput,
 ): boolean => {
   if (value === meetShellUrl) return true;
   if (isTrustedDevRendererUrl(value, appRendererUrl)) return true;
 
+  return appRendererFileUrl !== undefined && value === appRendererFileUrl;
+};
+
+const dataUrlPayload = (value: string): string | undefined => {
   try {
     const url = new URL(value);
-    return url.protocol === "file:" && appRendererFilePathPattern.test(url.pathname);
+    if (url.protocol !== "data:") return undefined;
+
+    const commaIndex = url.pathname.indexOf(",");
+    if (commaIndex === -1) return undefined;
+
+    return decodeURIComponent(url.pathname.slice(commaIndex + 1));
   } catch {
-    return false;
+    return undefined;
   }
 };
 
-const isDataHtmlUrl = (value: string): boolean => {
-  try {
-    const url = new URL(value);
-    return url.protocol === "data:" && url.pathname.toLowerCase().startsWith("text/html");
-  } catch {
-    return false;
-  }
-};
+const isTrustedMeetShellDataUrl = (value: string, meetShellUrl: string): boolean =>
+  dataUrlPayload(value) === dataUrlPayload(meetShellUrl);
 
 export const createIpcSenderGuard = (input: SenderGuardInput): IpcSenderGuard => {
   const trustedSenderIds = new Set<number>();
@@ -58,7 +60,8 @@ export const createIpcSenderGuard = (input: SenderGuardInput): IpcSenderGuard =>
       trustedSenderIds.has(event.sender.id) &&
       event.senderFrame !== null &&
       (isTrustedIpcSenderUrl(event.senderFrame.url, input) ||
-        (trustedDataShellSenderIds.has(event.sender.id) && isDataHtmlUrl(event.senderFrame.url))),
+        (trustedDataShellSenderIds.has(event.sender.id) &&
+          isTrustedMeetShellDataUrl(event.senderFrame.url, input.meetShellUrl))),
     trustWindow: (window, options) => {
       const senderId = window.webContents.id;
       trustedSenderIds.add(senderId);

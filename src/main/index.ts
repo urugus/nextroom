@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { createKeychainTokenStore } from "@main/adapters/keychainTokenStore";
 import { createGoogleCalendarClient } from "@main/calendar/calendarClient";
 import { createCalendarSyncService } from "@main/calendar/calendarSyncService";
@@ -322,6 +323,7 @@ const meetShellUrl = (): string =>
   `data:text/html;charset=utf-8,${encodeURIComponent(meetShellHtml())}`;
 
 ipcSenderGuard = createIpcSenderGuard({
+  appRendererFileUrl: pathToFileURL(join(__dirname, "../renderer/index.html")).toString(),
   appRendererUrl: process.env.ELECTRON_RENDERER_URL,
   meetShellUrl: meetShellUrl(),
 });
@@ -545,8 +547,7 @@ const openMeetUrl = async (value: string): Promise<Result<void, AppError>> => {
 const ignoreAutoOpenError = (_error: AppError): void => undefined;
 
 const untrustedIpcSenderError = (): AppError => ({
-  type: "MainWindowFailed",
-  cause: "Untrusted IPC sender.",
+  type: "IpcSenderRejected",
 });
 
 const handleTrustedIpc = (channel: IpcChannel, handler: TrustedIpcHandler): void => {
