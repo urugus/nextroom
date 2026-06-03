@@ -5,6 +5,7 @@ import { createKeychainTokenStore } from "@main/adapters/keychainTokenStore";
 import { createGoogleCalendarClient } from "@main/calendar/calendarClient";
 import { createCalendarSyncService } from "@main/calendar/calendarSyncService";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
+import { meetNavigationActionFor } from "@main/meet/meetNavigationPolicy";
 import {
   configureMeetSessionPermissions,
   meetSessionPartition,
@@ -44,7 +45,7 @@ import {
 import { type AppError, serializeAppError } from "@shared/errors";
 import { IPC_CHANNELS } from "@shared/ipc";
 import type { AppSettings, AppUpdateStatus, MenuShortcutStatus } from "@shared/types";
-import type { BrowserWindow as ElectronBrowserWindow } from "electron";
+import type { BrowserWindow as ElectronBrowserWindow, WebContents } from "electron";
 import { err, fromThrowable, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { serializeResultForRenderer } from "./ipc/result";
@@ -230,6 +231,78 @@ const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "Mee
   )();
 
 const meetShellHeight = 38;
+const strictRendererCsp = [
+  "default-src 'self'",
+  "base-uri 'none'",
+  "connect-src 'self'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+  "img-src 'self' data:",
+  "object-src 'none'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+].join("; ");
+const devRendererCsp = strictRendererCsp
+  .replace("connect-src 'self'", "connect-src 'self' ws://localhost:* ws://127.0.0.1:*")
+  .replace("script-src 'self'", "script-src 'self' 'unsafe-inline'");
+
+const isAllowedDevRendererNavigation = (
+  targetUrl: string,
+  rendererUrl: string | undefined,
+): boolean => {
+  if (rendererUrl === undefined) return false;
+
+  try {
+    return new URL(targetUrl).origin === new URL(rendererUrl).origin;
+  } catch {
+    return false;
+  }
+};
+
+const applyMainWindowNavigationPolicy = (
+  contents: WebContents,
+  rendererUrl: string | undefined,
+): void => {
+  contents.on("will-navigate", (event, url) => {
+    if (isAllowedDevRendererNavigation(url, rendererUrl)) return;
+
+    event.preventDefault();
+  });
+};
+
+const applyRendererCsp = (contents: WebContents, rendererUrl: string | undefined): void => {
+  const rendererCsp = rendererUrl === undefined ? strictRendererCsp : devRendererCsp;
+
+  contents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [rendererCsp],
+      },
+    });
+  });
+};
+
+const applyMeetNavigation = (url: string): boolean => {
+  const action = meetNavigationActionFor(url);
+
+  if (action.type === "allow") return true;
+  if (action.type === "openExternal") {
+    void shell.openExternal(action.url);
+  }
+
+  return false;
+};
+
+const lockAppControlledWindowNavigation = (contents: WebContents): void => {
+  contents.setWindowOpenHandler(() => ({ action: "deny" }));
+  contents.on("will-navigate", (event) => {
+    event.preventDefault();
+  });
+  contents.on("will-redirect", (event) => {
+    event.preventDefault();
+  });
+};
 
 const meetShellHtml = (): string => `<!doctype html>
 <html>
@@ -320,7 +393,7 @@ const createMeetWindow = fromThrowable(
       title: "Meet",
       titleBarStyle: "hiddenInset",
       webPreferences: {
-        preload: join(__dirname, "../preload/index.cjs"),
+        preload: join(__dirname, "../preload/meetShell.cjs"),
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
@@ -333,6 +406,25 @@ const createMeetWindow = fromThrowable(
         contextIsolation: true,
         nodeIntegration: false,
       },
+    });
+    lockAppControlledWindowNavigation(window.webContents);
+    meetView.webContents.setWindowOpenHandler(({ url }) => {
+      if (applyMeetNavigation(url)) {
+        void meetView.webContents.loadURL(url);
+      }
+
+      return { action: "deny" };
+    });
+    meetView.webContents.on("will-navigate", (event, url) => {
+      if (applyMeetNavigation(url)) return;
+
+      event.preventDefault();
+    });
+    meetView.webContents.on("will-redirect", (event, url, _isInPlace, isMainFrame) => {
+      if (!isMainFrame) return;
+      if (applyMeetNavigation(url)) return;
+
+      event.preventDefault();
     });
     const layout = (): void => {
       const bounds = window.getContentBounds();
@@ -381,6 +473,9 @@ const meetWindowManager = createMeetWindowManager({
 
 const createMainWindow = () =>
   createBrowserWindow("NextRoom", "MainWindowFailed").map((window) => {
+    const rendererUrl = process.env.ELECTRON_RENDERER_URL;
+    applyRendererCsp(window.webContents, rendererUrl);
+    applyMainWindowNavigationPolicy(window.webContents, rendererUrl);
     window.webContents.setWindowOpenHandler(({ url }) => {
       if (isMeetUrl(url)) {
         void openMeetUrl(url);
@@ -389,8 +484,8 @@ const createMainWindow = () =>
       return { action: "deny" };
     });
 
-    if (process.env.ELECTRON_RENDERER_URL !== undefined) {
-      void window.loadURL(process.env.ELECTRON_RENDERER_URL);
+    if (rendererUrl !== undefined) {
+      void window.loadURL(rendererUrl);
     } else {
       void window.loadFile(join(__dirname, "../renderer/index.html"));
     }
