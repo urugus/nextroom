@@ -208,7 +208,7 @@ describe("appUpdater Homebrew updates", () => {
     expect(context.closeSyncMock).toHaveBeenCalledWith(42);
     expect(context.spawnMock).toHaveBeenCalledWith(
       "/bin/zsh",
-      ["-lc", expect.any(String)],
+      ["-c", expect.any(String)],
       expect.objectContaining({ detached: true }),
     );
     expect(script).toContain("osascript -e 'quit app \"NextRoom\"'");
@@ -223,6 +223,7 @@ describe("appUpdater Homebrew updates", () => {
     expect(spawnOptions.env).toMatchObject({
       HOMEBREW_NO_ANALYTICS: "1",
       HOMEBREW_NO_AUTO_UPDATE: "1",
+      HOME: "/Users/tester",
       NEXTROOM_APPDIR: "/Users/tester/Applications",
       NEXTROOM_APP_PATH: "/Users/tester/Applications/NextRoom.app",
       NEXTROOM_BREW_PATH: "/opt/homebrew/bin/brew",
