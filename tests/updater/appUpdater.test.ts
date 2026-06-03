@@ -355,6 +355,25 @@ describe("appUpdater daily update checks", () => {
     expect(context.writeFileSyncMock).not.toHaveBeenCalled();
   });
 
+  it("records an error when an update check throws synchronously", async () => {
+    const context = await createAppUpdaterTestContext(
+      () => Promise.resolve(),
+      undefined,
+      () => {
+        throw new Error("sync failure");
+      },
+    );
+
+    const result = await context.module.checkForAppUpdatesIfDue(new Date(2026, 5, 2, 9));
+
+    expect(result.isErr()).toBe(true);
+    expect(context.module.getAppUpdateStatus()).toMatchObject({
+      errorMessage: "sync failure",
+      status: "error",
+    });
+    expect(context.writeFileSyncMock).not.toHaveBeenCalled();
+  });
+
   it("protects immediate status subscribers from throwing during registration", async () => {
     const context = await createAppUpdaterTestContext();
 

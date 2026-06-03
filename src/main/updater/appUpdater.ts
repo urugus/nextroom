@@ -164,7 +164,7 @@ const runUpdateOperation = <T>(
   operation: () => Promise<T>,
   messageFrom: (cause: unknown) => string = updateErrorMessageFrom,
 ): ResultAsync<T, AppError> =>
-  ResultAsync.fromPromise(operation(), (cause) => {
+  ResultAsync.fromPromise(Promise.resolve().then(operation), (cause) => {
     updateState({
       errorMessage: messageFrom(cause),
       status: "error",
