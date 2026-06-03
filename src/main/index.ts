@@ -9,7 +9,7 @@ import {
   type CapturableScreenShareSource,
   configureMeetDisplayMediaHandler,
 } from "@main/meet/meetDisplayMedia";
-import { meetNavigationActionFor } from "@main/meet/meetNavigationPolicy";
+import { meetNavigationActionFor, meetWindowOpenActionFor } from "@main/meet/meetNavigationPolicy";
 import {
   configureMeetSessionPermissions,
   meetSessionPartition,
@@ -314,6 +314,14 @@ const applyMeetNavigation = (url: string): boolean => {
   }
 
   return false;
+};
+
+const applyMeetWindowOpen = (url: string): void => {
+  const action = meetWindowOpenActionFor(url);
+
+  if (action.type === "openExternal") {
+    void shell.openExternal(action.url);
+  }
 };
 
 const lockAppControlledWindowNavigation = (contents: WebContents): void => {
@@ -750,10 +758,7 @@ const createMeetWindow = fromThrowable(
     });
     lockAppControlledWindowNavigation(window.webContents);
     meetView.webContents.setWindowOpenHandler(({ url }) => {
-      if (applyMeetNavigation(url)) {
-        void meetView.webContents.loadURL(url);
-      }
-
+      applyMeetWindowOpen(url);
       return { action: "deny" };
     });
     meetView.webContents.on("will-navigate", (event, url) => {
