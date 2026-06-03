@@ -1,6 +1,6 @@
 {
   "name": "nextroom",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "description": "Google Calendar linked Google Meet launcher for macOS.",
   "type": "module",
   "main": "out/main/index.js",
@@ -9,8 +9,8 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "package": "electron-builder",
-    "dist:mac": "pnpm run build && electron-builder --mac dmg zip --arm64 --publish never -c.mac.notarize=false",
-    "release:mac": "pnpm run build && electron-builder --mac dmg zip --arm64 --publish always -c.mac.notarize=false",
+    "dist:mac": "pnpm run build && electron-builder --mac dmg zip --arm64 --publish never",
+    "release:mac": "pnpm run build && electron-builder --mac dmg zip --arm64 --publish always",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "pnpm exec oxlint . && pnpm run lint:arrows",
@@ -45,7 +45,7 @@
         "NSMicrophoneUsageDescription": "NextRoom needs microphone access for Google Meet calls."
       },
       "hardenedRuntime": true,
-      "notarize": true
+      "notarize": false
     },
     "protocols": [
       {
