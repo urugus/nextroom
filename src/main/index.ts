@@ -5,11 +5,13 @@ import { createKeychainTokenStore } from "@main/adapters/keychainTokenStore";
 import { createGoogleCalendarClient } from "@main/calendar/calendarClient";
 import { createCalendarSyncService } from "@main/calendar/calendarSyncService";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
+import { createIpcSenderGuard, type IpcSenderGuard } from "@main/ipc/senderGuard";
 import {
   configureMeetSessionPermissions,
   meetSessionPartition,
 } from "@main/meet/meetSessionPermissions";
 import { createMeetWindowManager, type ManagedMeetWindow } from "@main/meet/meetWindowManager";
+import { configureMeetNavigationPolicy } from "@main/meet/navigationPolicy";
 import { createMenuBarController, type MenuBarController } from "@main/menuBar/menuBarController";
 import { createTrayIcon } from "@main/menuBar/trayIcon";
 import { createGoogleAuthService } from "@main/oauth/googleAuthService";
@@ -44,7 +46,7 @@ import {
 import { type AppError, serializeAppError } from "@shared/errors";
 import { IPC_CHANNELS } from "@shared/ipc";
 import type { AppSettings, AppUpdateStatus, MenuShortcutStatus } from "@shared/types";
-import type { BrowserWindow as ElectronBrowserWindow } from "electron";
+import type { BrowserWindow as ElectronBrowserWindow, IpcMainInvokeEvent } from "electron";
 import { err, fromThrowable, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { serializeResultForRenderer } from "./ipc/result";
@@ -82,9 +84,12 @@ const menuOpenRequestQueue = createMenuOpenRequestQueue({
   },
 });
 const meetUrlSchema = z.string().url();
+type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
+type TrustedIpcHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
 const settingsFileName = "settings.json";
 const menuBarLogFileName = "menu-bar.log";
 let appSettings: AppSettings = { ...defaultAppSettings };
+let ipcSenderGuard: IpcSenderGuard;
 const appCanStart = app.requestSingleInstanceLock();
 const electronProcess = process as NodeJS.Process & { defaultApp?: boolean };
 
@@ -212,8 +217,8 @@ const calendarSyncService = createCalendarSyncService({
 
 const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "MeetWindowFailed") =>
   fromThrowable(
-    () =>
-      new BrowserWindow({
+    () => {
+      const window = new BrowserWindow({
         width: 760,
         height: 520,
         minWidth: 620,
@@ -225,7 +230,10 @@ const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "Mee
           contextIsolation: true,
           nodeIntegration: false,
         },
-      }),
+      });
+      ipcSenderGuard.trustWindow(window);
+      return window;
+    },
     (cause): AppError => ({ type: errorType, cause }),
   )();
 
@@ -310,6 +318,37 @@ const meetShellHtml = (): string => `<!doctype html>
   </body>
 </html>`;
 
+const meetShellUrl = (): string =>
+  `data:text/html;charset=utf-8,${encodeURIComponent(meetShellHtml())}`;
+
+ipcSenderGuard = createIpcSenderGuard({
+  appRendererUrl: process.env.ELECTRON_RENDERER_URL,
+  meetShellUrl: meetShellUrl(),
+});
+
+const openMeetPopupWindow = (url: string): Promise<void> => {
+  const popup = new BrowserWindow({
+    height: 720,
+    parent: BrowserWindow.getFocusedWindow() ?? undefined,
+    title: "Meet",
+    width: 960,
+    webPreferences: {
+      partition: meetSessionPartition,
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  configureMeetNavigationPolicy({
+    openAllowedPopup: openMeetPopupWindow,
+    openExternal: (externalUrl) => shell.openExternal(externalUrl),
+    webContents: popup.webContents,
+  });
+
+  return popup.webContents.loadURL(url);
+};
+
 const createMeetWindow = fromThrowable(
   () => {
     const window = new BrowserWindow({
@@ -334,6 +373,11 @@ const createMeetWindow = fromThrowable(
         nodeIntegration: false,
       },
     });
+    configureMeetNavigationPolicy({
+      openAllowedPopup: openMeetPopupWindow,
+      openExternal: (url) => shell.openExternal(url),
+      webContents: meetView.webContents,
+    });
     const layout = (): void => {
       const bounds = window.getContentBounds();
       meetView.setBounds({
@@ -348,7 +392,8 @@ const createMeetWindow = fromThrowable(
     window.on("resize", layout);
     window.on("resized", layout);
     layout();
-    void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(meetShellHtml())}`);
+    ipcSenderGuard.trustWindow(window, { dataShell: true });
+    void window.loadURL(meetShellUrl());
 
     return {
       destroy: () => window.destroy(),
@@ -499,6 +544,21 @@ const openMeetUrl = async (value: string): Promise<Result<void, AppError>> => {
 
 const ignoreAutoOpenError = (_error: AppError): void => undefined;
 
+const untrustedIpcSenderError = (): AppError => ({
+  type: "MainWindowFailed",
+  cause: "Untrusted IPC sender.",
+});
+
+const handleTrustedIpc = (channel: IpcChannel, handler: TrustedIpcHandler): void => {
+  ipcMain.handle(channel, async (event, ...args) => {
+    if (!ipcSenderGuard.isTrustedEvent(event)) {
+      return serializeResultForRenderer(err(untrustedIpcSenderError()));
+    }
+
+    return handler(event, ...args);
+  });
+};
+
 const registerIpc = (scheduler: AutoOpenScheduler) => {
   calendarSyncService.subscribe((snapshot) => {
     const result = serializeResultForRenderer(ok(snapshot));
@@ -512,42 +572,43 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
       .catch(() => undefined);
   });
 
-  ipcMain.handle(IPC_CHANNELS.accountGetStatus, async () =>
+  handleTrustedIpc(IPC_CHANNELS.accountGetStatus, async () =>
     serializeResultForRenderer(await calendarSyncService.getAccountStatus()),
   );
-  ipcMain.handle(IPC_CHANNELS.accountConnect, async () =>
+  handleTrustedIpc(IPC_CHANNELS.accountConnect, async () =>
     serializeResultForRenderer(await calendarSyncService.connectAccount()),
   );
-  ipcMain.handle(IPC_CHANNELS.accountDisconnect, async () =>
+  handleTrustedIpc(IPC_CHANNELS.accountDisconnect, async () =>
     serializeResultForRenderer(await calendarSyncService.disconnectAccount()),
   );
-  ipcMain.handle(IPC_CHANNELS.calendarSyncNow, async () =>
+  handleTrustedIpc(IPC_CHANNELS.calendarSyncNow, async () =>
     serializeResultForRenderer(await calendarSyncService.syncNow()),
   );
-  ipcMain.handle(IPC_CHANNELS.meetListUpcoming, () =>
+  handleTrustedIpc(IPC_CHANNELS.meetListUpcoming, () =>
     serializeResultForRenderer(calendarSyncService.listUpcomingMeetings()),
   );
-  ipcMain.handle(IPC_CHANNELS.meetOpen, async (_event, meetUrl: string) =>
-    serializeResultForRenderer(
-      meetUrlSchema.safeParse(meetUrl).success
-        ? await openMeetUrl(meetUrl)
+  handleTrustedIpc(IPC_CHANNELS.meetOpen, async (_event, meetUrl) => {
+    const parsed = meetUrlSchema.safeParse(meetUrl);
+    return serializeResultForRenderer(
+      parsed.success
+        ? await openMeetUrl(parsed.data)
         : err({ type: "MeetUrlNotFound", eventId: "unknown" }),
-    ),
-  );
-  ipcMain.handle(IPC_CHANNELS.settingsGet, () => serializeResultForRenderer(ok(appSettings)));
-  ipcMain.handle(IPC_CHANNELS.settingsUpdate, (_event, settings: unknown) =>
+    );
+  });
+  handleTrustedIpc(IPC_CHANNELS.settingsGet, () => serializeResultForRenderer(ok(appSettings)));
+  handleTrustedIpc(IPC_CHANNELS.settingsUpdate, (_event, settings) =>
     serializeResultForRenderer(updateAppSettings(settings)),
   );
-  ipcMain.handle(IPC_CHANNELS.settingsMenuShortcutStatusGet, () =>
+  handleTrustedIpc(IPC_CHANNELS.settingsMenuShortcutStatusGet, () =>
     serializeResultForRenderer(ok(menuShortcutStatus)),
   );
-  ipcMain.handle(IPC_CHANNELS.updatesGetStatus, () =>
+  handleTrustedIpc(IPC_CHANNELS.updatesGetStatus, () =>
     serializeResultForRenderer(ok(getAppUpdateStatus())),
   );
-  ipcMain.handle(IPC_CHANNELS.updatesCheck, async () =>
+  handleTrustedIpc(IPC_CHANNELS.updatesCheck, async () =>
     serializeResultForRenderer(await checkForAppUpdates()),
   );
-  ipcMain.handle(IPC_CHANNELS.updatesRunHomebrewUpdate, async () =>
+  handleTrustedIpc(IPC_CHANNELS.updatesRunHomebrewUpdate, async () =>
     serializeResultForRenderer(await runHomebrewAppUpdate()),
   );
 };
