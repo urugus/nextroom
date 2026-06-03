@@ -45,7 +45,7 @@ import {
 import { type AppError, serializeAppError } from "@shared/errors";
 import { IPC_CHANNELS } from "@shared/ipc";
 import type { AppSettings, AppUpdateStatus, MenuShortcutStatus } from "@shared/types";
-import type { BrowserWindow as ElectronBrowserWindow, WebContents } from "electron";
+import type { BrowserWindow as ElectronBrowserWindow, Session, WebContents } from "electron";
 import { err, fromThrowable, ok, type Result } from "neverthrow";
 import { z } from "zod";
 import { serializeResultForRenderer } from "./ipc/result";
@@ -245,6 +245,7 @@ const strictRendererCsp = [
 const devRendererCsp = strictRendererCsp
   .replace("connect-src 'self'", "connect-src 'self' ws://localhost:* ws://127.0.0.1:*")
   .replace("script-src 'self'", "script-src 'self' 'unsafe-inline'");
+const rendererCspSessions = new WeakSet<Session>();
 
 const isAllowedDevRendererNavigation = (
   targetUrl: string,
@@ -268,9 +269,17 @@ const applyMainWindowNavigationPolicy = (
 
     event.preventDefault();
   });
+  contents.on("will-redirect", (event, url, _isInPlace, isMainFrame) => {
+    if (!isMainFrame) return;
+    if (isAllowedDevRendererNavigation(url, rendererUrl)) return;
+
+    event.preventDefault();
+  });
 };
 
 const applyRendererCsp = (contents: WebContents, rendererUrl: string | undefined): void => {
+  if (rendererCspSessions.has(contents.session)) return;
+
   const rendererCsp = rendererUrl === undefined ? strictRendererCsp : devRendererCsp;
 
   contents.session.webRequest.onHeadersReceived((details, callback) => {
@@ -281,6 +290,7 @@ const applyRendererCsp = (contents: WebContents, rendererUrl: string | undefined
       },
     });
   });
+  rendererCspSessions.add(contents.session);
 };
 
 const applyMeetNavigation = (url: string): boolean => {
