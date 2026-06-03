@@ -8,7 +8,7 @@ import { IPC_CHANNELS } from "@shared/ipc";
 import type { AppUpdateStatus } from "@shared/types";
 import { app, BrowserWindow } from "electron";
 import electronUpdater from "electron-updater";
-import { err, ok, type Result } from "neverthrow";
+import { err, ok, type Result, ResultAsync } from "neverthrow";
 
 type UpdaterState = Omit<
   AppUpdateStatus,
@@ -159,6 +159,18 @@ const commandOutputMessage = (error: unknown) => {
 
   return output.split("\n").find((line) => line.trim().length > 0) ?? "Homebrew update failed.";
 };
+
+const runUpdateOperation = <T>(
+  operation: () => Promise<T>,
+  messageFrom: (cause: unknown) => string = updateErrorMessageFrom,
+): ResultAsync<T, AppError> =>
+  ResultAsync.fromPromise(Promise.resolve().then(operation), (cause) => {
+    updateState({
+      errorMessage: messageFrom(cause),
+      status: "error",
+    });
+    return errorFrom(cause);
+  });
 
 const findBrewExecutable = async () => {
   for (const candidate of brewCandidates) {
@@ -332,17 +344,11 @@ export const checkForAppUpdates = async (): Promise<Result<AppUpdateStatus, AppE
     return ok(currentStatus());
   }
 
-  try {
+  return await runUpdateOperation(async () => {
     await autoUpdater.checkForUpdates();
     recordUpdateCheck(new Date());
-    return ok(currentStatus());
-  } catch (cause) {
-    updateState({
-      errorMessage: updateErrorMessageFrom(cause),
-      status: "error",
-    });
-    return err(errorFrom(cause));
-  }
+    return currentStatus();
+  });
 };
 
 export const checkForAppUpdatesIfDue = async (
@@ -353,17 +359,11 @@ export const checkForAppUpdatesIfDue = async (
     return ok(currentStatus());
   }
 
-  try {
+  return await runUpdateOperation(async () => {
     await autoUpdater.checkForUpdates();
     recordUpdateCheck(now);
-    return ok(currentStatus());
-  } catch (cause) {
-    updateState({
-      errorMessage: updateErrorMessageFrom(cause),
-      status: "error",
-    });
-    return err(errorFrom(cause));
-  }
+    return currentStatus();
+  });
 };
 
 export const runHomebrewAppUpdate = async (): Promise<Result<AppUpdateStatus, AppError>> => {
@@ -389,7 +389,7 @@ export const runHomebrewAppUpdate = async (): Promise<Result<AppUpdateStatus, Ap
     return err(brewPath.error);
   }
 
-  try {
+  return await runUpdateOperation(async () => {
     updateState({
       ...updaterState,
       status: "homebrew-updating",
@@ -402,12 +402,6 @@ export const runHomebrewAppUpdate = async (): Promise<Result<AppUpdateStatus, Ap
       updateMessage: "Updating with Homebrew. A restart prompt will appear when it is ready.",
     });
     await spawnDetachedHomebrewUpdate(brewPath.value, expectedVersion);
-    return ok(currentStatus());
-  } catch (cause) {
-    updateState({
-      errorMessage: commandOutputMessage(cause),
-      status: "error",
-    });
-    return err(errorFrom(cause));
-  }
+    return currentStatus();
+  }, commandOutputMessage);
 };
