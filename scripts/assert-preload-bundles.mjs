@@ -37,11 +37,15 @@ for (const entry of preloadEntries) {
 }
 
 if (failures.length > 0) {
+  const generatedPreloadFiles = existsSync(preloadDir)
+    ? readdirSync(preloadDir).join(", ")
+    : "(preload output directory missing)";
+
   process.stderr.write(
     `${[
       "Sandbox preload bundles must be standalone files.",
       ...failures,
-      `Generated preload files: ${readdirSync(preloadDir).join(", ")}`,
+      `Generated preload files: ${generatedPreloadFiles}`,
     ].join("\n")}\n`,
   );
   process.exit(1);
