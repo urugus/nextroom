@@ -184,7 +184,7 @@ describe("handleMeetDisplayMediaRequest", () => {
 });
 
 describe("configureMeetDisplayMediaHandler", () => {
-  it("registers the display media handler with the system picker enabled", async () => {
+  it("registers the display media handler with the system picker preferred", async () => {
     let registeredHandler: DisplayMediaRequestHandler | undefined;
     const meetSession = {
       setDisplayMediaRequestHandler: vi.fn((handler) => {
