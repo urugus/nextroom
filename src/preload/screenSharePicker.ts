@@ -1,6 +1,18 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { IPC_CHANNELS, type ScreenSharePickerApi } from "../shared/ipc";
+import type { ScreenSharePickerApi, IPC_CHANNELS as SHARED_IPC_CHANNELS } from "../shared/ipc";
 import type { ScreenShareSource } from "../shared/types";
+
+type SharedIpcChannels = typeof SHARED_IPC_CHANNELS;
+
+// Keep preload bundles standalone: sandboxed Electron preload cannot load Rollup shared chunks.
+const IPC_CHANNELS = {
+  screenShareCancel: "screenShare:cancel",
+  screenShareListSources: "screenShare:listSources",
+  screenShareSelectSource: "screenShare:selectSource",
+} as const satisfies Pick<
+  SharedIpcChannels,
+  "screenShareCancel" | "screenShareListSources" | "screenShareSelectSource"
+>;
 
 const api: ScreenSharePickerApi = {
   listSources: () =>

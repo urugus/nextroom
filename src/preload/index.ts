@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { type ApiResult, IPC_CHANNELS, type MeetLauncherApi } from "../shared/ipc";
+import type {
+  ApiResult,
+  MeetLauncherApi,
+  IPC_CHANNELS as SHARED_IPC_CHANNELS,
+} from "../shared/ipc";
 import type {
   AccountStatus,
   AppSettings,
@@ -7,6 +11,42 @@ import type {
   MeetEventsSnapshot,
   MenuShortcutStatus,
 } from "../shared/types";
+
+type SharedIpcChannels = typeof SHARED_IPC_CHANNELS;
+
+// Keep preload bundles standalone: sandboxed Electron preload cannot load Rollup shared chunks.
+const IPC_CHANNELS = {
+  accountGetStatus: "account:getStatus",
+  accountConnect: "account:connect",
+  accountDisconnect: "account:disconnect",
+  calendarSyncNow: "calendar:syncNow",
+  calendarUpdated: "calendar:updated",
+  meetListUpcoming: "meet:listUpcoming",
+  meetOpen: "meet:open",
+  settingsGet: "settings:get",
+  settingsUpdate: "settings:update",
+  settingsMenuShortcutStatusGet: "settings:menuShortcutStatusGet",
+  updatesGetStatus: "updates:getStatus",
+  updatesCheck: "updates:check",
+  updatesRunHomebrewUpdate: "updates:runHomebrewUpdate",
+  updatesStatusChanged: "updates:status-changed",
+} as const satisfies Pick<
+  SharedIpcChannels,
+  | "accountGetStatus"
+  | "accountConnect"
+  | "accountDisconnect"
+  | "calendarSyncNow"
+  | "calendarUpdated"
+  | "meetListUpcoming"
+  | "meetOpen"
+  | "settingsGet"
+  | "settingsUpdate"
+  | "settingsMenuShortcutStatusGet"
+  | "updatesGetStatus"
+  | "updatesCheck"
+  | "updatesRunHomebrewUpdate"
+  | "updatesStatusChanged"
+>;
 
 type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 

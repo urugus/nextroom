@@ -1,6 +1,18 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { type ApiResult, IPC_CHANNELS } from "../shared/ipc";
+import type { ApiResult, IPC_CHANNELS as SHARED_IPC_CHANNELS } from "../shared/ipc";
 import type { AppUpdateStatus } from "../shared/types";
+
+type SharedIpcChannels = typeof SHARED_IPC_CHANNELS;
+
+// Keep preload bundles standalone: sandboxed Electron preload cannot load Rollup shared chunks.
+const IPC_CHANNELS = {
+  updatesGetStatus: "updates:getStatus",
+  updatesRunHomebrewUpdate: "updates:runHomebrewUpdate",
+  updatesStatusChanged: "updates:status-changed",
+} as const satisfies Pick<
+  SharedIpcChannels,
+  "updatesGetStatus" | "updatesRunHomebrewUpdate" | "updatesStatusChanged"
+>;
 
 type MeetShellUpdateApi = {
   getUpdateStatus: () => Promise<ApiResult<AppUpdateStatus>>;
