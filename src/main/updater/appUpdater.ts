@@ -215,7 +215,7 @@ trap 'exit_code=$?; if [ "$exit_code" -ne 0 ]; then echo "__NEXTROOM_HOMEBREW_UP
 version_at_least() {
   awk -v actual="$1" -v expected="$2" '
     function parse(version, parts) {
-      split(version, parts, ".")
+      split(version, parts, "[.]")
       for (i = 1; i <= 3; i++) {
         if (parts[i] !~ /^[0-9]+$/) return 0
       }

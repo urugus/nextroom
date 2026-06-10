@@ -215,6 +215,7 @@ describe("appUpdater Homebrew updates", () => {
     expect(script).toContain('"$NEXTROOM_BREW_PATH" trust --cask urugus/tap/nextroom');
     expect(script).toContain("CFBundleShortVersionString");
     expect(script).toContain("version_at_least");
+    expect(script).toContain('split(version, parts, "[.]")');
     expect(script).toContain("__NEXTROOM_HOMEBREW_UPDATE_VERSION_MISMATCH__");
     expect(script).toContain(
       'if ! version_at_least "$installed_version" "$NEXTROOM_EXPECTED_VERSION"',
