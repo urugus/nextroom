@@ -212,8 +212,13 @@ describe("appUpdater Homebrew updates", () => {
       expect.objectContaining({ detached: true }),
     );
     expect(script).toContain("osascript -e 'quit app \"NextRoom\"'");
+    expect(script).toContain('"$NEXTROOM_BREW_PATH" trust --cask urugus/tap/nextroom');
     expect(script).toContain("CFBundleShortVersionString");
+    expect(script).toContain("version_at_least");
     expect(script).toContain("__NEXTROOM_HOMEBREW_UPDATE_VERSION_MISMATCH__");
+    expect(script).toContain(
+      'if ! version_at_least "$installed_version" "$NEXTROOM_EXPECTED_VERSION"',
+    );
     expect(script).toContain("exit_code=$?");
     expect(script).not.toContain("status=$?");
     expect(script).toContain(

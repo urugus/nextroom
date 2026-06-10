@@ -212,12 +212,33 @@ const homebrewUpdateScript = `
 set -e
 echo "==== NextRoom Homebrew update started $(date -u +%Y-%m-%dT%H:%M:%SZ) ===="
 trap 'exit_code=$?; if [ "$exit_code" -ne 0 ]; then echo "__NEXTROOM_HOMEBREW_UPDATE_FAILED__ status=$exit_code"; open "$NEXTROOM_APP_PATH" >/dev/null 2>&1 || true; fi' EXIT
+version_at_least() {
+  awk -v actual="$1" -v expected="$2" '
+    function parse(version, parts) {
+      split(version, parts, ".")
+      for (i = 1; i <= 3; i++) {
+        if (parts[i] !~ /^[0-9]+$/) return 0
+      }
+      return 1
+    }
+    BEGIN {
+      if (!parse(actual, a) || !parse(expected, e)) exit 2
+      for (i = 1; i <= 3; i++) {
+        if (a[i] + 0 > e[i] + 0) exit 0
+        if (a[i] + 0 < e[i] + 0) exit 1
+      }
+      exit 0
+    }'
+}
 mkdir -p "$NEXTROOM_APPDIR"
 "$NEXTROOM_BREW_PATH" update
+if "$NEXTROOM_BREW_PATH" help trust >/dev/null 2>&1; then
+  "$NEXTROOM_BREW_PATH" trust --cask urugus/tap/nextroom
+fi
 "$NEXTROOM_BREW_PATH" upgrade --cask --appdir "$NEXTROOM_APPDIR" nextroom
 installed_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$NEXTROOM_APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
 echo "Installed NextRoom version: \${installed_version:-unknown}"
-if [ "$installed_version" != "$NEXTROOM_EXPECTED_VERSION" ]; then
+if ! version_at_least "$installed_version" "$NEXTROOM_EXPECTED_VERSION"; then
   echo "__NEXTROOM_HOMEBREW_UPDATE_VERSION_MISMATCH__ expected=$NEXTROOM_EXPECTED_VERSION actual=\${installed_version:-unknown}"
   exit 20
 fi
