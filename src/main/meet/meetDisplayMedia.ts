@@ -100,6 +100,7 @@ export const configureMeetDisplayMediaHandler = ({
           callback(deniedStreams());
         });
     },
+    // Prefer the native macOS picker when available; Electron falls back to this handler otherwise.
     { useSystemPicker: true },
   );
 };
