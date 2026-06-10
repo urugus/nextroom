@@ -7,6 +7,7 @@ import { createGoogleCalendarClient } from "@main/calendar/calendarClient";
 import { createCalendarSyncService } from "@main/calendar/calendarSyncService";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
 import { createIpcSenderGuard, type IpcSenderGuard } from "@main/ipc/senderGuard";
+import { closeMeetContentsOnWindowClosed } from "@main/meet/meetContentsLifecycle";
 import {
   type CapturableScreenShareSource,
   configureMeetDisplayMediaHandler,
@@ -805,6 +806,7 @@ const createMeetWindow = fromThrowable(
     };
 
     window.contentView.addChildView(meetView);
+    closeMeetContentsOnWindowClosed(window, meetView.webContents);
     window.on("resize", layout);
     window.on("resized", layout);
     layout();
