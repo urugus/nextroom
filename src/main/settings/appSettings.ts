@@ -6,6 +6,7 @@ import { z } from "zod";
 export const defaultAppSettings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
+  cameraBubbleEnabled: false,
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
@@ -29,6 +30,7 @@ const settingsSchema = z
   .object({
     autoJoinEnabled: z.boolean().optional(),
     autoOpenEnabled: z.boolean().optional(),
+    cameraBubbleEnabled: z.boolean().optional(),
     joinOffsetSeconds: minuteOffsetSchema("joinOffsetSeconds").optional(),
     notifyBeforeMinutes: z.number().int().min(0).optional(),
     openOffsetSeconds: minuteOffsetSchema("openOffsetSeconds").optional(),
@@ -42,6 +44,7 @@ const settingsSchema = z
 const settingsUpdateSchema = settingsSchema
   .pick({
     autoJoinEnabled: true,
+    cameraBubbleEnabled: true,
     joinOffsetSeconds: true,
     menuShortcutAccelerator: true,
     openOffsetSeconds: true,
@@ -51,7 +54,11 @@ const settingsUpdateSchema = settingsSchema
 type SettingsUpdate = Partial<
   Pick<
     AppSettings,
-    "autoJoinEnabled" | "joinOffsetSeconds" | "menuShortcutAccelerator" | "openOffsetSeconds"
+    | "autoJoinEnabled"
+    | "cameraBubbleEnabled"
+    | "joinOffsetSeconds"
+    | "menuShortcutAccelerator"
+    | "openOffsetSeconds"
   >
 >;
 

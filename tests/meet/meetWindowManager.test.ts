@@ -402,6 +402,44 @@ describe("createMeetWindowManager", () => {
       }),
     );
   });
+
+  it("publishes bubble text to open Meet windows", async () => {
+    const firstWindow = createFakeMeetWindow();
+    const secondWindow = createFakeMeetWindow();
+    firstWindow.sendBubbleText = vi.fn();
+    secondWindow.sendBubbleText = vi.fn();
+    const createWindow = vi
+      .fn()
+      .mockReturnValueOnce(ok(firstWindow))
+      .mockReturnValueOnce(ok(secondWindow));
+    const manager = createMeetWindowManager({ createWindow });
+
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+    await manager.openMeetUrl("https://meet.google.com/xyz-abcd-efg");
+    manager.sendBubbleText("議事録を確認中です");
+
+    expect(firstWindow.sendBubbleText).toHaveBeenCalledWith("議事録を確認中です");
+    expect(secondWindow.sendBubbleText).toHaveBeenCalledWith("議事録を確認中です");
+  });
+
+  it("publishes bubble enabled state to open and newly-created Meet windows", async () => {
+    const firstWindow = createFakeMeetWindow();
+    const secondWindow = createFakeMeetWindow();
+    firstWindow.setBubbleEnabled = vi.fn();
+    secondWindow.setBubbleEnabled = vi.fn();
+    const createWindow = vi
+      .fn()
+      .mockReturnValueOnce(ok(firstWindow))
+      .mockReturnValueOnce(ok(secondWindow));
+    const manager = createMeetWindowManager({ createWindow });
+
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+    manager.setBubbleEnabled(true);
+    await manager.openMeetUrl("https://meet.google.com/xyz-abcd-efg");
+
+    expect(firstWindow.setBubbleEnabled).toHaveBeenCalledWith(true);
+    expect(secondWindow.setBubbleEnabled).toHaveBeenCalledWith(true);
+  });
 });
 
 describe("isMeetOrigin", () => {

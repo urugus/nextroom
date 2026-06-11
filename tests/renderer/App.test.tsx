@@ -22,6 +22,7 @@ const updateStatus: AppUpdateStatus = {
 const settings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
+  cameraBubbleEnabled: false,
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
@@ -284,6 +285,18 @@ describe("App", () => {
 
     await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ joinOffsetSeconds: 180 }));
     expect(await screen.findByText("Join 3 min before")).toBeInTheDocument();
+  });
+
+  it("saves the camera bubble setting", async () => {
+    const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() => Promise.resolve(okResult));
+    installMeetLauncher(openMeetUrl);
+    const updateSettings = vi.mocked(window.meetLauncher.updateSettings);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "カメラ吹き出し" }));
+
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ cameraBubbleEnabled: true }));
   });
 
   it("clamps the auto-join offset when the Meet window open offset is reduced", async () => {

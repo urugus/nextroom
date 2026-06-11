@@ -45,6 +45,7 @@ const updateUnsupported: AppUpdateStatus = {
 const settings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
+  cameraBubbleEnabled: false,
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
@@ -56,6 +57,7 @@ const settings: AppSettings = {
 
 const dashboardActions = () => ({
   onAutoJoinEnabledChange: vi.fn(),
+  onCameraBubbleEnabledChange: vi.fn(),
   onConnectAccount: vi.fn(),
   onDisconnectAccount: vi.fn(),
   onJoinOffsetMinutesChange: vi.fn(),

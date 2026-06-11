@@ -17,6 +17,7 @@ type DashboardProps = {
   settings: AppSettings;
   syncedAt?: string;
   onAutoJoinEnabledChange: (enabled: boolean) => Promise<unknown>;
+  onCameraBubbleEnabledChange: (enabled: boolean) => Promise<unknown>;
   onCheckForUpdates?: () => Promise<unknown>;
   onConnectAccount: () => Promise<unknown>;
   onDisconnectAccount: () => Promise<unknown>;
@@ -236,6 +237,7 @@ export const Dashboard = ({
   menuShortcutStatus,
   nextMeetingNotification,
   onAutoJoinEnabledChange,
+  onCameraBubbleEnabledChange,
   onCheckForUpdates,
   onConnectAccount,
   onDisconnectAccount,
@@ -439,6 +441,22 @@ export const Dashboard = ({
                 }
               />
               <span>{joinOffsetMinutes} min</span>
+            </label>
+          </div>
+          <div className="preference-row">
+            <div className="preference-copy">
+              <strong>カメラ吹き出し</strong>
+              <span>
+                {settings.cameraBubbleEnabled ? "ミュート中の発言をカメラ映像に表示" : "Off"}
+              </span>
+            </div>
+            <label className="toggle-control">
+              <input
+                type="checkbox"
+                checked={settings.cameraBubbleEnabled}
+                aria-label="カメラ吹き出し"
+                onChange={(event) => void onCameraBubbleEnabledChange(event.currentTarget.checked)}
+              />
             </label>
           </div>
         </div>
