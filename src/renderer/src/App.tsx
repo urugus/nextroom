@@ -18,6 +18,7 @@ const defaultSettings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
   cameraBubbleEnabled: false,
+  cameraBubbleFadeSpeedLevel: 3,
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
@@ -265,6 +266,9 @@ export const App = () => {
   const updateCameraBubbleEnabled = (cameraBubbleEnabled: boolean) =>
     updateSettings({ cameraBubbleEnabled });
 
+  const updateCameraBubbleFadeSpeedLevel = (cameraBubbleFadeSpeedLevel: number) =>
+    updateSettings({ cameraBubbleFadeSpeedLevel });
+
   const updateJoinOffsetMinutes = (minutes: number) =>
     updateSettings({ joinOffsetSeconds: minutes * 60 });
 
@@ -333,6 +337,7 @@ export const App = () => {
       onRunHomebrewUpdate={runHomebrewUpdate}
       onAutoJoinEnabledChange={updateAutoJoinEnabled}
       onCameraBubbleEnabledChange={updateCameraBubbleEnabled}
+      onCameraBubbleFadeSpeedLevelChange={updateCameraBubbleFadeSpeedLevel}
       onJoinOffsetMinutesChange={updateJoinOffsetMinutes}
       onMenuShortcutAcceleratorChange={updateMenuShortcutAccelerator}
       onOpenMeeting={openMeeting}

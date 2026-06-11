@@ -16,6 +16,7 @@ export type SettingsUpdate = Partial<
     AppSettings,
     | "autoJoinEnabled"
     | "cameraBubbleEnabled"
+    | "cameraBubbleFadeSpeedLevel"
     | "joinOffsetSeconds"
     | "menuShortcutAccelerator"
     | "openOffsetSeconds"

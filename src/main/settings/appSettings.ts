@@ -7,6 +7,7 @@ export const defaultAppSettings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
   cameraBubbleEnabled: false,
+  cameraBubbleFadeSpeedLevel: 3,
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
@@ -31,6 +32,7 @@ const settingsSchema = z
     autoJoinEnabled: z.boolean().optional(),
     autoOpenEnabled: z.boolean().optional(),
     cameraBubbleEnabled: z.boolean().optional(),
+    cameraBubbleFadeSpeedLevel: z.number().int().min(1).max(5).optional(),
     joinOffsetSeconds: minuteOffsetSchema("joinOffsetSeconds").optional(),
     notifyBeforeMinutes: z.number().int().min(0).optional(),
     openOffsetSeconds: minuteOffsetSchema("openOffsetSeconds").optional(),
@@ -45,6 +47,7 @@ const settingsUpdateSchema = settingsSchema
   .pick({
     autoJoinEnabled: true,
     cameraBubbleEnabled: true,
+    cameraBubbleFadeSpeedLevel: true,
     joinOffsetSeconds: true,
     menuShortcutAccelerator: true,
     openOffsetSeconds: true,
@@ -56,6 +59,7 @@ type SettingsUpdate = Partial<
     AppSettings,
     | "autoJoinEnabled"
     | "cameraBubbleEnabled"
+    | "cameraBubbleFadeSpeedLevel"
     | "joinOffsetSeconds"
     | "menuShortcutAccelerator"
     | "openOffsetSeconds"

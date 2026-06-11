@@ -9,6 +9,7 @@ import {
 } from "../../src/preload/cameraBubblePure";
 
 const measureByCodePoint = (text: string): number => [...text].length * 10;
+const expectedNonce = "nonce-1";
 
 describe("camera bubble pure functions", () => {
   describe("hasVideoConstraints", () => {
@@ -94,43 +95,145 @@ describe("camera bubble pure functions", () => {
   describe("parseCameraBubbleEnvelope", () => {
     it("accepts show messages with coerced trimmed text", () => {
       expect(
-        parseCameraBubbleEnvelope({
-          __nextroomCameraBubble: { kind: "show", text: " 発言中です " },
-        }),
-      ).toEqual({ kind: "show", text: "発言中です" });
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: { kind: "show", nonce: expectedNonce, text: " 発言中です " },
+          },
+          expectedNonce,
+        ),
+      ).toEqual({ durationMs: 7_000, kind: "show", text: "発言中です" });
       expect(
-        parseCameraBubbleEnvelope({
-          __nextroomCameraBubble: { kind: "show", text: 123 },
-        }),
-      ).toEqual({ kind: "show", text: "123" });
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: { kind: "show", nonce: expectedNonce, text: 123 },
+          },
+          expectedNonce,
+        ),
+      ).toEqual({ durationMs: 7_000, kind: "show", text: "123" });
+    });
+
+    it("accepts, clamps, and falls back show message duration", () => {
+      expect(
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: {
+              durationMs: 1_234,
+              kind: "show",
+              nonce: expectedNonce,
+              text: "hello",
+            },
+          },
+          expectedNonce,
+        ),
+      ).toEqual({ durationMs: 1_234, kind: "show", text: "hello" });
+      expect(
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: {
+              durationMs: 999,
+              kind: "show",
+              nonce: expectedNonce,
+              text: "hello",
+            },
+          },
+          expectedNonce,
+        ),
+      ).toEqual({ durationMs: 1_000, kind: "show", text: "hello" });
+      expect(
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: {
+              durationMs: 30_001,
+              kind: "show",
+              nonce: expectedNonce,
+              text: "hello",
+            },
+          },
+          expectedNonce,
+        ),
+      ).toEqual({ durationMs: 30_000, kind: "show", text: "hello" });
+      expect(
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: {
+              durationMs: Number.NaN,
+              kind: "show",
+              nonce: expectedNonce,
+              text: "hello",
+            },
+          },
+          expectedNonce,
+        ),
+      ).toEqual({ durationMs: 7_000, kind: "show", text: "hello" });
     });
 
     it("accepts setEnabled with strict true and coerces all other values to false", () => {
       expect(
-        parseCameraBubbleEnvelope({
-          __nextroomCameraBubble: { enabled: true, kind: "setEnabled" },
-        }),
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: { enabled: true, kind: "setEnabled", nonce: expectedNonce },
+          },
+          expectedNonce,
+        ),
       ).toEqual({ enabled: true, kind: "setEnabled" });
       expect(
-        parseCameraBubbleEnvelope({
-          __nextroomCameraBubble: { enabled: "true", kind: "setEnabled" },
-        }),
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: { enabled: "true", kind: "setEnabled", nonce: expectedNonce },
+          },
+          expectedNonce,
+        ),
       ).toEqual({ enabled: false, kind: "setEnabled" });
     });
 
-    it("rejects missing envelopes, unknown kinds, and empty text", () => {
-      expect(parseCameraBubbleEnvelope(null)).toBeUndefined();
-      expect(parseCameraBubbleEnvelope({})).toBeUndefined();
-      expect(parseCameraBubbleEnvelope({ __nextroomCameraBubble: null })).toBeUndefined();
+    it("rejects missing or mismatched nonces", () => {
       expect(
-        parseCameraBubbleEnvelope({
-          __nextroomCameraBubble: { kind: "show", text: "   " },
-        }),
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: { kind: "show", text: "hello" },
+          },
+          expectedNonce,
+        ),
       ).toBeUndefined();
       expect(
-        parseCameraBubbleEnvelope({
-          __nextroomCameraBubble: { kind: "unknown", text: "hello" },
-        }),
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: { kind: "show", nonce: "other", text: "hello" },
+          },
+          expectedNonce,
+        ),
+      ).toBeUndefined();
+      expect(
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: { kind: "show", nonce: expectedNonce, text: "hello" },
+          },
+          undefined as unknown as string,
+        ),
+      ).toBeUndefined();
+    });
+
+    it("rejects missing envelopes, unknown kinds, and empty text", () => {
+      expect(parseCameraBubbleEnvelope(null, expectedNonce)).toBeUndefined();
+      expect(parseCameraBubbleEnvelope({}, expectedNonce)).toBeUndefined();
+      expect(
+        parseCameraBubbleEnvelope({ __nextroomCameraBubble: null }, expectedNonce),
+      ).toBeUndefined();
+      expect(
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: { kind: "show", nonce: expectedNonce, text: "   " },
+          },
+          expectedNonce,
+        ),
+      ).toBeUndefined();
+      expect(
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: { kind: "unknown", nonce: expectedNonce, text: "hello" },
+          },
+          expectedNonce,
+        ),
       ).toBeUndefined();
     });
   });

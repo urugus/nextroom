@@ -23,6 +23,7 @@ const settings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
   cameraBubbleEnabled: false,
+  cameraBubbleFadeSpeedLevel: 3,
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
@@ -297,6 +298,21 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("checkbox", { name: "カメラ吹き出し" }));
 
     await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ cameraBubbleEnabled: true }));
+  });
+
+  it("saves the camera bubble display speed setting", async () => {
+    const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() => Promise.resolve(okResult));
+    installMeetLauncher(openMeetUrl);
+    const updateSettings = vi.mocked(window.meetLauncher.updateSettings);
+
+    render(<App />);
+
+    const slider = await screen.findByRole("slider", { name: "吹き出し表示速度" });
+    fireEvent.change(slider, { target: { value: "5" } });
+
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith({ cameraBubbleFadeSpeedLevel: 5 }),
+    );
   });
 
   it("clamps the auto-join offset when the Meet window open offset is reduced", async () => {

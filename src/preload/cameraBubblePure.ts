@@ -1,6 +1,6 @@
 export type CameraBubbleEnvelope =
   | { kind: "setEnabled"; enabled: boolean }
-  | { kind: "show"; text: string };
+  | { durationMs: number; kind: "show"; text: string };
 
 export type CameraBubbleLayout = {
   fontSize: number;
@@ -144,7 +144,14 @@ export const computeBubbleLayout = ({
   };
 };
 
-export const parseCameraBubbleEnvelope = (data: unknown): CameraBubbleEnvelope | undefined => {
+export const parseCameraBubbleEnvelope = (
+  data: unknown,
+  expectedNonce: string,
+): CameraBubbleEnvelope | undefined => {
+  if (typeof expectedNonce !== "string" || expectedNonce.length === 0) {
+    return undefined;
+  }
+
   if (typeof data !== "object" || data === null || !("__nextroomCameraBubble" in data)) {
     return undefined;
   }
@@ -154,10 +161,26 @@ export const parseCameraBubbleEnvelope = (data: unknown): CameraBubbleEnvelope |
     return undefined;
   }
 
-  const message = envelope as { enabled?: unknown; kind?: unknown; text?: unknown };
+  const message = envelope as {
+    durationMs?: unknown;
+    enabled?: unknown;
+    kind?: unknown;
+    nonce?: unknown;
+    text?: unknown;
+  };
+  if (message.nonce !== expectedNonce) {
+    return undefined;
+  }
+
   if (message.kind === "show") {
     const text = String(message.text).trim();
-    return text.length === 0 ? undefined : { kind: "show", text };
+    const durationMs =
+      typeof message.durationMs === "number" &&
+      Number.isFinite(message.durationMs) &&
+      message.durationMs > 0
+        ? Math.max(1_000, Math.min(30_000, message.durationMs))
+        : 7_000;
+    return text.length === 0 ? undefined : { durationMs, kind: "show", text };
   }
 
   if (message.kind === "setEnabled") {

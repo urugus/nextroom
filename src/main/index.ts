@@ -18,7 +18,11 @@ import {
   configureMeetSessionPermissions,
   meetSessionPartition,
 } from "@main/meet/meetSessionPermissions";
-import { createMeetWindowManager, type ManagedMeetWindow } from "@main/meet/meetWindowManager";
+import {
+  type BubbleTextMessage,
+  createMeetWindowManager,
+  type ManagedMeetWindow,
+} from "@main/meet/meetWindowManager";
 import { createMenuBarController, type MenuBarController } from "@main/menuBar/menuBarController";
 import { createTrayIcon } from "@main/menuBar/trayIcon";
 import { createGoogleAuthService } from "@main/oauth/googleAuthService";
@@ -429,7 +433,6 @@ const meetShellHtml = (): string => `<!doctype html>
         type="text"
         id="bubble-input"
         placeholder="ミュート中に映像へ表示するテキスト…"
-        maxlength="100"
       >
       <button type="button" id="update-button">Update</button>
     </div>
@@ -885,8 +888,8 @@ const createMeetWindow = fromThrowable(
       loadURL: (url: string) => meetView.webContents.loadURL(url),
       on: (event: "closed", listener: () => void) => window.on(event, listener),
       restore: () => window.restore(),
-      sendBubbleText: (text: string) => {
-        meetView.webContents.send(IPC_CHANNELS.meetBubbleShow, text);
+      sendBubbleText: (message: BubbleTextMessage) => {
+        meetView.webContents.send(IPC_CHANNELS.meetBubbleShow, message);
       },
       setAlwaysOnTop: (flag: boolean, level?: "screen-saver") => window.setAlwaysOnTop(flag, level),
       setBubbleEnabled: (enabled: boolean) => {
@@ -1143,9 +1146,16 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
       );
     }
 
-    bubbleMessageGate.accept(parsed.data, Date.now()).match(
+    if (!appSettings.cameraBubbleEnabled) {
+      return serializeResultForRenderer(ok(undefined));
+    }
+
+    bubbleMessageGate.accept(parsed.data, Date.now(), appSettings.cameraBubbleFadeSpeedLevel).match(
       (accepted) => {
-        meetWindowManager.sendBubbleText(accepted.text);
+        meetWindowManager.sendBubbleText({
+          durationMs: accepted.durationMs,
+          text: accepted.text,
+        });
       },
       () => undefined,
     );

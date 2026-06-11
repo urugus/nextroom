@@ -46,6 +46,7 @@ const settings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
   cameraBubbleEnabled: false,
+  cameraBubbleFadeSpeedLevel: 3,
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
@@ -58,6 +59,7 @@ const settings: AppSettings = {
 const dashboardActions = () => ({
   onAutoJoinEnabledChange: vi.fn(),
   onCameraBubbleEnabledChange: vi.fn(),
+  onCameraBubbleFadeSpeedLevelChange: vi.fn(),
   onConnectAccount: vi.fn(),
   onDisconnectAccount: vi.fn(),
   onJoinOffsetMinutesChange: vi.fn(),
@@ -82,6 +84,8 @@ describe("Dashboard", () => {
     expect(
       screen.getByText("Connect Google Calendar to enable Meet launching."),
     ).toBeInTheDocument();
+    expect(screen.getByText("吹き出し表示速度")).toBeInTheDocument();
+    expect(screen.getByText("1=ゆっくり / 5=はやい")).toBeInTheDocument();
     expect(screen.queryByText("Product sync")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Connect" })).toBeEnabled();
   });

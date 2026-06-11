@@ -67,6 +67,7 @@ export type AppSettings = {
   autoJoinEnabled: boolean;
   autoOpenEnabled: boolean;
   cameraBubbleEnabled: boolean;
+  cameraBubbleFadeSpeedLevel: number;
   joinOffsetSeconds: number;
   notifyBeforeMinutes: number;
   openOffsetSeconds: number;

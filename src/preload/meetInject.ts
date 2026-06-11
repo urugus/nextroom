@@ -15,13 +15,17 @@ const IPC_CHANNELS = {
 } as const;
 
 const initialEnabled = process.argv.includes("--nextroom-camera-bubble=1");
+const cameraBubbleNonce =
+  typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 
 type CameraBubbleMessage =
   | { enabled: boolean; kind: "setEnabled" }
-  | { kind: "show"; text: string };
+  | { durationMs: number; kind: "show"; text: string };
 
 const postToMainWorld = (payload: CameraBubbleMessage): void => {
-  window.postMessage({ __nextroomCameraBubble: payload }, "*");
+  window.postMessage({ __nextroomCameraBubble: { nonce: cameraBubbleNonce, ...payload } }, "*");
 };
 
 if (typeof webFrame?.executeJavaScript === "function") {
@@ -34,7 +38,9 @@ if (typeof webFrame?.executeJavaScript === "function") {
     wrapBubbleLines: ${wrapBubbleLines.toString()}
   }`;
   void webFrame.executeJavaScript(
-    `(${installCameraBubbleHook.toString()})(${JSON.stringify(initialEnabled)}, ${cameraBubbleDeps})`,
+    `(${installCameraBubbleHook.toString()})(${JSON.stringify(
+      initialEnabled,
+    )}, ${cameraBubbleDeps}, ${JSON.stringify(cameraBubbleNonce)})`,
   );
 } else {
   // oxlint-disable-next-line no-console -- Required preload diagnostic when injection is unavailable.
@@ -42,7 +48,15 @@ if (typeof webFrame?.executeJavaScript === "function") {
 }
 
 ipcRenderer.on(IPC_CHANNELS.meetBubbleShow, (_event, payload: unknown) => {
-  postToMainWorld({ kind: "show", text: String(payload) });
+  const message =
+    typeof payload === "object" && payload !== null
+      ? (payload as { durationMs?: unknown; text?: unknown })
+      : { durationMs: undefined, text: payload };
+  postToMainWorld({
+    durationMs: Number(message.durationMs),
+    kind: "show",
+    text: String(message.text),
+  });
 });
 
 ipcRenderer.on(IPC_CHANNELS.meetBubbleSetEnabled, (_event, payload: unknown) => {

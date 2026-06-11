@@ -1,5 +1,6 @@
 import {
   bubbleMessageMaxLength,
+  computeBubbleDisplayDurationMs,
   createBubbleMessageGate,
   evaluateBubbleMessage,
   sanitizeBubbleMessageText,
@@ -20,6 +21,7 @@ describe("bubble message", () => {
       evaluateBubbleMessage({
         lastAcceptedAt: undefined,
         now: 1_000,
+        speedLevel: 3,
         text: "\n\t",
       })._unsafeUnwrapErr(),
     ).toEqual({
@@ -29,7 +31,12 @@ describe("bubble message", () => {
 
   it("drops messages inside the rate-limit window", () => {
     expect(
-      evaluateBubbleMessage({ lastAcceptedAt: 1_000, now: 1_299, text: "next" })._unsafeUnwrapErr(),
+      evaluateBubbleMessage({
+        lastAcceptedAt: 1_000,
+        now: 1_299,
+        speedLevel: 3,
+        text: "next",
+      })._unsafeUnwrapErr(),
     ).toEqual({
       reason: "rate-limited",
     });
@@ -37,10 +44,38 @@ describe("bubble message", () => {
 
   it("accepts sanitized messages outside the rate-limit window", () => {
     expect(
-      evaluateBubbleMessage({ lastAcceptedAt: 1_000, now: 1_300, text: " next " })._unsafeUnwrap(),
+      evaluateBubbleMessage({
+        lastAcceptedAt: 1_000,
+        now: 1_300,
+        speedLevel: 3,
+        text: " next ",
+      })._unsafeUnwrap(),
     ).toEqual({
       acceptedAt: 1_300,
+      durationMs: 3_100,
       text: "next",
+    });
+  });
+
+  it("computes display duration from code points and speed level", () => {
+    expect(computeBubbleDisplayDurationMs(10, 3)).toBe(4_000);
+    expect(computeBubbleDisplayDurationMs(0, 5)).toBe(2_000);
+    expect(computeBubbleDisplayDurationMs(100, 1)).toBe(20_000);
+    expect(computeBubbleDisplayDurationMs(10, 99)).toBe(2_200);
+    expect(computeBubbleDisplayDurationMs(10, Number.NaN)).toBe(4_000);
+  });
+
+  it("counts emoji by code point for display duration", () => {
+    expect(
+      evaluateBubbleMessage({
+        lastAcceptedAt: undefined,
+        now: 1_000,
+        speedLevel: 3,
+        text: "👍".repeat(10),
+      })._unsafeUnwrap(),
+    ).toMatchObject({
+      durationMs: 4_000,
+      text: "👍".repeat(10),
     });
   });
 
@@ -48,15 +83,17 @@ describe("bubble message", () => {
     it("accepts the first message, rejects within 300ms, and accepts after the interval", () => {
       const gate = createBubbleMessageGate();
 
-      expect(gate.accept(" first ", 1_000)._unsafeUnwrap()).toEqual({
+      expect(gate.accept(" first ", 1_000, 3)._unsafeUnwrap()).toEqual({
         acceptedAt: 1_000,
+        durationMs: 3_250,
         text: "first",
       });
-      expect(gate.accept("next", 1_299)._unsafeUnwrapErr()).toEqual({
+      expect(gate.accept("next", 1_299, 3)._unsafeUnwrapErr()).toEqual({
         reason: "rate-limited",
       });
-      expect(gate.accept("next", 1_300)._unsafeUnwrap()).toEqual({
+      expect(gate.accept("next", 1_300, 3)._unsafeUnwrap()).toEqual({
         acceptedAt: 1_300,
+        durationMs: 3_100,
         text: "next",
       });
     });
@@ -64,11 +101,12 @@ describe("bubble message", () => {
     it("rejects empty text without consuming the rate-limit slot", () => {
       const gate = createBubbleMessageGate();
 
-      expect(gate.accept("\n\t", 1_000)._unsafeUnwrapErr()).toEqual({
+      expect(gate.accept("\n\t", 1_000, 3)._unsafeUnwrapErr()).toEqual({
         reason: "empty",
       });
-      expect(gate.accept("first", 1_001)._unsafeUnwrap()).toEqual({
+      expect(gate.accept("first", 1_001, 3)._unsafeUnwrap()).toEqual({
         acceptedAt: 1_001,
+        durationMs: 3_250,
         text: "first",
       });
     });

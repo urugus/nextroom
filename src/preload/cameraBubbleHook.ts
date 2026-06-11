@@ -1,7 +1,11 @@
 import type { CameraBubbleDeps } from "./cameraBubblePure";
 
 // oxlint-disable unicorn/consistent-function-scoping -- The hook is injected with toString(), so helpers must stay inside it.
-export const installCameraBubbleHook = (initialEnabled: boolean, deps: CameraBubbleDeps): void => {
+export const installCameraBubbleHook = (
+  initialEnabled: boolean,
+  deps: CameraBubbleDeps,
+  nonce: string,
+): void => {
   type VideoFrameRequestCallback = (now: DOMHighResTimeStamp, metadata: unknown) => void;
   type VideoWithFrameCallback = HTMLVideoElement & {
     requestVideoFrameCallback?: (callback: VideoFrameRequestCallback) => number;
@@ -191,16 +195,21 @@ export const installCameraBubbleHook = (initialEnabled: boolean, deps: CameraBub
 
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
-    const message = deps.parseCameraBubbleEnvelope(event.data);
+    const message = deps.parseCameraBubbleEnvelope(event.data, nonce);
     if (message === undefined) return;
 
     if (message.kind === "show") {
-      state.bubble = { expiresAt: Date.now() + 7_000, text: message.text };
+      if (!state.enabled) return;
+
+      state.bubble = { expiresAt: Date.now() + message.durationMs, text: message.text };
       return;
     }
 
     if (message.kind === "setEnabled") {
       state.enabled = message.enabled === true;
+      if (!state.enabled) {
+        state.bubble = undefined;
+      }
     }
   });
 };

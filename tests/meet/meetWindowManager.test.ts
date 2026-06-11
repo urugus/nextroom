@@ -416,10 +416,16 @@ describe("createMeetWindowManager", () => {
 
     await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
     await manager.openMeetUrl("https://meet.google.com/xyz-abcd-efg");
-    manager.sendBubbleText("議事録を確認中です");
+    manager.sendBubbleText({ durationMs: 4_000, text: "議事録を確認中です" });
 
-    expect(firstWindow.sendBubbleText).toHaveBeenCalledWith("議事録を確認中です");
-    expect(secondWindow.sendBubbleText).toHaveBeenCalledWith("議事録を確認中です");
+    expect(firstWindow.sendBubbleText).toHaveBeenCalledWith({
+      durationMs: 4_000,
+      text: "議事録を確認中です",
+    });
+    expect(secondWindow.sendBubbleText).toHaveBeenCalledWith({
+      durationMs: 4_000,
+      text: "議事録を確認中です",
+    });
   });
 
   it("publishes bubble enabled state to open and newly-created Meet windows", async () => {

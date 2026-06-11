@@ -28,6 +28,7 @@ const cameraBubbleDeps = {
   parseCameraBubbleEnvelope,
   wrapBubbleLines,
 };
+const expectedNonce = "hook-nonce";
 
 const createFakeTrack = (
   kind: "audio" | "video",
@@ -166,7 +167,7 @@ describe("installCameraBubbleHook", () => {
     const constraints: MediaStreamConstraints = { video: true };
     const getUserMedia = vi.mocked(navigator.mediaDevices.getUserMedia).mockResolvedValue(stream);
 
-    installCameraBubbleHook(false, cameraBubbleDeps);
+    installCameraBubbleHook(false, cameraBubbleDeps, expectedNonce);
 
     const result = await navigator.mediaDevices.getUserMedia(constraints);
 
@@ -179,7 +180,7 @@ describe("installCameraBubbleHook", () => {
     const constraints: MediaStreamConstraints = { audio: true };
     const getUserMedia = vi.mocked(navigator.mediaDevices.getUserMedia).mockResolvedValue(stream);
 
-    installCameraBubbleHook(true, cameraBubbleDeps);
+    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
 
     const result = await navigator.mediaDevices.getUserMedia(constraints);
 
@@ -194,7 +195,7 @@ describe("installCameraBubbleHook", () => {
       createFakeMediaStream([sourceTrack, audioTrack]),
     );
 
-    installCameraBubbleHook(true, cameraBubbleDeps);
+    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
 
     const result = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
 
@@ -208,7 +209,7 @@ describe("installCameraBubbleHook", () => {
       createFakeMediaStream([sourceTrack]),
     );
 
-    installCameraBubbleHook(true, cameraBubbleDeps);
+    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
 
     const result = await navigator.mediaDevices.getUserMedia({ video: true });
 
@@ -227,7 +228,7 @@ describe("installCameraBubbleHook", () => {
       createFakeMediaStream([sourceTrack]),
     );
 
-    installCameraBubbleHook(true, cameraBubbleDeps);
+    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
 
     const result = await navigator.mediaDevices.getUserMedia({ video: true });
     result.getVideoTracks()[0].stop();
@@ -241,7 +242,7 @@ describe("installCameraBubbleHook", () => {
     vi.mocked(navigator.mediaDevices.getUserMedia).mockResolvedValue(
       createFakeMediaStream([sourceTrack]),
     );
-    installCameraBubbleHook(true, cameraBubbleDeps);
+    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
     await navigator.mediaDevices.getUserMedia({ video: true });
 
     window.dispatchEvent(
@@ -254,17 +255,58 @@ describe("installCameraBubbleHook", () => {
     expect(context.fillText).not.toHaveBeenCalled();
   });
 
+  it("ignores same-window show messages with missing or mismatched nonce", async () => {
+    const sourceTrack = createFakeTrack("video");
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockResolvedValue(
+      createFakeMediaStream([sourceTrack]),
+    );
+    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    await navigator.mediaDevices.getUserMedia({ video: true });
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          __nextroomCameraBubble: { durationMs: 1_500, kind: "show", text: "missing" },
+        },
+        source: window,
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          __nextroomCameraBubble: {
+            durationMs: 1_500,
+            kind: "show",
+            nonce: "wrong",
+            text: "wrong",
+          },
+        },
+        source: window,
+      }),
+    );
+    rafCallback?.(0);
+
+    expect(context.fillText).not.toHaveBeenCalled();
+  });
+
   it("draws shown bubble text until it expires", async () => {
     const sourceTrack = createFakeTrack("video");
     vi.mocked(navigator.mediaDevices.getUserMedia).mockResolvedValue(
       createFakeMediaStream([sourceTrack]),
     );
-    installCameraBubbleHook(true, cameraBubbleDeps);
+    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
     await navigator.mediaDevices.getUserMedia({ video: true });
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { __nextroomCameraBubble: { kind: "show", text: "発言中です" } },
+        data: {
+          __nextroomCameraBubble: {
+            durationMs: 1_500,
+            kind: "show",
+            nonce: expectedNonce,
+            text: "発言中です",
+          },
+        },
         source: window,
       }),
     );
@@ -276,7 +318,91 @@ describe("installCameraBubbleHook", () => {
     );
 
     vi.mocked(context.fillText).mockClear();
-    vi.advanceTimersByTime(7_001);
+    vi.advanceTimersByTime(1_501);
+    rafCallback?.(0);
+
+    expect(context.fillText).not.toHaveBeenCalled();
+  });
+
+  it("ignores show messages while disabled", async () => {
+    const sourceTrack = createFakeTrack("video");
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockResolvedValue(
+      createFakeMediaStream([sourceTrack]),
+    );
+    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    await navigator.mediaDevices.getUserMedia({ video: true });
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          __nextroomCameraBubble: { enabled: false, kind: "setEnabled", nonce: expectedNonce },
+        },
+        source: window,
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          __nextroomCameraBubble: {
+            durationMs: 1_500,
+            kind: "show",
+            nonce: expectedNonce,
+            text: "disabled",
+          },
+        },
+        source: window,
+      }),
+    );
+    rafCallback?.(0);
+
+    expect(context.fillText).not.toHaveBeenCalled();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          __nextroomCameraBubble: { enabled: true, kind: "setEnabled", nonce: expectedNonce },
+        },
+        source: window,
+      }),
+    );
+    rafCallback?.(0);
+
+    expect(context.fillText).not.toHaveBeenCalled();
+  });
+
+  it("clears an active bubble when disabled", async () => {
+    const sourceTrack = createFakeTrack("video");
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockResolvedValue(
+      createFakeMediaStream([sourceTrack]),
+    );
+    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    await navigator.mediaDevices.getUserMedia({ video: true });
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          __nextroomCameraBubble: {
+            durationMs: 1_500,
+            kind: "show",
+            nonce: expectedNonce,
+            text: "active",
+          },
+        },
+        source: window,
+      }),
+    );
+    rafCallback?.(0);
+    expect(context.fillText).toHaveBeenCalledWith("active", expect.any(Number), expect.any(Number));
+
+    vi.mocked(context.fillText).mockClear();
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          __nextroomCameraBubble: { enabled: false, kind: "setEnabled", nonce: expectedNonce },
+        },
+        source: window,
+      }),
+    );
     rafCallback?.(0);
 
     expect(context.fillText).not.toHaveBeenCalled();

@@ -6,6 +6,7 @@ import { err, ok, type Result } from "neverthrow";
 type AlwaysOnTopLevel = "screen-saver";
 
 type AutoJoinResult = { ok: true } | { ok: false; reason: string };
+export type BubbleTextMessage = { durationMs: number; text: string };
 
 type ManagedWebContents = {
   executeJavaScript: (code: string) => Promise<unknown>;
@@ -19,7 +20,7 @@ export type ManagedMeetWindow = {
   loadURL: (url: string) => Promise<void>;
   on: (event: "closed", listener: () => void) => unknown;
   restore: () => void;
-  sendBubbleText?: (text: string) => void;
+  sendBubbleText?: (message: BubbleTextMessage) => void;
   setAlwaysOnTop: (flag: boolean, level?: AlwaysOnTopLevel) => void;
   setBubbleEnabled?: (enabled: boolean) => void;
   show: () => void;
@@ -41,7 +42,7 @@ export type MeetWindowManager = {
   focusOpenMeetWindow: () => boolean;
   hasOpenMeetWindowExcept: (value: string) => boolean;
   openMeetUrl: (value: string) => Promise<Result<void, AppError>>;
-  sendBubbleText: (text: string) => void;
+  sendBubbleText: (message: BubbleTextMessage) => void;
   setBubbleEnabled: (enabled: boolean) => void;
   updateUpdateStatus: (status: AppUpdateStatus) => void;
 };
@@ -272,10 +273,10 @@ export const createMeetWindowManager = ({
       const opened = await openMeetWindow(value);
       return opened.map(() => undefined);
     },
-    sendBubbleText: (text) => {
+    sendBubbleText: (message) => {
       meetWindows.forEach((meetWindow) => {
         if (!meetWindow.isDestroyed()) {
-          meetWindow.sendBubbleText?.(text);
+          meetWindow.sendBubbleText?.(message);
         }
       });
     },
