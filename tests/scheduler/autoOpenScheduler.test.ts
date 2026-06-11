@@ -8,6 +8,8 @@ import { describe, expect, it, vi } from "vitest";
 const settings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
+  cameraBubbleEnabled: false,
+  cameraBubbleDisplaySpeedLevel: 3,
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,

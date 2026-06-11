@@ -17,6 +17,8 @@ type DashboardProps = {
   settings: AppSettings;
   syncedAt?: string;
   onAutoJoinEnabledChange: (enabled: boolean) => Promise<unknown>;
+  onCameraBubbleEnabledChange: (enabled: boolean) => Promise<unknown>;
+  onCameraBubbleDisplaySpeedLevelChange: (level: number) => Promise<unknown>;
   onCheckForUpdates?: () => Promise<unknown>;
   onConnectAccount: () => Promise<unknown>;
   onDisconnectAccount: () => Promise<unknown>;
@@ -236,6 +238,8 @@ export const Dashboard = ({
   menuShortcutStatus,
   nextMeetingNotification,
   onAutoJoinEnabledChange,
+  onCameraBubbleEnabledChange,
+  onCameraBubbleDisplaySpeedLevelChange,
   onCheckForUpdates,
   onConnectAccount,
   onDisconnectAccount,
@@ -439,6 +443,42 @@ export const Dashboard = ({
                 }
               />
               <span>{joinOffsetMinutes} min</span>
+            </label>
+          </div>
+          <div className="preference-row">
+            <div className="preference-copy">
+              <strong>カメラ吹き出し</strong>
+              <span>
+                {settings.cameraBubbleEnabled ? "ミュート中の発言をカメラ映像に表示" : "Off"}
+              </span>
+            </div>
+            <label className="toggle-control">
+              <input
+                type="checkbox"
+                checked={settings.cameraBubbleEnabled}
+                aria-label="カメラ吹き出し"
+                onChange={(event) => void onCameraBubbleEnabledChange(event.currentTarget.checked)}
+              />
+            </label>
+          </div>
+          <div className="preference-row">
+            <div className="preference-copy">
+              <strong>吹き出し表示速度</strong>
+              <span>1=ゆっくり / 5=はやい</span>
+            </div>
+            <label className="range-control">
+              <input
+                type="range"
+                min="1"
+                max="5"
+                step="1"
+                value={settings.cameraBubbleDisplaySpeedLevel}
+                aria-label="吹き出し表示速度"
+                onChange={(event) =>
+                  void onCameraBubbleDisplaySpeedLevelChange(Number(event.currentTarget.value))
+                }
+              />
+              <span>{settings.cameraBubbleDisplaySpeedLevel} / 5</span>
             </label>
           </div>
         </div>

@@ -14,7 +14,12 @@ export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: Serializ
 export type SettingsUpdate = Partial<
   Pick<
     AppSettings,
-    "autoJoinEnabled" | "joinOffsetSeconds" | "menuShortcutAccelerator" | "openOffsetSeconds"
+    | "autoJoinEnabled"
+    | "cameraBubbleEnabled"
+    | "cameraBubbleDisplaySpeedLevel"
+    | "joinOffsetSeconds"
+    | "menuShortcutAccelerator"
+    | "openOffsetSeconds"
   >
 >;
 
@@ -26,6 +31,10 @@ export const IPC_CHANNELS = {
   calendarUpdated: "calendar:updated",
   meetListUpcoming: "meet:listUpcoming",
   meetOpen: "meet:open",
+  meetBubbleSend: "meetBubble:send",
+  meetBubbleShow: "meetBubble:show",
+  meetBubbleSetEnabled: "meetBubble:setEnabled",
+  meetBubbleEnabledChanged: "meetBubble:enabledChanged",
   settingsGet: "settings:get",
   settingsUpdate: "settings:update",
   settingsMenuShortcutStatusGet: "settings:menuShortcutStatusGet",

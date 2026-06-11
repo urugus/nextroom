@@ -7,6 +7,7 @@ import { createGoogleCalendarClient } from "@main/calendar/calendarClient";
 import { createCalendarSyncService } from "@main/calendar/calendarSyncService";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
 import { createIpcSenderGuard, type IpcSenderGuard } from "@main/ipc/senderGuard";
+import { createBubbleMessageGate } from "@main/meet/bubbleMessage";
 import { closeMeetContentsOnWindowClosed } from "@main/meet/meetContentsLifecycle";
 import {
   type CapturableScreenShareSource,
@@ -17,7 +18,11 @@ import {
   configureMeetSessionPermissions,
   meetSessionPartition,
 } from "@main/meet/meetSessionPermissions";
-import { createMeetWindowManager, type ManagedMeetWindow } from "@main/meet/meetWindowManager";
+import {
+  type BubbleTextMessage,
+  createMeetWindowManager,
+  type ManagedMeetWindow,
+} from "@main/meet/meetWindowManager";
 import { createMenuBarController, type MenuBarController } from "@main/menuBar/menuBarController";
 import { createTrayIcon } from "@main/menuBar/trayIcon";
 import { createGoogleAuthService } from "@main/oauth/googleAuthService";
@@ -109,6 +114,7 @@ const settingsFileName = "settings.json";
 const menuBarLogFileName = "menu-bar.log";
 let appSettings: AppSettings = { ...defaultAppSettings };
 let ipcSenderGuard: IpcSenderGuard;
+const bubbleMessageGate = createBubbleMessageGate();
 const appCanStart = app.requestSingleInstanceLock();
 const electronProcess = process as NodeJS.Process & { defaultApp?: boolean };
 
@@ -179,9 +185,13 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
 
   const previousShortcutAccelerator = appSettings.menuShortcutAccelerator;
   const previousShortcutStatus = menuShortcutStatus;
+  const previousCameraBubbleEnabled = appSettings.cameraBubbleEnabled;
   const shortcutChanged =
     "menuShortcutAccelerator" in parsed.value &&
     nextSettings.menuShortcutAccelerator !== previousShortcutAccelerator;
+  const cameraBubbleChanged =
+    "cameraBubbleEnabled" in parsed.value &&
+    nextSettings.cameraBubbleEnabled !== previousCameraBubbleEnabled;
 
   if (shortcutChanged) {
     const registered = updateMenuShortcutRegistration(nextSettings.menuShortcutAccelerator);
@@ -205,6 +215,9 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
   }
 
   Object.assign(appSettings, nextSettings);
+  if (cameraBubbleChanged) {
+    meetWindowManager.setBubbleEnabled(appSettings.cameraBubbleEnabled);
+  }
   return ok(appSettings);
 };
 
@@ -367,10 +380,30 @@ const meetShellHtml = (): string => `<!doctype html>
         display: flex;
         align-items: center;
         justify-content: flex-end;
+        gap: 8px;
         height: ${meetShellHeight}px;
         padding: 0 12px 0 78px;
         border-bottom: 1px solid #d6d6d8;
         background: #f5f5f7;
+      }
+      input {
+        -webkit-app-region: no-drag;
+        box-sizing: border-box;
+        display: none;
+        width: min(420px, 52vw);
+        height: 26px;
+        border: 1px solid #c4c4c6;
+        border-radius: 6px;
+        background: #ffffff;
+        color: #1d1d1f;
+        font: inherit;
+        font-size: 12px;
+        outline: none;
+        padding: 4px 9px;
+      }
+      input:focus {
+        border-color: #0071e3;
+        box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.18);
       }
       button {
         -webkit-app-region: no-drag;
@@ -396,10 +429,16 @@ const meetShellHtml = (): string => `<!doctype html>
   </head>
   <body>
     <div class="bar">
+      <input
+        type="text"
+        id="bubble-input"
+        placeholder="ミュート中に映像へ表示するテキスト…"
+      >
       <button type="button" id="update-button">Update</button>
     </div>
     <script>
       const button = document.getElementById("update-button");
+      const bubbleInput = document.getElementById("bubble-input");
       const render = (status) => {
         const visible = status?.status === "available" || status?.status === "homebrew-updating";
         button.style.display = visible ? "inline-flex" : "none";
@@ -421,6 +460,23 @@ const meetShellHtml = (): string => `<!doctype html>
         }).catch(() => {
           button.disabled = false;
           button.textContent = "Update";
+        });
+      });
+      window.meetLauncher?.onBubbleEnabledChanged((enabled) => {
+        bubbleInput.style.display = enabled ? "block" : "none";
+        if (!enabled) {
+          bubbleInput.value = "";
+        }
+      });
+      bubbleInput.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" || event.isComposing) return;
+
+        const value = bubbleInput.value;
+        if (value.trim().length === 0) return;
+
+        event.preventDefault();
+        window.meetLauncher?.sendBubbleText(value).finally(() => {
+          bubbleInput.value = "";
         });
       });
     </script>
@@ -773,7 +829,12 @@ const createMeetWindow = fromThrowable(
     });
     const meetView = new WebContentsView({
       webPreferences: {
+        additionalArguments: [
+          `--nextroom-camera-bubble=${appSettings.cameraBubbleEnabled ? "1" : "0"}`,
+        ],
+        backgroundThrottling: false,
         partition: meetSessionPartition,
+        preload: join(__dirname, "../preload/meetInject.cjs"),
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
@@ -811,6 +872,15 @@ const createMeetWindow = fromThrowable(
     window.on("resized", layout);
     layout();
     ipcSenderGuard.trustWindow(window, { dataShell: true });
+    window.webContents.on("did-finish-load", () => {
+      window.webContents.send(
+        IPC_CHANNELS.meetBubbleEnabledChanged,
+        appSettings.cameraBubbleEnabled,
+      );
+    });
+    meetView.webContents.on("did-finish-load", () => {
+      meetView.webContents.send(IPC_CHANNELS.meetBubbleSetEnabled, appSettings.cameraBubbleEnabled);
+    });
     void window.loadURL(meetShellUrl());
 
     return {
@@ -821,7 +891,14 @@ const createMeetWindow = fromThrowable(
       loadURL: (url: string) => meetView.webContents.loadURL(url),
       on: (event: "closed", listener: () => void) => window.on(event, listener),
       restore: () => window.restore(),
+      sendBubbleText: (message: BubbleTextMessage) => {
+        meetView.webContents.send(IPC_CHANNELS.meetBubbleShow, message);
+      },
       setAlwaysOnTop: (flag: boolean, level?: "screen-saver") => window.setAlwaysOnTop(flag, level),
+      setBubbleEnabled: (enabled: boolean) => {
+        meetView.webContents.send(IPC_CHANNELS.meetBubbleSetEnabled, enabled);
+        window.webContents.send(IPC_CHANNELS.meetBubbleEnabledChanged, enabled);
+      },
       show: () => window.show(),
       updateUpdateStatus: (status: AppUpdateStatus) => {
         window.webContents.send(IPC_CHANNELS.updatesStatusChanged, status);
@@ -1063,6 +1140,32 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
         ? await openMeetUrl(parsed.data)
         : err({ type: "MeetUrlNotFound", eventId: "unknown" }),
     );
+  });
+  handleTrustedIpc(IPC_CHANNELS.meetBubbleSend, (_event, text) => {
+    const parsed = z.string().safeParse(text);
+    if (!parsed.success) {
+      return serializeResultForRenderer(
+        err({ type: "DatabaseFailed", cause: "Bubble text must be a string." }),
+      );
+    }
+
+    if (!appSettings.cameraBubbleEnabled) {
+      return serializeResultForRenderer(ok(undefined));
+    }
+
+    bubbleMessageGate
+      .accept(parsed.data, Date.now(), appSettings.cameraBubbleDisplaySpeedLevel)
+      .match(
+        (accepted) => {
+          meetWindowManager.sendBubbleText({
+            durationMs: accepted.durationMs,
+            text: accepted.text,
+          });
+        },
+        () => undefined,
+      );
+
+    return serializeResultForRenderer(ok(undefined));
   });
   handleTrustedIpc(IPC_CHANNELS.settingsGet, () => serializeResultForRenderer(ok(appSettings)));
   handleTrustedIpc(IPC_CHANNELS.settingsUpdate, (_event, settings) =>

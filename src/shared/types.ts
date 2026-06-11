@@ -66,6 +66,8 @@ export type MeetEventsSnapshot = {
 export type AppSettings = {
   autoJoinEnabled: boolean;
   autoOpenEnabled: boolean;
+  cameraBubbleEnabled: boolean;
+  cameraBubbleDisplaySpeedLevel: number;
   joinOffsetSeconds: number;
   notifyBeforeMinutes: number;
   openOffsetSeconds: number;

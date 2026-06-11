@@ -6,6 +6,7 @@ import { err, ok, type Result } from "neverthrow";
 type AlwaysOnTopLevel = "screen-saver";
 
 type AutoJoinResult = { ok: true } | { ok: false; reason: string };
+export type BubbleTextMessage = { durationMs: number; text: string };
 
 type ManagedWebContents = {
   executeJavaScript: (code: string) => Promise<unknown>;
@@ -19,7 +20,9 @@ export type ManagedMeetWindow = {
   loadURL: (url: string) => Promise<void>;
   on: (event: "closed", listener: () => void) => unknown;
   restore: () => void;
+  sendBubbleText?: (message: BubbleTextMessage) => void;
   setAlwaysOnTop: (flag: boolean, level?: AlwaysOnTopLevel) => void;
+  setBubbleEnabled?: (enabled: boolean) => void;
   show: () => void;
   updateUpdateStatus?: (status: AppUpdateStatus) => void;
   webContents: ManagedWebContents;
@@ -39,6 +42,8 @@ export type MeetWindowManager = {
   focusOpenMeetWindow: () => boolean;
   hasOpenMeetWindowExcept: (value: string) => boolean;
   openMeetUrl: (value: string) => Promise<Result<void, AppError>>;
+  sendBubbleText: (message: BubbleTextMessage) => void;
+  setBubbleEnabled: (enabled: boolean) => void;
   updateUpdateStatus: (status: AppUpdateStatus) => void;
 };
 
@@ -159,6 +164,7 @@ export const createMeetWindowManager = ({
   setTimeoutFn = setTimeout,
 }: MeetWindowManagerInput): MeetWindowManager => {
   const meetWindows = new Map<MeetUrl, ManagedMeetWindow>();
+  let bubbleEnabled: boolean | undefined;
   let updateStatus: AppUpdateStatus | undefined;
 
   const removeWindow = (meetUrl: MeetUrl, meetWindow: ManagedMeetWindow): void => {
@@ -195,6 +201,9 @@ export const createMeetWindowManager = ({
     const meetWindow = created.value;
     if (updateStatus !== undefined) {
       meetWindow.updateUpdateStatus?.(updateStatus);
+    }
+    if (bubbleEnabled !== undefined) {
+      meetWindow.setBubbleEnabled?.(bubbleEnabled);
     }
     meetWindows.set(meetUrl, meetWindow);
     meetWindow.on("closed", () => {
@@ -263,6 +272,21 @@ export const createMeetWindowManager = ({
     openMeetUrl: async (value) => {
       const opened = await openMeetWindow(value);
       return opened.map(() => undefined);
+    },
+    sendBubbleText: (message) => {
+      meetWindows.forEach((meetWindow) => {
+        if (!meetWindow.isDestroyed()) {
+          meetWindow.sendBubbleText?.(message);
+        }
+      });
+    },
+    setBubbleEnabled: (enabled) => {
+      bubbleEnabled = enabled;
+      meetWindows.forEach((meetWindow) => {
+        if (!meetWindow.isDestroyed()) {
+          meetWindow.setBubbleEnabled?.(enabled);
+        }
+      });
     },
     updateUpdateStatus: (status) => {
       updateStatus = status;

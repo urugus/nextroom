@@ -25,6 +25,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve("src/preload/index.ts"),
+          meetInject: resolve("src/preload/meetInject.ts"),
           meetShell: resolve("src/preload/meetShell.ts"),
           screenSharePicker: resolve("src/preload/screenSharePicker.ts"),
         },
