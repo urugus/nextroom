@@ -181,7 +181,32 @@ describe("appUpdater Homebrew updates", () => {
       status: "homebrew-updating",
       updateMessage: "Updating with Homebrew. A restart prompt will appear when it is ready.",
     });
-    expect(context.execFileMock).toHaveBeenCalledWith(
+    expect(context.execFileMock).toHaveBeenNthCalledWith(
+      1,
+      "/opt/homebrew/bin/brew",
+      ["help", "trust"],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          HOMEBREW_NO_ANALYTICS: "1",
+          HOMEBREW_NO_AUTO_UPDATE: "1",
+        }),
+      }),
+      expect.any(Function),
+    );
+    expect(context.execFileMock).toHaveBeenNthCalledWith(
+      2,
+      "/opt/homebrew/bin/brew",
+      ["trust", "--cask", "urugus/tap/nextroom"],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          HOMEBREW_NO_ANALYTICS: "1",
+          HOMEBREW_NO_AUTO_UPDATE: "1",
+        }),
+      }),
+      expect.any(Function),
+    );
+    expect(context.execFileMock).toHaveBeenNthCalledWith(
+      3,
       "/opt/homebrew/bin/brew",
       ["list", "--cask", "nextroom"],
       expect.objectContaining({
@@ -236,6 +261,45 @@ describe("appUpdater Homebrew updates", () => {
       NEXTROOM_EXPECTED_VERSION: "0.1.4",
     });
     expect(spawnOptions.stdio).toEqual(["ignore", 42, 42]);
+  });
+
+  it("skips cask trust before the installation check when Homebrew does not support it", async () => {
+    const context = await createAppUpdaterTestContext();
+    context.execFileMock.mockImplementation(
+      (
+        _file: string,
+        args: string[],
+        _options: unknown,
+        callback: (error: Error | null) => void,
+      ) => {
+        callback(args.join(" ") === "help trust" ? new Error("unknown command") : null);
+      },
+    );
+    prepareAvailableUpdate(context);
+
+    const result = await context.module.runHomebrewAppUpdate();
+
+    expect(result.isOk()).toBe(true);
+    expect(context.execFileMock).toHaveBeenNthCalledWith(
+      1,
+      "/opt/homebrew/bin/brew",
+      ["help", "trust"],
+      expect.any(Object),
+      expect.any(Function),
+    );
+    expect(context.execFileMock).toHaveBeenNthCalledWith(
+      2,
+      "/opt/homebrew/bin/brew",
+      ["list", "--cask", "nextroom"],
+      expect.any(Object),
+      expect.any(Function),
+    );
+    expect(context.execFileMock).not.toHaveBeenCalledWith(
+      "/opt/homebrew/bin/brew",
+      ["trust", "--cask", "urugus/tap/nextroom"],
+      expect.any(Object),
+      expect.any(Function),
+    );
   });
 
   it("publishes homebrew-updated when the detached update exits successfully", async () => {
