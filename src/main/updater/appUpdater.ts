@@ -23,6 +23,8 @@ type UpdateCheckState = {
 const { autoUpdater } = electronUpdater;
 const execFileAsync = promisify(execFile);
 const brewCandidates = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"];
+const homebrewCaskName = "nextroom";
+const homebrewCaskRef = "urugus/tap/nextroom";
 const updateLogFileName = "homebrew-update.log";
 const updateCheckStateFileName = "update-check-state.json";
 
@@ -207,6 +209,16 @@ const runBrew = async (brewPath: string, args: string[]) =>
     maxBuffer: 1024 * 1024,
     timeout: 10 * 60 * 1_000,
   });
+
+const trustHomebrewCaskIfSupported = async (brewPath: string) => {
+  try {
+    await runBrew(brewPath, ["help", "trust"]);
+  } catch {
+    return;
+  }
+
+  await runBrew(brewPath, ["trust", "--cask", homebrewCaskRef]);
+};
 
 const homebrewUpdateScript = `
 set -e
@@ -416,7 +428,8 @@ export const runHomebrewAppUpdate = async (): Promise<Result<AppUpdateStatus, Ap
       status: "homebrew-updating",
       updateMessage: "Checking Homebrew cask installation.",
     });
-    await runBrew(brewPath.value, ["list", "--cask", "nextroom"]);
+    await trustHomebrewCaskIfSupported(brewPath.value);
+    await runBrew(brewPath.value, ["list", "--cask", homebrewCaskName]);
     updateState({
       ...updaterState,
       status: "homebrew-updating",
