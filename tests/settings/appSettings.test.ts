@@ -11,7 +11,7 @@ describe("app settings", () => {
     expect(parseStoredAppSettings({ openOffsetSeconds: 5 * 60 })).toMatchObject({
       autoJoinEnabled: false,
       cameraBubbleEnabled: false,
-      cameraBubbleFadeSpeedLevel: 3,
+      cameraBubbleDisplaySpeedLevel: 3,
       joinOffsetSeconds: 0,
       menuShortcutAccelerator: "Command+Alt+N",
       openOffsetSeconds: 5 * 60,
@@ -43,32 +43,32 @@ describe("app settings", () => {
     });
   });
 
-  it("defaults the camera bubble fade speed level to 3", () => {
-    expect(defaultAppSettings.cameraBubbleFadeSpeedLevel).toBe(3);
-    expect(parseStoredAppSettings({}).cameraBubbleFadeSpeedLevel).toBe(3);
+  it("defaults the camera bubble display speed level to 3", () => {
+    expect(defaultAppSettings.cameraBubbleDisplaySpeedLevel).toBe(3);
+    expect(parseStoredAppSettings({}).cameraBubbleDisplaySpeedLevel).toBe(3);
   });
 
-  it("accepts camera bubble fade speed levels from 1 to 5", () => {
-    [1, 2, 3, 4, 5].forEach((cameraBubbleFadeSpeedLevel) => {
-      expect(parseSettingsUpdate({ cameraBubbleFadeSpeedLevel })._unsafeUnwrap()).toEqual({
-        cameraBubbleFadeSpeedLevel,
+  it("accepts camera bubble display speed levels from 1 to 5", () => {
+    [1, 2, 3, 4, 5].forEach((cameraBubbleDisplaySpeedLevel) => {
+      expect(parseSettingsUpdate({ cameraBubbleDisplaySpeedLevel })._unsafeUnwrap()).toEqual({
+        cameraBubbleDisplaySpeedLevel,
       });
     });
   });
 
-  it("rejects camera bubble fade speed levels outside the allowed integer range", () => {
-    expect(parseSettingsUpdate({ cameraBubbleFadeSpeedLevel: 0 })._unsafeUnwrapErr()).toMatchObject(
-      {
-        type: "DatabaseFailed",
-      },
-    );
-    expect(parseSettingsUpdate({ cameraBubbleFadeSpeedLevel: 6 })._unsafeUnwrapErr()).toMatchObject(
-      {
-        type: "DatabaseFailed",
-      },
-    );
+  it("rejects camera bubble display speed levels outside the allowed integer range", () => {
     expect(
-      parseSettingsUpdate({ cameraBubbleFadeSpeedLevel: 1.5 })._unsafeUnwrapErr(),
+      parseSettingsUpdate({ cameraBubbleDisplaySpeedLevel: 0 })._unsafeUnwrapErr(),
+    ).toMatchObject({
+      type: "DatabaseFailed",
+    });
+    expect(
+      parseSettingsUpdate({ cameraBubbleDisplaySpeedLevel: 6 })._unsafeUnwrapErr(),
+    ).toMatchObject({
+      type: "DatabaseFailed",
+    });
+    expect(
+      parseSettingsUpdate({ cameraBubbleDisplaySpeedLevel: 1.5 })._unsafeUnwrapErr(),
     ).toMatchObject({
       type: "DatabaseFailed",
     });

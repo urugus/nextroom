@@ -275,7 +275,7 @@ describe("installCameraBubbleHook", () => {
       new MessageEvent("message", {
         data: {
           __nextroomCameraBubble: {
-            durationMs: 1_500,
+            durationMs: 2_000,
             kind: "show",
             nonce: "wrong",
             text: "wrong",
@@ -318,7 +318,7 @@ describe("installCameraBubbleHook", () => {
     );
 
     vi.mocked(context.fillText).mockClear();
-    vi.advanceTimersByTime(1_501);
+    vi.advanceTimersByTime(2_001);
     rafCallback?.(0);
 
     expect(context.fillText).not.toHaveBeenCalled();

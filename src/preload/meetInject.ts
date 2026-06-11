@@ -15,10 +15,18 @@ const IPC_CHANNELS = {
 } as const;
 
 const initialEnabled = process.argv.includes("--nextroom-camera-bubble=1");
-const cameraBubbleNonce =
-  typeof globalThis.crypto?.randomUUID === "function"
-    ? globalThis.crypto.randomUUID()
-    : `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+
+const createCameraBubbleNonce = (): string => {
+  const webCrypto = globalThis.crypto;
+  if (typeof webCrypto.randomUUID === "function") {
+    return webCrypto.randomUUID();
+  }
+
+  const bytes = webCrypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+};
+
+const cameraBubbleNonce = createCameraBubbleNonce();
 
 type CameraBubbleMessage =
   | { enabled: boolean; kind: "setEnabled" }

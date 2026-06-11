@@ -18,7 +18,7 @@ type DashboardProps = {
   syncedAt?: string;
   onAutoJoinEnabledChange: (enabled: boolean) => Promise<unknown>;
   onCameraBubbleEnabledChange: (enabled: boolean) => Promise<unknown>;
-  onCameraBubbleFadeSpeedLevelChange: (level: number) => Promise<unknown>;
+  onCameraBubbleDisplaySpeedLevelChange: (level: number) => Promise<unknown>;
   onCheckForUpdates?: () => Promise<unknown>;
   onConnectAccount: () => Promise<unknown>;
   onDisconnectAccount: () => Promise<unknown>;
@@ -239,7 +239,7 @@ export const Dashboard = ({
   nextMeetingNotification,
   onAutoJoinEnabledChange,
   onCameraBubbleEnabledChange,
-  onCameraBubbleFadeSpeedLevelChange,
+  onCameraBubbleDisplaySpeedLevelChange,
   onCheckForUpdates,
   onConnectAccount,
   onDisconnectAccount,
@@ -472,13 +472,13 @@ export const Dashboard = ({
                 min="1"
                 max="5"
                 step="1"
-                value={settings.cameraBubbleFadeSpeedLevel}
+                value={settings.cameraBubbleDisplaySpeedLevel}
                 aria-label="吹き出し表示速度"
                 onChange={(event) =>
-                  void onCameraBubbleFadeSpeedLevelChange(Number(event.currentTarget.value))
+                  void onCameraBubbleDisplaySpeedLevelChange(Number(event.currentTarget.value))
                 }
               />
-              <span>{settings.cameraBubbleFadeSpeedLevel} / 5</span>
+              <span>{settings.cameraBubbleDisplaySpeedLevel} / 5</span>
             </label>
           </div>
         </div>

@@ -117,7 +117,7 @@ describe("camera bubble pure functions", () => {
         parseCameraBubbleEnvelope(
           {
             __nextroomCameraBubble: {
-              durationMs: 1_234,
+              durationMs: 2_345,
               kind: "show",
               nonce: expectedNonce,
               text: "hello",
@@ -125,7 +125,7 @@ describe("camera bubble pure functions", () => {
           },
           expectedNonce,
         ),
-      ).toEqual({ durationMs: 1_234, kind: "show", text: "hello" });
+      ).toEqual({ durationMs: 2_345, kind: "show", text: "hello" });
       expect(
         parseCameraBubbleEnvelope(
           {
@@ -138,7 +138,7 @@ describe("camera bubble pure functions", () => {
           },
           expectedNonce,
         ),
-      ).toEqual({ durationMs: 1_000, kind: "show", text: "hello" });
+      ).toEqual({ durationMs: 2_000, kind: "show", text: "hello" });
       expect(
         parseCameraBubbleEnvelope(
           {
@@ -151,7 +151,7 @@ describe("camera bubble pure functions", () => {
           },
           expectedNonce,
         ),
-      ).toEqual({ durationMs: 30_000, kind: "show", text: "hello" });
+      ).toEqual({ durationMs: 20_000, kind: "show", text: "hello" });
       expect(
         parseCameraBubbleEnvelope(
           {

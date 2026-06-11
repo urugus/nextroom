@@ -878,6 +878,9 @@ const createMeetWindow = fromThrowable(
         appSettings.cameraBubbleEnabled,
       );
     });
+    meetView.webContents.on("did-finish-load", () => {
+      meetView.webContents.send(IPC_CHANNELS.meetBubbleSetEnabled, appSettings.cameraBubbleEnabled);
+    });
     void window.loadURL(meetShellUrl());
 
     return {
@@ -1150,15 +1153,17 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
       return serializeResultForRenderer(ok(undefined));
     }
 
-    bubbleMessageGate.accept(parsed.data, Date.now(), appSettings.cameraBubbleFadeSpeedLevel).match(
-      (accepted) => {
-        meetWindowManager.sendBubbleText({
-          durationMs: accepted.durationMs,
-          text: accepted.text,
-        });
-      },
-      () => undefined,
-    );
+    bubbleMessageGate
+      .accept(parsed.data, Date.now(), appSettings.cameraBubbleDisplaySpeedLevel)
+      .match(
+        (accepted) => {
+          meetWindowManager.sendBubbleText({
+            durationMs: accepted.durationMs,
+            text: accepted.text,
+          });
+        },
+        () => undefined,
+      );
 
     return serializeResultForRenderer(ok(undefined));
   });

@@ -178,7 +178,7 @@ export const parseCameraBubbleEnvelope = (
       typeof message.durationMs === "number" &&
       Number.isFinite(message.durationMs) &&
       message.durationMs > 0
-        ? Math.max(1_000, Math.min(30_000, message.durationMs))
+        ? Math.max(2_000, Math.min(20_000, message.durationMs))
         : 7_000;
     return text.length === 0 ? undefined : { durationMs, kind: "show", text };
   }
