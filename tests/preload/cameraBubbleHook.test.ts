@@ -571,6 +571,21 @@ describe("installCameraBubbleHook", () => {
     expect(overlay?.style.right).toBe("16px");
   });
 
+  it("does not anchor the overlay to a display-tagged video without displaySurface", async () => {
+    const displayTrack = createFakeTrack("video", { height: 360, width: 640 }, "Captured source");
+    getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
+    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    const displayStream = await navigator.mediaDevices.getDisplayMedia();
+    createVisibleSelfView(displayStream.getVideoTracks()[0]);
+
+    postCameraBubbleMessage({ durationMs: 2_000, kind: "show", text: "tagged display" });
+
+    const overlay = Array.from(document.querySelectorAll("div")).find(
+      (element) => element.textContent === "tagged display",
+    );
+    expect(overlay?.style.right).toBe("16px");
+  });
+
   it("hides the overlay when the canvas draw loop expires the shared bubble first", () => {
     const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
     installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);

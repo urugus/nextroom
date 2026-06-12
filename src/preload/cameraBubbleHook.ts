@@ -260,7 +260,7 @@ export const installCameraBubbleHook = (
   };
 
   const isDisplayCaptureTrack = (track: MediaStreamTrack): boolean =>
-    displayTracks.has(track) || deps.isDisplayCaptureLike(track.getSettings(), track.label);
+    displayTracks.has(track) || deps.isDisplayCaptureLike(track.getSettings());
 
   const wrapTrackForSender = (track: unknown): unknown => {
     if (!isMediaStreamTrack(track)) return track;
@@ -451,12 +451,11 @@ export const installCameraBubbleHook = (
     if (track === undefined) return undefined;
 
     const rect = video.getBoundingClientRect();
-    const settings = track.getSettings();
     const isPipelineSource = sourceToPipeline.has(track);
-    const hasDisplaySurface = settings.displaySurface !== undefined;
+    const isDisplayCapture = isDisplayCaptureTrack(track);
     const score = deps.scoreSelfViewCandidate({
       aspectDelta: aspectDeltaFor(rect, video, track),
-      hasDisplaySurface,
+      isDisplayCapture,
       isPipelineSource,
       muted: video.muted,
       playsInline: video.playsInline,
@@ -464,7 +463,7 @@ export const installCameraBubbleHook = (
     });
     const accepted =
       (isPipelineSource && score >= 4) ||
-      (!hasDisplaySurface && video.muted && video.playsInline && score >= 6);
+      (!isDisplayCapture && video.muted && video.playsInline && score >= 6);
 
     return accepted ? { rect, score } : undefined;
   };

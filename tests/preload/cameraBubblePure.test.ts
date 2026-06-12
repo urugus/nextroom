@@ -34,12 +34,19 @@ describe("camera bubble pure functions", () => {
   });
 
   describe("isDisplayCaptureLike", () => {
-    it("detects display capture from settings and conservative label heuristics", () => {
-      expect(isDisplayCaptureLike({ displaySurface: "browser" }, "Camera")).toBe(true);
-      expect(isDisplayCaptureLike({}, "Main Screen")).toBe(true);
-      expect(isDisplayCaptureLike({}, "Window Capture")).toBe(true);
-      expect(isDisplayCaptureLike({}, "Display 1")).toBe(true);
-      expect(isDisplayCaptureLike({}, "FaceTime HD Camera")).toBe(false);
+    it("detects display capture from settings only", () => {
+      expect(isDisplayCaptureLike({ displaySurface: "browser" })).toBe(true);
+      expect(isDisplayCaptureLike({})).toBe(false);
+    });
+
+    it("does not classify camera labels as display capture without displaySurface", () => {
+      const track = {
+        getSettings: () => ({}),
+        label: "Windows HD Camera",
+      };
+
+      expect(track.label).toBe("Windows HD Camera");
+      expect(isDisplayCaptureLike(track.getSettings())).toBe(false);
     });
   });
 
@@ -48,7 +55,7 @@ describe("camera bubble pure functions", () => {
       expect(
         scoreSelfViewCandidate({
           aspectDelta: 0,
-          hasDisplaySurface: false,
+          isDisplayCapture: false,
           isPipelineSource: true,
           muted: true,
           playsInline: true,
@@ -58,7 +65,7 @@ describe("camera bubble pure functions", () => {
       expect(
         scoreSelfViewCandidate({
           aspectDelta: 0.1,
-          hasDisplaySurface: false,
+          isDisplayCapture: false,
           isPipelineSource: true,
           muted: true,
           playsInline: true,
@@ -68,7 +75,7 @@ describe("camera bubble pure functions", () => {
       expect(
         scoreSelfViewCandidate({
           aspectDelta: 0.5,
-          hasDisplaySurface: true,
+          isDisplayCapture: true,
           isPipelineSource: false,
           muted: false,
           playsInline: false,

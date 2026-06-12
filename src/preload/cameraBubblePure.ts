@@ -44,30 +44,21 @@ export const computeCanvasSize = (settings: {
   return { height, width };
 };
 
-export const isDisplayCaptureLike = (
-  settings: { displaySurface?: unknown },
-  label: string,
-): boolean => {
-  if (settings.displaySurface !== undefined) return true;
-
-  const normalizedLabel = label.toLowerCase();
-  return (
-    normalizedLabel.includes("screen") ||
-    normalizedLabel.includes("window") ||
-    normalizedLabel.includes("display")
-  );
-};
+export const isDisplayCaptureLike = (settings: { displaySurface?: unknown }): boolean =>
+  // Chromium exposes displaySurface on getDisplayMedia tracks; label heuristics cause false
+  // positives that silently disable bubbling for real cameras.
+  settings.displaySurface !== undefined;
 
 export const scoreSelfViewCandidate = ({
   aspectDelta,
-  hasDisplaySurface,
+  isDisplayCapture,
   isPipelineSource,
   muted,
   playsInline,
   visible,
 }: {
   aspectDelta: number;
-  hasDisplaySurface: boolean;
+  isDisplayCapture: boolean;
   isPipelineSource: boolean;
   muted: boolean;
   playsInline: boolean;
@@ -80,7 +71,7 @@ export const scoreSelfViewCandidate = ({
     (isPipelineSource ? 4 : 0) +
     (muted ? 1 : 0) +
     (playsInline ? 1 : 0) +
-    (hasDisplaySurface ? 0 : 1) +
+    (isDisplayCapture ? 0 : 1) +
     (aspectDelta < 0.2 ? 1 : 0)
   );
 };
