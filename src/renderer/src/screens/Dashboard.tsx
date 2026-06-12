@@ -17,6 +17,9 @@ type DashboardProps = {
   settings: AppSettings;
   syncedAt?: string;
   onAutoJoinEnabledChange: (enabled: boolean) => Promise<unknown>;
+  onCameraBubbleChatMirrorEnabledChange: (enabled: boolean) => Promise<unknown>;
+  onCameraBubbleEnabledChange: (enabled: boolean) => Promise<unknown>;
+  onCameraBubbleDisplaySpeedLevelChange: (level: number) => Promise<unknown>;
   onCheckForUpdates?: () => Promise<unknown>;
   onConnectAccount: () => Promise<unknown>;
   onDisconnectAccount: () => Promise<unknown>;
@@ -236,6 +239,9 @@ export const Dashboard = ({
   menuShortcutStatus,
   nextMeetingNotification,
   onAutoJoinEnabledChange,
+  onCameraBubbleChatMirrorEnabledChange,
+  onCameraBubbleEnabledChange,
+  onCameraBubbleDisplaySpeedLevelChange,
   onCheckForUpdates,
   onConnectAccount,
   onDisconnectAccount,
@@ -439,6 +445,61 @@ export const Dashboard = ({
                 }
               />
               <span>{joinOffsetMinutes} min</span>
+            </label>
+          </div>
+          <div className="preference-row">
+            <div className="preference-copy">
+              <strong>Camera bubble</strong>
+              <span>
+                {settings.cameraBubbleEnabled
+                  ? "Show typed text on your camera while muted"
+                  : "Off"}
+              </span>
+            </div>
+            <label className="toggle-control">
+              <input
+                type="checkbox"
+                checked={settings.cameraBubbleEnabled}
+                aria-label="Camera bubble"
+                onChange={(event) => void onCameraBubbleEnabledChange(event.currentTarget.checked)}
+              />
+            </label>
+          </div>
+          <div className="preference-row preference-sub-row">
+            <div className="preference-copy">
+              <strong>Mirror Meet chat</strong>
+              <span>Also show your sent chat messages on camera</span>
+            </div>
+            <label className="toggle-control">
+              <input
+                type="checkbox"
+                checked={settings.cameraBubbleChatMirrorEnabled}
+                disabled={!settings.cameraBubbleEnabled}
+                aria-label="Mirror Meet chat"
+                onChange={(event) =>
+                  void onCameraBubbleChatMirrorEnabledChange(event.currentTarget.checked)
+                }
+              />
+            </label>
+          </div>
+          <div className="preference-row">
+            <div className="preference-copy">
+              <strong>Bubble display speed</strong>
+              <span>1 = slow / 5 = fast</span>
+            </div>
+            <label className="range-control">
+              <input
+                type="range"
+                min="1"
+                max="5"
+                step="1"
+                value={settings.cameraBubbleDisplaySpeedLevel}
+                aria-label="Bubble display speed"
+                onChange={(event) =>
+                  void onCameraBubbleDisplaySpeedLevelChange(Number(event.currentTarget.value))
+                }
+              />
+              <span>{settings.cameraBubbleDisplaySpeedLevel} / 5</span>
             </label>
           </div>
         </div>

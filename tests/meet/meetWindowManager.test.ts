@@ -402,6 +402,55 @@ describe("createMeetWindowManager", () => {
       }),
     );
   });
+
+  it("publishes bubble text to open Meet windows", async () => {
+    const firstWindow = createFakeMeetWindow();
+    const secondWindow = createFakeMeetWindow();
+    firstWindow.sendBubbleText = vi.fn();
+    secondWindow.sendBubbleText = vi.fn();
+    const createWindow = vi
+      .fn()
+      .mockReturnValueOnce(ok(firstWindow))
+      .mockReturnValueOnce(ok(secondWindow));
+    const manager = createMeetWindowManager({ createWindow });
+
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+    await manager.openMeetUrl("https://meet.google.com/xyz-abcd-efg");
+    manager.sendBubbleText({ durationMs: 4_000, text: "議事録を確認中です" });
+
+    expect(firstWindow.sendBubbleText).toHaveBeenCalledWith({
+      durationMs: 4_000,
+      text: "議事録を確認中です",
+    });
+    expect(secondWindow.sendBubbleText).toHaveBeenCalledWith({
+      durationMs: 4_000,
+      text: "議事録を確認中です",
+    });
+  });
+
+  it("publishes bubble config to open and newly-created Meet windows", async () => {
+    const firstWindow = createFakeMeetWindow();
+    const secondWindow = createFakeMeetWindow();
+    firstWindow.setBubbleConfig = vi.fn();
+    secondWindow.setBubbleConfig = vi.fn();
+    const config = {
+      chatMirrorEnabled: true,
+      displaySpeedLevel: 4,
+      enabled: true,
+    };
+    const createWindow = vi
+      .fn()
+      .mockReturnValueOnce(ok(firstWindow))
+      .mockReturnValueOnce(ok(secondWindow));
+    const manager = createMeetWindowManager({ createWindow });
+
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+    manager.setBubbleConfig(config);
+    await manager.openMeetUrl("https://meet.google.com/xyz-abcd-efg");
+
+    expect(firstWindow.setBubbleConfig).toHaveBeenCalledWith(config);
+    expect(secondWindow.setBubbleConfig).toHaveBeenCalledWith(config);
+  });
 });
 
 describe("isMeetOrigin", () => {

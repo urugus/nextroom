@@ -6,6 +6,9 @@ import { describe, expect, it } from "vitest";
 const settings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
+  cameraBubbleChatMirrorEnabled: false,
+  cameraBubbleEnabled: false,
+  cameraBubbleDisplaySpeedLevel: 3,
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,

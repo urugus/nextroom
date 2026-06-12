@@ -10,6 +10,9 @@ describe("app settings", () => {
   it("loads auto-join defaults for older settings files", () => {
     expect(parseStoredAppSettings({ openOffsetSeconds: 5 * 60 })).toMatchObject({
       autoJoinEnabled: false,
+      cameraBubbleChatMirrorEnabled: false,
+      cameraBubbleEnabled: false,
+      cameraBubbleDisplaySpeedLevel: 3,
       joinOffsetSeconds: 0,
       menuShortcutAccelerator: "Command+Alt+N",
       openOffsetSeconds: 5 * 60,
@@ -32,6 +35,52 @@ describe("app settings", () => {
   it("accepts partial auto-join setting updates", () => {
     expect(parseSettingsUpdate({ autoJoinEnabled: true })._unsafeUnwrap()).toEqual({
       autoJoinEnabled: true,
+    });
+  });
+
+  it("accepts camera bubble setting updates", () => {
+    expect(parseSettingsUpdate({ cameraBubbleEnabled: true })._unsafeUnwrap()).toEqual({
+      cameraBubbleEnabled: true,
+    });
+    expect(parseSettingsUpdate({ cameraBubbleChatMirrorEnabled: true })._unsafeUnwrap()).toEqual({
+      cameraBubbleChatMirrorEnabled: true,
+    });
+  });
+
+  it("defaults the camera bubble display speed level to 3", () => {
+    expect(defaultAppSettings.cameraBubbleDisplaySpeedLevel).toBe(3);
+    expect(parseStoredAppSettings({}).cameraBubbleDisplaySpeedLevel).toBe(3);
+  });
+
+  it("accepts camera bubble display speed levels from 1 to 5", () => {
+    [1, 2, 3, 4, 5].forEach((cameraBubbleDisplaySpeedLevel) => {
+      expect(parseSettingsUpdate({ cameraBubbleDisplaySpeedLevel })._unsafeUnwrap()).toEqual({
+        cameraBubbleDisplaySpeedLevel,
+      });
+    });
+  });
+
+  it("rejects camera bubble display speed levels outside the allowed integer range", () => {
+    expect(
+      parseSettingsUpdate({ cameraBubbleDisplaySpeedLevel: 0 })._unsafeUnwrapErr(),
+    ).toMatchObject({
+      type: "DatabaseFailed",
+    });
+    expect(
+      parseSettingsUpdate({ cameraBubbleDisplaySpeedLevel: 6 })._unsafeUnwrapErr(),
+    ).toMatchObject({
+      type: "DatabaseFailed",
+    });
+    expect(
+      parseSettingsUpdate({ cameraBubbleDisplaySpeedLevel: 1.5 })._unsafeUnwrapErr(),
+    ).toMatchObject({
+      type: "DatabaseFailed",
+    });
+  });
+
+  it("rejects non-boolean camera bubble updates", () => {
+    expect(parseSettingsUpdate({ cameraBubbleEnabled: "true" })._unsafeUnwrapErr()).toMatchObject({
+      type: "DatabaseFailed",
     });
   });
 

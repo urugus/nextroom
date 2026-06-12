@@ -1,4 +1,5 @@
 import type { TokenStore } from "@main/adapters/keychainTokenStore";
+import { type Logger, noopLogger } from "@main/logging/logger";
 import type { AppError } from "@shared/errors";
 import { err, ok, type Result, ResultAsync } from "neverthrow";
 import { createOAuthCallbackReceiver } from "./loopbackServer";
@@ -24,6 +25,7 @@ type GoogleAuthServiceInput = {
   oauthClient: OAuthClient;
   openExternal: (url: string) => Promise<boolean | undefined>;
   createCallbackReceiver?: typeof createOAuthCallbackReceiver;
+  logger?: Logger;
   now?: () => number;
 };
 
@@ -64,6 +66,7 @@ export const createGoogleAuthService = ({
   oauthClient,
   openExternal,
   createCallbackReceiver = createOAuthCallbackReceiver,
+  logger = noopLogger,
   now = () => Date.now(),
 }: GoogleAuthServiceInput): GoogleAuthService => {
   let cachedAccessToken: AccessTokenCache | undefined;
@@ -71,13 +74,18 @@ export const createGoogleAuthService = ({
   return {
     connect: async () => {
       if (clientId === undefined || clientId.length === 0) {
-        return err(missingClientIdError());
+        const error = missingClientIdError();
+        logger.error("connect failed", { error });
+        return err(error);
       }
 
       const state = createOauthState();
       const pkce = createPkcePair();
       const receiver = await createCallbackReceiver(state);
-      if (receiver.isErr()) return err(receiver.error);
+      if (receiver.isErr()) {
+        logger.error("connect failed", { error: receiver.error });
+        return err(receiver.error);
+      }
 
       try {
         const authorizationUrl = oauthClient.buildAuthorizationUrl({
@@ -87,7 +95,7 @@ export const createGoogleAuthService = ({
           codeChallenge: pkce.codeChallenge,
         });
 
-        return await ResultAsync.fromThrowable(
+        const result = await ResultAsync.fromThrowable(
           openExternal,
           oauthFailed,
         )(authorizationUrl.toString())
@@ -113,6 +121,10 @@ export const createGoogleAuthService = ({
             cachedAccessToken = cacheAccessToken(tokenSet);
             return undefined;
           });
+        if (result.isErr()) {
+          logger.error("connect failed", { error: result.error });
+        }
+        return result;
       } finally {
         receiver.value.close();
       }
@@ -144,6 +156,7 @@ export const createGoogleAuthService = ({
             return cachedAccessToken.accessToken;
           })
           .orElse((error) => {
+            logger.error("token refresh failed", { error });
             cachedAccessToken = undefined;
             if (tokenRefreshShouldClearStoredToken(error)) {
               return ResultAsync.fromSafePromise(

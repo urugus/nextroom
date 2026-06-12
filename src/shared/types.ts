@@ -66,6 +66,9 @@ export type MeetEventsSnapshot = {
 export type AppSettings = {
   autoJoinEnabled: boolean;
   autoOpenEnabled: boolean;
+  cameraBubbleChatMirrorEnabled: boolean;
+  cameraBubbleEnabled: boolean;
+  cameraBubbleDisplaySpeedLevel: number;
   joinOffsetSeconds: number;
   notifyBeforeMinutes: number;
   openOffsetSeconds: number;
@@ -73,6 +76,12 @@ export type AppSettings = {
   launchAtLogin: boolean;
   calendarId: "primary";
   timezone: string;
+};
+
+export type CameraBubbleConfig = {
+  chatMirrorEnabled: boolean;
+  displaySpeedLevel: number;
+  enabled: boolean;
 };
 
 export type MenuShortcutStatus = {

@@ -5,6 +5,7 @@ import type {
   AccountStatus,
   AppSettings,
   AppUpdateStatus,
+  CameraBubbleConfig,
   MeetEventsSnapshot,
   MenuShortcutStatus,
   ScreenShareSource,
@@ -14,7 +15,13 @@ export type ApiResult<T> = { ok: true; value: T } | { ok: false; error: Serializ
 export type SettingsUpdate = Partial<
   Pick<
     AppSettings,
-    "autoJoinEnabled" | "joinOffsetSeconds" | "menuShortcutAccelerator" | "openOffsetSeconds"
+    | "autoJoinEnabled"
+    | "cameraBubbleChatMirrorEnabled"
+    | "cameraBubbleEnabled"
+    | "cameraBubbleDisplaySpeedLevel"
+    | "joinOffsetSeconds"
+    | "menuShortcutAccelerator"
+    | "openOffsetSeconds"
   >
 >;
 
@@ -26,6 +33,10 @@ export const IPC_CHANNELS = {
   calendarUpdated: "calendar:updated",
   meetListUpcoming: "meet:listUpcoming",
   meetOpen: "meet:open",
+  meetBubbleSend: "meetBubble:send",
+  meetBubbleShow: "meetBubble:show",
+  meetBubbleConfig: "meetBubble:config",
+  meetBubbleEnabledChanged: "meetBubble:enabledChanged",
   settingsGet: "settings:get",
   settingsUpdate: "settings:update",
   settingsMenuShortcutStatusGet: "settings:menuShortcutStatusGet",
@@ -43,6 +54,8 @@ export type ScreenSharePickerApi = {
   selectSource: (sourceId: string) => Promise<void>;
   cancel: () => Promise<void>;
 };
+
+export type { CameraBubbleConfig };
 
 export type MeetLauncherApi = {
   getAccountStatus: () => Promise<ApiResult<AccountStatus>>;

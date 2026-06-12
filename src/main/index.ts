@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -7,6 +7,10 @@ import { createGoogleCalendarClient } from "@main/calendar/calendarClient";
 import { createCalendarSyncService } from "@main/calendar/calendarSyncService";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
 import { createIpcSenderGuard, type IpcSenderGuard } from "@main/ipc/senderGuard";
+import { parseLogLevel } from "@main/logging/format";
+import { createLazyLogger, createLogger, type Logger } from "@main/logging/logger";
+import { createBubbleMessageGate } from "@main/meet/bubbleMessage";
+import { closeMeetContentsOnWindowClosed } from "@main/meet/meetContentsLifecycle";
 import {
   type CapturableScreenShareSource,
   configureMeetDisplayMediaHandler,
@@ -16,7 +20,11 @@ import {
   configureMeetSessionPermissions,
   meetSessionPartition,
 } from "@main/meet/meetSessionPermissions";
-import { createMeetWindowManager, type ManagedMeetWindow } from "@main/meet/meetWindowManager";
+import {
+  type BubbleTextMessage,
+  createMeetWindowManager,
+  type ManagedMeetWindow,
+} from "@main/meet/meetWindowManager";
 import { createMenuBarController, type MenuBarController } from "@main/menuBar/menuBarController";
 import { createTrayIcon } from "@main/menuBar/trayIcon";
 import { createGoogleAuthService } from "@main/oauth/googleAuthService";
@@ -53,6 +61,7 @@ import { IPC_CHANNELS } from "@shared/ipc";
 import type {
   AppSettings,
   AppUpdateStatus,
+  CameraBubbleConfig,
   MenuShortcutStatus,
   ScreenShareSource,
 } from "@shared/types";
@@ -105,11 +114,30 @@ const meetUrlSchema = z.string().url();
 type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 type TrustedIpcHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
 const settingsFileName = "settings.json";
-const menuBarLogFileName = "menu-bar.log";
 let appSettings: AppSettings = { ...defaultAppSettings };
 let ipcSenderGuard: IpcSenderGuard;
+const bubbleMessageGate = createBubbleMessageGate();
 const appCanStart = app.requestSingleInstanceLock();
 const electronProcess = process as NodeJS.Process & { defaultApp?: boolean };
+const createMainLogger = (): Logger =>
+  createLazyLogger(() =>
+    createLogger({
+      dir: app.getPath("logs"),
+      level: parseLogLevel(process.env.NEXTROOM_LOG_LEVEL),
+    }),
+  );
+const logger = createMainLogger();
+const menuBarLogger = logger.child("menuBar");
+const schedulerLogger = logger.child("scheduler");
+
+process.on("uncaughtException", (error) => {
+  logger.error("uncaught exception", error);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error("unhandled rejection", reason);
+});
 
 app.on("open-url", (event, url) => {
   if (!isMenuOpenProtocolUrl(url)) return;
@@ -148,6 +176,12 @@ const saveAppSettings = (settings: AppSettings): Result<AppSettings, AppError> =
   }
 };
 
+const cameraBubbleConfigFor = (settings: AppSettings): CameraBubbleConfig => ({
+  chatMirrorEnabled: settings.cameraBubbleChatMirrorEnabled,
+  displaySpeedLevel: settings.cameraBubbleDisplaySpeedLevel,
+  enabled: settings.cameraBubbleEnabled,
+});
+
 const menuShortcutStatusFor = (
   accelerator: string | null,
   result: Result<void, AppError>,
@@ -178,9 +212,19 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
 
   const previousShortcutAccelerator = appSettings.menuShortcutAccelerator;
   const previousShortcutStatus = menuShortcutStatus;
+  const previousCameraBubbleChatMirrorEnabled = appSettings.cameraBubbleChatMirrorEnabled;
+  const previousCameraBubbleEnabled = appSettings.cameraBubbleEnabled;
+  const previousCameraBubbleDisplaySpeedLevel = appSettings.cameraBubbleDisplaySpeedLevel;
   const shortcutChanged =
     "menuShortcutAccelerator" in parsed.value &&
     nextSettings.menuShortcutAccelerator !== previousShortcutAccelerator;
+  const cameraBubbleChanged =
+    ("cameraBubbleEnabled" in parsed.value &&
+      nextSettings.cameraBubbleEnabled !== previousCameraBubbleEnabled) ||
+    ("cameraBubbleChatMirrorEnabled" in parsed.value &&
+      nextSettings.cameraBubbleChatMirrorEnabled !== previousCameraBubbleChatMirrorEnabled) ||
+    ("cameraBubbleDisplaySpeedLevel" in parsed.value &&
+      nextSettings.cameraBubbleDisplaySpeedLevel !== previousCameraBubbleDisplaySpeedLevel);
 
   if (shortcutChanged) {
     const registered = updateMenuShortcutRegistration(nextSettings.menuShortcutAccelerator);
@@ -204,19 +248,10 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
   }
 
   Object.assign(appSettings, nextSettings);
-  return ok(appSettings);
-};
-
-const formatLogCause = (cause: unknown): string => {
-  if (cause instanceof Error) return cause.stack ?? cause.message;
-  if (typeof cause === "string") return cause;
-
-  try {
-    const json = JSON.stringify(cause);
-    return json ?? String(cause);
-  } catch {
-    return String(cause);
+  if (cameraBubbleChanged) {
+    meetWindowManager.setBubbleConfig(cameraBubbleConfigFor(appSettings));
   }
+  return ok(appSettings);
 };
 
 const tokenStore = createKeychainTokenStore(keytar);
@@ -224,6 +259,7 @@ const oauthClient = createOAuthClient();
 const authService = createGoogleAuthService({
   clientId: process.env.NEXTROOM_GOOGLE_CLIENT_ID,
   clientSecret: process.env.NEXTROOM_GOOGLE_CLIENT_SECRET,
+  logger: logger.child("oauth"),
   tokenStore,
   oauthClient,
   openExternal: (url) => shell.openExternal(url).then(() => undefined),
@@ -231,6 +267,7 @@ const authService = createGoogleAuthService({
 const calendarSyncService = createCalendarSyncService({
   authService,
   calendarClient: createGoogleCalendarClient(),
+  logger: logger.child("calendar"),
 });
 
 const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "MeetWindowFailed") =>
@@ -256,6 +293,7 @@ const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "Mee
   )();
 
 const meetShellHeight = 38;
+const bubbleSidebarWidth = 260;
 const strictRendererCsp = [
   "default-src 'self'",
   "base-uri 'none'",
@@ -318,6 +356,24 @@ const applyRendererCsp = (contents: WebContents, rendererUrl: string | undefined
   rendererCspSessions.add(contents.session);
 };
 
+const attachWebContentsLogging = (contents: WebContents, scope: string): void => {
+  const contentsLogger = logger.child(scope);
+  contents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    contentsLogger.error("web contents load failed", {
+      errorCode,
+      errorDescription,
+      validatedURL,
+      isMainFrame,
+    });
+  });
+  contents.on("render-process-gone", (_event, details) => {
+    contentsLogger.error("render process gone", details);
+  });
+  contents.on("unresponsive", () => {
+    contentsLogger.warn("web contents unresponsive");
+  });
+};
+
 const applyMeetNavigation = (url: string): boolean => {
   const action = meetNavigationActionFor(url);
 
@@ -366,10 +422,57 @@ const meetShellHtml = (): string => `<!doctype html>
         display: flex;
         align-items: center;
         justify-content: flex-end;
+        gap: 8px;
         height: ${meetShellHeight}px;
         padding: 0 12px 0 78px;
         border-bottom: 1px solid #d6d6d8;
         background: #f5f5f7;
+      }
+      #bubble-sidebar {
+        box-sizing: border-box;
+        display: none;
+        position: fixed;
+        top: ${meetShellHeight}px;
+        right: 0;
+        bottom: 0;
+        width: ${bubbleSidebarWidth}px;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+        border-left: 1px solid #d6d6d8;
+        background: #f5f5f7;
+      }
+      #bubble-sidebar h1 {
+        margin: 0;
+        color: #1d1d1f;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.3;
+      }
+      #bubble-sidebar p {
+        margin: 0;
+        color: #6e6e73;
+        font-size: 11px;
+        line-height: 1.4;
+      }
+      #bubble-input {
+        -webkit-app-region: no-drag;
+        box-sizing: border-box;
+        display: block;
+        width: 100%;
+        min-height: 30px;
+        border: 1px solid #c4c4c6;
+        border-radius: 6px;
+        background: #ffffff;
+        color: #1d1d1f;
+        font: inherit;
+        font-size: 12px;
+        outline: none;
+        padding: 4px 9px;
+      }
+      #bubble-input:focus {
+        border-color: #0071e3;
+        box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.18);
       }
       button {
         -webkit-app-region: no-drag;
@@ -397,32 +500,17 @@ const meetShellHtml = (): string => `<!doctype html>
     <div class="bar">
       <button type="button" id="update-button">Update</button>
     </div>
-    <script>
-      const button = document.getElementById("update-button");
-      const render = (status) => {
-        const visible = status?.status === "available" || status?.status === "homebrew-updating";
-        button.style.display = visible ? "inline-flex" : "none";
-        button.disabled = status?.status === "homebrew-updating";
-        button.textContent = status?.status === "homebrew-updating" ? "Updating" : "Update";
-      };
-      window.meetLauncher?.getUpdateStatus().then((result) => {
-        if (result.ok) render(result.value);
-      });
-      window.meetLauncher?.onUpdateStatusChanged(render);
-      button.addEventListener("click", () => {
-        button.disabled = true;
-        button.textContent = "Updating";
-        window.meetLauncher?.runHomebrewUpdate().then((result) => {
-          if (!result.ok) {
-            button.disabled = false;
-            button.textContent = "Update";
-          }
-        }).catch(() => {
-          button.disabled = false;
-          button.textContent = "Update";
-        });
-      });
-    </script>
+    <aside id="bubble-sidebar">
+      <h1 id="bubble-sidebar-title">Camera bubble</h1>
+      <input
+        type="text"
+        id="bubble-input"
+        placeholder="Type text to show on your camera…"
+        aria-labelledby="bubble-sidebar-title"
+        aria-describedby="bubble-sidebar-hint"
+      >
+      <p id="bubble-sidebar-hint">Press Enter to send. The text appears on your camera for a few seconds.</p>
+    </aside>
   </body>
 </html>`;
 
@@ -772,12 +860,21 @@ const createMeetWindow = fromThrowable(
     });
     const meetView = new WebContentsView({
       webPreferences: {
+        additionalArguments: [
+          `--nextroom-camera-bubble=${appSettings.cameraBubbleEnabled ? "1" : "0"}`,
+          `--nextroom-camera-bubble-chat=${appSettings.cameraBubbleChatMirrorEnabled ? "1" : "0"}`,
+          `--nextroom-camera-bubble-speed=${appSettings.cameraBubbleDisplaySpeedLevel}`,
+        ],
+        backgroundThrottling: false,
         partition: meetSessionPartition,
+        preload: join(__dirname, "../preload/meetInject.cjs"),
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
       },
     });
+    attachWebContentsLogging(window.webContents, "meetShell");
+    attachWebContentsLogging(meetView.webContents, "meetWindow");
     lockAppControlledWindowNavigation(window.webContents);
     meetView.webContents.setWindowOpenHandler(({ url }) => {
       applyMeetWindowOpen(url);
@@ -794,21 +891,35 @@ const createMeetWindow = fromThrowable(
 
       event.preventDefault();
     });
+    const layoutState = {
+      bubbleSidebarVisible: appSettings.cameraBubbleEnabled,
+    };
     const layout = (): void => {
       const bounds = window.getContentBounds();
+      const sidebarWidth = layoutState.bubbleSidebarVisible ? bubbleSidebarWidth : 0;
       meetView.setBounds({
         height: Math.max(0, bounds.height - meetShellHeight),
-        width: bounds.width,
+        width: Math.max(0, bounds.width - sidebarWidth),
         x: 0,
         y: meetShellHeight,
       });
     };
 
     window.contentView.addChildView(meetView);
+    closeMeetContentsOnWindowClosed(window, meetView.webContents);
     window.on("resize", layout);
     window.on("resized", layout);
     layout();
     ipcSenderGuard.trustWindow(window, { dataShell: true });
+    window.webContents.on("did-finish-load", () => {
+      window.webContents.send(
+        IPC_CHANNELS.meetBubbleEnabledChanged,
+        appSettings.cameraBubbleEnabled,
+      );
+    });
+    meetView.webContents.on("did-finish-load", () => {
+      meetView.webContents.send(IPC_CHANNELS.meetBubbleConfig, cameraBubbleConfigFor(appSettings));
+    });
     void window.loadURL(meetShellUrl());
 
     return {
@@ -819,7 +930,16 @@ const createMeetWindow = fromThrowable(
       loadURL: (url: string) => meetView.webContents.loadURL(url),
       on: (event: "closed", listener: () => void) => window.on(event, listener),
       restore: () => window.restore(),
+      sendBubbleText: (message: BubbleTextMessage) => {
+        meetView.webContents.send(IPC_CHANNELS.meetBubbleShow, message);
+      },
       setAlwaysOnTop: (flag: boolean, level?: "screen-saver") => window.setAlwaysOnTop(flag, level),
+      setBubbleConfig: (config: CameraBubbleConfig) => {
+        layoutState.bubbleSidebarVisible = config.enabled;
+        layout();
+        meetView.webContents.send(IPC_CHANNELS.meetBubbleConfig, config);
+        window.webContents.send(IPC_CHANNELS.meetBubbleEnabledChanged, config.enabled);
+      },
       show: () => window.show(),
       updateUpdateStatus: (status: AppUpdateStatus) => {
         window.webContents.send(IPC_CHANNELS.updatesStatusChanged, status);
@@ -835,6 +955,7 @@ const meetWindowManager = createMeetWindowManager({
   focusApp: () => {
     app.focus({ steal: true });
   },
+  logger: logger.child("meet"),
   onWindowClosed: (meetUrl) => {
     autoOpenScheduler?.handleMeetWindowClosed(meetUrl);
   },
@@ -843,6 +964,7 @@ const meetWindowManager = createMeetWindowManager({
 const createMainWindow = () =>
   createBrowserWindow("NextRoom", "MainWindowFailed").map((window) => {
     const rendererUrl = process.env.ELECTRON_RENDERER_URL;
+    attachWebContentsLogging(window.webContents, "mainWindow");
     applyRendererCsp(window.webContents, rendererUrl);
     applyMainWindowNavigationPolicy(window.webContents, rendererUrl);
     window.webContents.setWindowOpenHandler(({ url }) => {
@@ -887,16 +1009,7 @@ const showSettingsWindow = (): Result<ElectronBrowserWindow, AppError> => {
 };
 
 const reportMenuBarError = (message: string, cause: unknown): void => {
-  try {
-    const logDirectory = app.getPath("logs");
-    mkdirSync(logDirectory, { recursive: true });
-    appendFileSync(
-      join(logDirectory, menuBarLogFileName),
-      `${new Date().toISOString()} ${message} ${formatLogCause(cause)}\n`,
-    );
-  } catch {
-    // Logging must never make a tray action fail harder.
-  }
+  menuBarLogger.error(message, { error: cause });
 };
 
 const createMenuBar = (): void => {
@@ -960,8 +1073,6 @@ const openMeetUrl = async (value: string): Promise<Result<void, AppError>> => {
 
   return meetWindowManager.openMeetUrl(canonicalized.value);
 };
-
-const ignoreAutoOpenError = (_error: AppError): void => undefined;
 
 const untrustedIpcSenderError = (): AppError => ({
   type: "IpcSenderRejected",
@@ -1035,8 +1146,16 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
     }
     void scheduler
       .evaluate(snapshot)
-      .then((autoOpenResult) => autoOpenResult.match(() => undefined, ignoreAutoOpenError))
-      .catch(() => undefined);
+      .then((autoOpenResult) =>
+        autoOpenResult.match(
+          () => undefined,
+          // Per-event auto-open failures are already logged by the scheduler with context.
+          () => undefined,
+        ),
+      )
+      .catch((cause: unknown) => {
+        schedulerLogger.error("auto-open evaluation threw", { error: cause });
+      });
   });
 
   handleTrustedIpc(IPC_CHANNELS.accountGetStatus, async () =>
@@ -1061,6 +1180,32 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
         ? await openMeetUrl(parsed.data)
         : err({ type: "MeetUrlNotFound", eventId: "unknown" }),
     );
+  });
+  handleTrustedIpc(IPC_CHANNELS.meetBubbleSend, (_event, text) => {
+    const parsed = z.string().safeParse(text);
+    if (!parsed.success) {
+      return serializeResultForRenderer(
+        err({ type: "DatabaseFailed", cause: "Bubble text must be a string." }),
+      );
+    }
+
+    if (!appSettings.cameraBubbleEnabled) {
+      return serializeResultForRenderer(ok(undefined));
+    }
+
+    bubbleMessageGate
+      .accept(parsed.data, Date.now(), appSettings.cameraBubbleDisplaySpeedLevel)
+      .match(
+        (accepted) => {
+          meetWindowManager.sendBubbleText({
+            durationMs: accepted.durationMs,
+            text: accepted.text,
+          });
+        },
+        () => undefined,
+      );
+
+    return serializeResultForRenderer(ok(undefined));
   });
   handleTrustedIpc(IPC_CHANNELS.settingsGet, () => serializeResultForRenderer(ok(appSettings)));
   handleTrustedIpc(IPC_CHANNELS.settingsUpdate, (_event, settings) =>
@@ -1125,6 +1270,7 @@ if (!appCanStart) {
       deduper: createLaunchDeduper(),
       hasBlockingMeetWindow: meetWindowManager.hasOpenMeetWindowExcept,
       joinDeduper: createLaunchDeduper(),
+      logger: schedulerLogger,
       openMeetUrl,
       // updateAppSettings mutates this object in place so the scheduler observes runtime changes.
       settings: appSettings,

@@ -17,6 +17,9 @@ const meetingNotificationTickMs = 30_000;
 const defaultSettings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
+  cameraBubbleChatMirrorEnabled: false,
+  cameraBubbleEnabled: false,
+  cameraBubbleDisplaySpeedLevel: 3,
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
@@ -261,6 +264,15 @@ export const App = () => {
 
   const updateAutoJoinEnabled = (autoJoinEnabled: boolean) => updateSettings({ autoJoinEnabled });
 
+  const updateCameraBubbleEnabled = (cameraBubbleEnabled: boolean) =>
+    updateSettings({ cameraBubbleEnabled });
+
+  const updateCameraBubbleChatMirrorEnabled = (cameraBubbleChatMirrorEnabled: boolean) =>
+    updateSettings({ cameraBubbleChatMirrorEnabled });
+
+  const updateCameraBubbleDisplaySpeedLevel = (cameraBubbleDisplaySpeedLevel: number) =>
+    updateSettings({ cameraBubbleDisplaySpeedLevel });
+
   const updateJoinOffsetMinutes = (minutes: number) =>
     updateSettings({ joinOffsetSeconds: minutes * 60 });
 
@@ -328,6 +340,9 @@ export const App = () => {
       onDisconnectAccount={disconnectAccount}
       onRunHomebrewUpdate={runHomebrewUpdate}
       onAutoJoinEnabledChange={updateAutoJoinEnabled}
+      onCameraBubbleChatMirrorEnabledChange={updateCameraBubbleChatMirrorEnabled}
+      onCameraBubbleEnabledChange={updateCameraBubbleEnabled}
+      onCameraBubbleDisplaySpeedLevelChange={updateCameraBubbleDisplaySpeedLevel}
       onJoinOffsetMinutesChange={updateJoinOffsetMinutes}
       onMenuShortcutAcceleratorChange={updateMenuShortcutAccelerator}
       onOpenMeeting={openMeeting}

@@ -45,6 +45,9 @@ const updateUnsupported: AppUpdateStatus = {
 const settings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
+  cameraBubbleChatMirrorEnabled: false,
+  cameraBubbleEnabled: false,
+  cameraBubbleDisplaySpeedLevel: 3,
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
@@ -56,6 +59,9 @@ const settings: AppSettings = {
 
 const dashboardActions = () => ({
   onAutoJoinEnabledChange: vi.fn(),
+  onCameraBubbleChatMirrorEnabledChange: vi.fn(),
+  onCameraBubbleEnabledChange: vi.fn(),
+  onCameraBubbleDisplaySpeedLevelChange: vi.fn(),
   onConnectAccount: vi.fn(),
   onDisconnectAccount: vi.fn(),
   onJoinOffsetMinutesChange: vi.fn(),
@@ -80,6 +86,8 @@ describe("Dashboard", () => {
     expect(
       screen.getByText("Connect Google Calendar to enable Meet launching."),
     ).toBeInTheDocument();
+    expect(screen.getByText("Bubble display speed")).toBeInTheDocument();
+    expect(screen.getByText("1 = slow / 5 = fast")).toBeInTheDocument();
     expect(screen.queryByText("Product sync")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Connect" })).toBeEnabled();
   });
@@ -263,6 +271,45 @@ describe("Dashboard", () => {
 
     expect(onAutoJoinEnabledChange).toHaveBeenCalledWith(false);
     expect(onJoinOffsetMinutesChange).toHaveBeenCalledWith(4);
+  });
+
+  it("updates camera bubble chat mirror setting", () => {
+    const onCameraBubbleChatMirrorEnabledChange = vi.fn();
+    render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        onCameraBubbleChatMirrorEnabledChange={onCameraBubbleChatMirrorEnabledChange}
+        settings={{ ...settings, cameraBubbleEnabled: true }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Mirror Meet chat" }));
+
+    expect(onCameraBubbleChatMirrorEnabledChange).toHaveBeenCalledWith(true);
+    expect(screen.getByText("Also show your sent chat messages on camera")).toBeInTheDocument();
+  });
+
+  it("disables camera bubble chat mirror setting while camera bubble is off", () => {
+    const { rerender } = render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        settings={settings}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "Mirror Meet chat" })).toBeDisabled();
+
+    rerender(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        settings={{ ...settings, cameraBubbleEnabled: true }}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "Mirror Meet chat" })).toBeEnabled();
   });
 
   it("records and clears the menu shortcut", () => {

@@ -1,11 +1,13 @@
 import { canonicalizeMeetUrl, type MeetUrl } from "@main/calendar/meetExtractor";
+import { type Logger, noopLogger } from "@main/logging/logger";
 import type { AppError } from "@shared/errors";
-import type { AppUpdateStatus } from "@shared/types";
+import type { AppUpdateStatus, CameraBubbleConfig } from "@shared/types";
 import { err, ok, type Result } from "neverthrow";
 
 type AlwaysOnTopLevel = "screen-saver";
 
 type AutoJoinResult = { ok: true } | { ok: false; reason: string };
+export type BubbleTextMessage = { durationMs: number; text: string };
 
 type ManagedWebContents = {
   executeJavaScript: (code: string) => Promise<unknown>;
@@ -19,7 +21,9 @@ export type ManagedMeetWindow = {
   loadURL: (url: string) => Promise<void>;
   on: (event: "closed", listener: () => void) => unknown;
   restore: () => void;
+  sendBubbleText?: (message: BubbleTextMessage) => void;
   setAlwaysOnTop: (flag: boolean, level?: AlwaysOnTopLevel) => void;
+  setBubbleConfig?: (config: CameraBubbleConfig) => void;
   show: () => void;
   updateUpdateStatus?: (status: AppUpdateStatus) => void;
   webContents: ManagedWebContents;
@@ -30,6 +34,7 @@ type MeetWindowManagerInput = {
   createWindow: () => Result<ManagedMeetWindow, AppError>;
   focusApp?: () => void;
   focusDurationMs?: number;
+  logger?: Logger;
   onWindowClosed?: (meetUrl: string) => void;
   setTimeoutFn?: typeof setTimeout;
 };
@@ -39,6 +44,8 @@ export type MeetWindowManager = {
   focusOpenMeetWindow: () => boolean;
   hasOpenMeetWindowExcept: (value: string) => boolean;
   openMeetUrl: (value: string) => Promise<Result<void, AppError>>;
+  sendBubbleText: (message: BubbleTextMessage) => void;
+  setBubbleConfig: (config: CameraBubbleConfig) => void;
   updateUpdateStatus: (status: AppUpdateStatus) => void;
 };
 
@@ -155,10 +162,12 @@ export const createMeetWindowManager = ({
   createWindow,
   focusApp,
   focusDurationMs,
+  logger = noopLogger,
   onWindowClosed,
   setTimeoutFn = setTimeout,
 }: MeetWindowManagerInput): MeetWindowManager => {
   const meetWindows = new Map<MeetUrl, ManagedMeetWindow>();
+  let bubbleConfig: CameraBubbleConfig | undefined;
   let updateStatus: AppUpdateStatus | undefined;
 
   const removeWindow = (meetUrl: MeetUrl, meetWindow: ManagedMeetWindow): void => {
@@ -196,6 +205,9 @@ export const createMeetWindowManager = ({
     if (updateStatus !== undefined) {
       meetWindow.updateUpdateStatus?.(updateStatus);
     }
+    if (bubbleConfig !== undefined) {
+      meetWindow.setBubbleConfig?.(bubbleConfig);
+    }
     meetWindows.set(meetUrl, meetWindow);
     meetWindow.on("closed", () => {
       removeWindow(meetUrl, meetWindow);
@@ -210,6 +222,7 @@ export const createMeetWindowManager = ({
       if (!meetWindow.isDestroyed()) {
         meetWindow.destroy();
       }
+      logger.error("meet window load failed", { error: cause });
       return err({ type: "MeetWindowFailed", cause });
     }
   };
@@ -232,6 +245,7 @@ export const createMeetWindowManager = ({
           cause: "Meet join automation returned an unexpected result.",
         });
       } catch (cause) {
+        logger.error("meet auto-join script failed", { error: cause });
         return err({ type: "MeetWindowFailed", cause });
       }
     },
@@ -263,6 +277,21 @@ export const createMeetWindowManager = ({
     openMeetUrl: async (value) => {
       const opened = await openMeetWindow(value);
       return opened.map(() => undefined);
+    },
+    sendBubbleText: (message) => {
+      meetWindows.forEach((meetWindow) => {
+        if (!meetWindow.isDestroyed()) {
+          meetWindow.sendBubbleText?.(message);
+        }
+      });
+    },
+    setBubbleConfig: (config) => {
+      bubbleConfig = config;
+      meetWindows.forEach((meetWindow) => {
+        if (!meetWindow.isDestroyed()) {
+          meetWindow.setBubbleConfig?.(config);
+        }
+      });
     },
     updateUpdateStatus: (status) => {
       updateStatus = status;

@@ -22,6 +22,9 @@ const updateStatus: AppUpdateStatus = {
 const settings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
+  cameraBubbleChatMirrorEnabled: false,
+  cameraBubbleEnabled: false,
+  cameraBubbleDisplaySpeedLevel: 3,
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,
   openOffsetSeconds: 0,
@@ -284,6 +287,52 @@ describe("App", () => {
 
     await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ joinOffsetSeconds: 180 }));
     expect(await screen.findByText("Join 3 min before")).toBeInTheDocument();
+  });
+
+  it("saves the camera bubble setting", async () => {
+    const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() => Promise.resolve(okResult));
+    installMeetLauncher(openMeetUrl);
+    const updateSettings = vi.mocked(window.meetLauncher.updateSettings);
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Camera bubble" }));
+
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ cameraBubbleEnabled: true }));
+  });
+
+  it("saves the camera bubble chat mirror setting", async () => {
+    const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() => Promise.resolve(okResult));
+    installMeetLauncher(openMeetUrl);
+    const updateSettings = vi.mocked(window.meetLauncher.updateSettings);
+
+    vi.mocked(window.meetLauncher.getSettings).mockResolvedValue({
+      ok: true,
+      value: { ...settings, cameraBubbleEnabled: true },
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Mirror Meet chat" }));
+
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith({ cameraBubbleChatMirrorEnabled: true }),
+    );
+  });
+
+  it("saves the camera bubble display speed setting", async () => {
+    const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() => Promise.resolve(okResult));
+    installMeetLauncher(openMeetUrl);
+    const updateSettings = vi.mocked(window.meetLauncher.updateSettings);
+
+    render(<App />);
+
+    const slider = await screen.findByRole("slider", { name: "Bubble display speed" });
+    fireEvent.change(slider, { target: { value: "5" } });
+
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith({ cameraBubbleDisplaySpeedLevel: 5 }),
+    );
   });
 
   it("clamps the auto-join offset when the Meet window open offset is reduced", async () => {

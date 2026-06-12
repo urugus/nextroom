@@ -1,3 +1,4 @@
+import { type Logger, noopLogger } from "@main/logging/logger";
 import type { GoogleAuthService } from "@main/oauth/googleAuthService";
 import { type AppError, serializeAppError } from "@shared/errors";
 import type { AccountStatus, MeetEventsSnapshot } from "@shared/types";
@@ -19,6 +20,7 @@ export type CalendarSyncService = {
 type CalendarSyncServiceInput = {
   authService: GoogleAuthService;
   calendarClient: CalendarClient;
+  logger?: Logger;
   now?: () => Date;
   setTimeoutFn?: typeof setTimeout;
   clearTimeoutFn?: typeof clearTimeout;
@@ -41,6 +43,7 @@ const isAuthenticationCalendarError = (error: AppError): boolean =>
 export const createCalendarSyncService = ({
   authService,
   calendarClient,
+  logger = noopLogger,
   now = () => new Date(),
   setTimeoutFn = setTimeout,
   clearTimeoutFn = clearTimeout,
@@ -89,6 +92,7 @@ export const createCalendarSyncService = ({
 
     const delay = errorPollingDelayMs[Math.min(errorBackoffIndex, errorPollingDelayMs.length - 1)];
     errorBackoffIndex += 1;
+    logger.error("sync failed", { error: result.error, backoffSeconds: delay / 1000 });
     scheduleNextPoll(delay);
   };
 
@@ -153,6 +157,9 @@ export const createCalendarSyncService = ({
 
     meetings = normalized.value;
     syncedAt = now().toISOString();
+    if (lastError !== undefined) {
+      logger.info("sync recovered");
+    }
     lastError = undefined;
     notify();
     return ok(snapshotFromState(meetings, syncedAt));
@@ -167,7 +174,10 @@ export const createCalendarSyncService = ({
       }
 
       polling = true;
-      await syncNow();
+      const initialSync = await syncNow();
+      if (initialSync.isErr()) {
+        logger.warn("initial sync failed", { error: initialSync.error });
+      }
       scheduleNextPoll(normalPollingDelayMs);
       return accountStatus();
     },
