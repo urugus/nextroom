@@ -436,50 +436,6 @@ const meetShellHtml = (): string => `<!doctype html>
       >
       <button type="button" id="update-button">Update</button>
     </div>
-    <script>
-      const button = document.getElementById("update-button");
-      const bubbleInput = document.getElementById("bubble-input");
-      const render = (status) => {
-        const visible = status?.status === "available" || status?.status === "homebrew-updating";
-        button.style.display = visible ? "inline-flex" : "none";
-        button.disabled = status?.status === "homebrew-updating";
-        button.textContent = status?.status === "homebrew-updating" ? "Updating" : "Update";
-      };
-      window.meetLauncher?.getUpdateStatus().then((result) => {
-        if (result.ok) render(result.value);
-      });
-      window.meetLauncher?.onUpdateStatusChanged(render);
-      button.addEventListener("click", () => {
-        button.disabled = true;
-        button.textContent = "Updating";
-        window.meetLauncher?.runHomebrewUpdate().then((result) => {
-          if (!result.ok) {
-            button.disabled = false;
-            button.textContent = "Update";
-          }
-        }).catch(() => {
-          button.disabled = false;
-          button.textContent = "Update";
-        });
-      });
-      window.meetLauncher?.onBubbleEnabledChanged((enabled) => {
-        bubbleInput.style.display = enabled ? "block" : "none";
-        if (!enabled) {
-          bubbleInput.value = "";
-        }
-      });
-      bubbleInput.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter" || event.isComposing) return;
-
-        const value = bubbleInput.value;
-        if (value.trim().length === 0) return;
-
-        event.preventDefault();
-        window.meetLauncher?.sendBubbleText(value).finally(() => {
-          bubbleInput.value = "";
-        });
-      });
-    </script>
   </body>
 </html>`;
 
