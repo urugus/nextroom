@@ -280,7 +280,7 @@ describe("Dashboard", () => {
         accountStatus={{ connected: true, syncing: false }}
         {...dashboardActions()}
         onCameraBubbleChatMirrorEnabledChange={onCameraBubbleChatMirrorEnabledChange}
-        settings={settings}
+        settings={{ ...settings, cameraBubbleEnabled: true }}
       />,
     );
 
@@ -288,6 +288,28 @@ describe("Dashboard", () => {
 
     expect(onCameraBubbleChatMirrorEnabledChange).toHaveBeenCalledWith(true);
     expect(screen.getByText("送信したチャットを映像にも表示")).toBeInTheDocument();
+  });
+
+  it("disables camera bubble chat mirror setting while camera bubble is off", () => {
+    const { rerender } = render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        settings={settings}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "Meetチャット連動" })).toBeDisabled();
+
+    rerender(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        settings={{ ...settings, cameraBubbleEnabled: true }}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "Meetチャット連動" })).toBeEnabled();
   });
 
   it("records and clears the menu shortcut", () => {

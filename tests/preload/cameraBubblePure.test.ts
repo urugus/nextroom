@@ -187,7 +187,7 @@ describe("camera bubble pure functions", () => {
   });
 
   describe("parseCameraBubbleEnvelope", () => {
-    it("accepts show messages with coerced trimmed text", () => {
+    it("accepts show messages with trimmed string text", () => {
       expect(
         parseCameraBubbleEnvelope(
           {
@@ -196,6 +196,17 @@ describe("camera bubble pure functions", () => {
           expectedNonce,
         ),
       ).toEqual({ durationMs: 7_000, kind: "show", text: "発言中です" });
+    });
+
+    it("rejects show messages with missing or non-string text", () => {
+      expect(
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: { kind: "show", nonce: expectedNonce },
+          },
+          expectedNonce,
+        ),
+      ).toBeUndefined();
       expect(
         parseCameraBubbleEnvelope(
           {
@@ -203,7 +214,7 @@ describe("camera bubble pure functions", () => {
           },
           expectedNonce,
         ),
-      ).toEqual({ durationMs: 7_000, kind: "show", text: "123" });
+      ).toBeUndefined();
     });
 
     it("accepts, clamps, and falls back show message duration", () => {

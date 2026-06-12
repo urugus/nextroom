@@ -287,7 +287,11 @@ export const parseCameraBubbleEnvelope = (
   }
 
   if (message.kind === "show") {
-    const text = String(message.text).trim();
+    if (typeof message.text !== "string") {
+      return undefined;
+    }
+
+    const text = message.text.trim();
     const durationMs =
       typeof message.durationMs === "number" &&
       Number.isFinite(message.durationMs) &&

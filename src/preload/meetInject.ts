@@ -88,10 +88,14 @@ ipcRenderer.on(IPC_CHANNELS.meetBubbleShow, (_event, payload: unknown) => {
     typeof payload === "object" && payload !== null
       ? (payload as { durationMs?: unknown; text?: unknown })
       : { durationMs: undefined, text: payload };
+  if (typeof message.text !== "string") {
+    return;
+  }
+
   postToMainWorld({
     durationMs: Number(message.durationMs),
     kind: "show",
-    text: String(message.text),
+    text: message.text,
   });
 });
 

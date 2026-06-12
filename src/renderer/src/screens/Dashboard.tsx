@@ -472,6 +472,7 @@ export const Dashboard = ({
               <input
                 type="checkbox"
                 checked={settings.cameraBubbleChatMirrorEnabled}
+                disabled={!settings.cameraBubbleEnabled}
                 aria-label="Meetチャット連動"
                 onChange={(event) =>
                   void onCameraBubbleChatMirrorEnabledChange(event.currentTarget.checked)

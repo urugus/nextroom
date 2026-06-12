@@ -306,6 +306,11 @@ describe("App", () => {
     installMeetLauncher(openMeetUrl);
     const updateSettings = vi.mocked(window.meetLauncher.updateSettings);
 
+    vi.mocked(window.meetLauncher.getSettings).mockResolvedValue({
+      ok: true,
+      value: { ...settings, cameraBubbleEnabled: true },
+    });
+
     render(<App />);
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "Meetチャット連動" }));
