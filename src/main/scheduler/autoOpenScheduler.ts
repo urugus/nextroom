@@ -1,3 +1,4 @@
+import { type Logger, noopLogger } from "@main/logging/logger";
 import type { AppError } from "@shared/errors";
 import type { AppSettings, MeetEvent, MeetEventsSnapshot } from "@shared/types";
 import { err, ok, type Result } from "neverthrow";
@@ -14,6 +15,7 @@ type AutoOpenSchedulerInput = {
   deduper: LaunchDeduper;
   hasBlockingMeetWindow: (meetUrl: string) => boolean;
   joinDeduper: LaunchDeduper;
+  logger?: Logger;
   now?: () => Date;
   autoJoinMeetUrl: (meetUrl: string) => Promise<Result<void, AppError>>;
   openMeetUrl: (meetUrl: string) => Promise<Result<void, AppError>>;
@@ -47,6 +49,7 @@ export const createAutoOpenScheduler = ({
   deduper,
   hasBlockingMeetWindow,
   joinDeduper,
+  logger = noopLogger,
   now = () => new Date(),
   openMeetUrl,
   settings,
@@ -129,12 +132,22 @@ export const createAutoOpenScheduler = ({
     for (const event of sortedByStartAt(snapshot.meetings)) {
       const result = await evaluateEvent(event);
       if (result.isErr()) {
+        logger.error("auto-open evaluation failed", {
+          eventId: event.eventId,
+          occurrenceKey: event.occurrenceKey,
+          error: result.error,
+        });
         firstError ??= result.error;
         continue;
       }
 
       const joinResult = await evaluateJoinEvent(event);
       if (joinResult.isErr()) {
+        logger.error("auto-open evaluation failed", {
+          eventId: event.eventId,
+          occurrenceKey: event.occurrenceKey,
+          error: joinResult.error,
+        });
         firstError ??= joinResult.error;
       }
     }

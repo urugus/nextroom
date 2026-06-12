@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -7,6 +7,8 @@ import { createGoogleCalendarClient } from "@main/calendar/calendarClient";
 import { createCalendarSyncService } from "@main/calendar/calendarSyncService";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
 import { createIpcSenderGuard, type IpcSenderGuard } from "@main/ipc/senderGuard";
+import { parseLogLevel } from "@main/logging/format";
+import { createLazyLogger, createLogger, type Logger } from "@main/logging/logger";
 import { createBubbleMessageGate } from "@main/meet/bubbleMessage";
 import { closeMeetContentsOnWindowClosed } from "@main/meet/meetContentsLifecycle";
 import {
@@ -112,12 +114,30 @@ const meetUrlSchema = z.string().url();
 type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 type TrustedIpcHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
 const settingsFileName = "settings.json";
-const menuBarLogFileName = "menu-bar.log";
 let appSettings: AppSettings = { ...defaultAppSettings };
 let ipcSenderGuard: IpcSenderGuard;
 const bubbleMessageGate = createBubbleMessageGate();
 const appCanStart = app.requestSingleInstanceLock();
 const electronProcess = process as NodeJS.Process & { defaultApp?: boolean };
+const createMainLogger = (): Logger =>
+  createLazyLogger(() =>
+    createLogger({
+      dir: app.getPath("logs"),
+      level: parseLogLevel(process.env.NEXTROOM_LOG_LEVEL),
+    }),
+  );
+const logger = createMainLogger();
+const menuBarLogger = logger.child("menuBar");
+const schedulerLogger = logger.child("scheduler");
+
+process.on("uncaughtException", (error) => {
+  logger.error("uncaught exception", error);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error("unhandled rejection", reason);
+});
 
 app.on("open-url", (event, url) => {
   if (!isMenuOpenProtocolUrl(url)) return;
@@ -234,23 +254,12 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
   return ok(appSettings);
 };
 
-const formatLogCause = (cause: unknown): string => {
-  if (cause instanceof Error) return cause.stack ?? cause.message;
-  if (typeof cause === "string") return cause;
-
-  try {
-    const json = JSON.stringify(cause);
-    return json ?? String(cause);
-  } catch {
-    return String(cause);
-  }
-};
-
 const tokenStore = createKeychainTokenStore(keytar);
 const oauthClient = createOAuthClient();
 const authService = createGoogleAuthService({
   clientId: process.env.NEXTROOM_GOOGLE_CLIENT_ID,
   clientSecret: process.env.NEXTROOM_GOOGLE_CLIENT_SECRET,
+  logger: logger.child("oauth"),
   tokenStore,
   oauthClient,
   openExternal: (url) => shell.openExternal(url).then(() => undefined),
@@ -258,6 +267,7 @@ const authService = createGoogleAuthService({
 const calendarSyncService = createCalendarSyncService({
   authService,
   calendarClient: createGoogleCalendarClient(),
+  logger: logger.child("calendar"),
 });
 
 const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "MeetWindowFailed") =>
@@ -344,6 +354,24 @@ const applyRendererCsp = (contents: WebContents, rendererUrl: string | undefined
     });
   });
   rendererCspSessions.add(contents.session);
+};
+
+const attachWebContentsLogging = (contents: WebContents, scope: string): void => {
+  const contentsLogger = logger.child(scope);
+  contents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    contentsLogger.error("web contents load failed", {
+      errorCode,
+      errorDescription,
+      validatedURL,
+      isMainFrame,
+    });
+  });
+  contents.on("render-process-gone", (_event, details) => {
+    contentsLogger.error("render process gone", details);
+  });
+  contents.on("unresponsive", () => {
+    contentsLogger.warn("web contents unresponsive");
+  });
 };
 
 const applyMeetNavigation = (url: string): boolean => {
@@ -845,6 +873,8 @@ const createMeetWindow = fromThrowable(
         nodeIntegration: false,
       },
     });
+    attachWebContentsLogging(window.webContents, "meetShell");
+    attachWebContentsLogging(meetView.webContents, "meetWindow");
     lockAppControlledWindowNavigation(window.webContents);
     meetView.webContents.setWindowOpenHandler(({ url }) => {
       applyMeetWindowOpen(url);
@@ -925,6 +955,7 @@ const meetWindowManager = createMeetWindowManager({
   focusApp: () => {
     app.focus({ steal: true });
   },
+  logger: logger.child("meet"),
   onWindowClosed: (meetUrl) => {
     autoOpenScheduler?.handleMeetWindowClosed(meetUrl);
   },
@@ -933,6 +964,7 @@ const meetWindowManager = createMeetWindowManager({
 const createMainWindow = () =>
   createBrowserWindow("NextRoom", "MainWindowFailed").map((window) => {
     const rendererUrl = process.env.ELECTRON_RENDERER_URL;
+    attachWebContentsLogging(window.webContents, "mainWindow");
     applyRendererCsp(window.webContents, rendererUrl);
     applyMainWindowNavigationPolicy(window.webContents, rendererUrl);
     window.webContents.setWindowOpenHandler(({ url }) => {
@@ -977,16 +1009,7 @@ const showSettingsWindow = (): Result<ElectronBrowserWindow, AppError> => {
 };
 
 const reportMenuBarError = (message: string, cause: unknown): void => {
-  try {
-    const logDirectory = app.getPath("logs");
-    mkdirSync(logDirectory, { recursive: true });
-    appendFileSync(
-      join(logDirectory, menuBarLogFileName),
-      `${new Date().toISOString()} ${message} ${formatLogCause(cause)}\n`,
-    );
-  } catch {
-    // Logging must never make a tray action fail harder.
-  }
+  menuBarLogger.error(message, { error: cause });
 };
 
 const createMenuBar = (): void => {
@@ -1050,8 +1073,6 @@ const openMeetUrl = async (value: string): Promise<Result<void, AppError>> => {
 
   return meetWindowManager.openMeetUrl(canonicalized.value);
 };
-
-const ignoreAutoOpenError = (_error: AppError): void => undefined;
 
 const untrustedIpcSenderError = (): AppError => ({
   type: "IpcSenderRejected",
@@ -1125,8 +1146,16 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
     }
     void scheduler
       .evaluate(snapshot)
-      .then((autoOpenResult) => autoOpenResult.match(() => undefined, ignoreAutoOpenError))
-      .catch(() => undefined);
+      .then((autoOpenResult) =>
+        autoOpenResult.match(
+          () => undefined,
+          // Per-event auto-open failures are already logged by the scheduler with context.
+          () => undefined,
+        ),
+      )
+      .catch((cause: unknown) => {
+        schedulerLogger.error("auto-open evaluation threw", { error: cause });
+      });
   });
 
   handleTrustedIpc(IPC_CHANNELS.accountGetStatus, async () =>
@@ -1241,6 +1270,7 @@ if (!appCanStart) {
       deduper: createLaunchDeduper(),
       hasBlockingMeetWindow: meetWindowManager.hasOpenMeetWindowExcept,
       joinDeduper: createLaunchDeduper(),
+      logger: schedulerLogger,
       openMeetUrl,
       // updateAppSettings mutates this object in place so the scheduler observes runtime changes.
       settings: appSettings,
