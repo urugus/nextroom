@@ -296,7 +296,7 @@ describe("App", () => {
 
     render(<App />);
 
-    fireEvent.click(await screen.findByRole("checkbox", { name: "カメラ吹き出し" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Camera bubble" }));
 
     await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ cameraBubbleEnabled: true }));
   });
@@ -313,7 +313,7 @@ describe("App", () => {
 
     render(<App />);
 
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Meetチャット連動" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Mirror Meet chat" }));
 
     await waitFor(() =>
       expect(updateSettings).toHaveBeenCalledWith({ cameraBubbleChatMirrorEnabled: true }),
@@ -327,7 +327,7 @@ describe("App", () => {
 
     render(<App />);
 
-    const slider = await screen.findByRole("slider", { name: "吹き出し表示速度" });
+    const slider = await screen.findByRole("slider", { name: "Bubble display speed" });
     fireEvent.change(slider, { target: { value: "5" } });
 
     await waitFor(() =>

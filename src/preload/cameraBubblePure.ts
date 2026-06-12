@@ -14,6 +14,8 @@ export type CameraBubbleLayout = {
   width: number;
   height: number;
   radius: number;
+  shadowBlur: number;
+  shadowOffsetY: number;
 };
 
 export type CameraBubbleDeps = {
@@ -142,15 +144,25 @@ export const computeOverlayBox = ({
   rectLeft: number;
   rectTop: number;
   rectWidth: number;
-}): { fontSize: number; left: number; maxWidth: number; right: number; top: number } => {
+}): {
+  fontSize: number;
+  left: number;
+  maxWidth: number;
+  right: number;
+  shadowBlur: number;
+  shadowOffsetY: number;
+  top: number;
+} => {
   const margin = Math.round(Math.min(rectWidth, rectHeight) * 0.04);
   const fontSize = Math.max(12, Math.round(rectHeight * 0.07));
   const maxWidth = Math.round(rectWidth * 0.6);
   const right = rectLeft + rectWidth - margin;
   const left = Math.max(rectLeft + margin, right - maxWidth);
   const top = rectTop + margin;
+  const shadowBlur = Math.round(fontSize * 0.6);
+  const shadowOffsetY = Math.max(1, Math.round(fontSize * 0.15));
 
-  return { fontSize, left, maxWidth, right, top };
+  return { fontSize, left, maxWidth, right, shadowBlur, shadowOffsetY, top };
 };
 
 export const wrapBubbleLines = (
@@ -240,6 +252,8 @@ export const computeBubbleLayout = ({
   const x = Math.max(margin, canvasWidth - margin - width);
   const y = margin;
   const radius = Math.round(fontSize * 0.55);
+  const shadowBlur = Math.round(fontSize * 0.6);
+  const shadowOffsetY = Math.max(1, Math.round(fontSize * 0.15));
 
   return {
     fontSize,
@@ -249,6 +263,8 @@ export const computeBubbleLayout = ({
     maxBubbleWidth,
     padding,
     radius,
+    shadowBlur,
+    shadowOffsetY,
     textMaxWidth,
     width,
     x,

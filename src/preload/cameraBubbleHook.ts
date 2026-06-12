@@ -147,7 +147,15 @@ export const installCameraBubbleHook = (
     context.globalAlpha = alpha;
     roundedRect(context, layout.x, layout.y, layout.width, layout.height, layout.radius);
     context.fillStyle = "rgba(255,255,255,0.92)";
+    context.shadowColor = "rgba(0,0,0,0.35)";
+    context.shadowBlur = layout.shadowBlur;
+    context.shadowOffsetX = 0;
+    context.shadowOffsetY = layout.shadowOffsetY;
     context.fill();
+    context.shadowColor = "transparent";
+    context.shadowBlur = 0;
+    context.shadowOffsetX = 0;
+    context.shadowOffsetY = 0;
     context.fillStyle = "#202124";
     lines.forEach((line, index) => {
       context.fillText(
@@ -549,6 +557,7 @@ export const installCameraBubbleHook = (
       element.style.fontSize = "16px";
       element.style.padding = "8px 10px";
       element.style.borderRadius = "9px";
+      element.style.boxShadow = "0 2px 10px rgba(0,0,0,0.35)";
       return;
     }
 
@@ -568,6 +577,7 @@ export const installCameraBubbleHook = (
       box.fontSize * 0.65,
     )}px`;
     element.style.borderRadius = `${Math.round(box.fontSize * 0.55)}px`;
+    element.style.boxShadow = `0 ${box.shadowOffsetY}px ${box.shadowBlur}px rgba(0,0,0,0.35)`;
   };
 
   const runOverlayLoop = (): void => {

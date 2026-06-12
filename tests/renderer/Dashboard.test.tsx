@@ -86,8 +86,8 @@ describe("Dashboard", () => {
     expect(
       screen.getByText("Connect Google Calendar to enable Meet launching."),
     ).toBeInTheDocument();
-    expect(screen.getByText("吹き出し表示速度")).toBeInTheDocument();
-    expect(screen.getByText("1=ゆっくり / 5=はやい")).toBeInTheDocument();
+    expect(screen.getByText("Bubble display speed")).toBeInTheDocument();
+    expect(screen.getByText("1 = slow / 5 = fast")).toBeInTheDocument();
     expect(screen.queryByText("Product sync")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Connect" })).toBeEnabled();
   });
@@ -284,10 +284,10 @@ describe("Dashboard", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "Meetチャット連動" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Mirror Meet chat" }));
 
     expect(onCameraBubbleChatMirrorEnabledChange).toHaveBeenCalledWith(true);
-    expect(screen.getByText("送信したチャットを映像にも表示")).toBeInTheDocument();
+    expect(screen.getByText("Also show your sent chat messages on camera")).toBeInTheDocument();
   });
 
   it("disables camera bubble chat mirror setting while camera bubble is off", () => {
@@ -299,7 +299,7 @@ describe("Dashboard", () => {
       />,
     );
 
-    expect(screen.getByRole("checkbox", { name: "Meetチャット連動" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Mirror Meet chat" })).toBeDisabled();
 
     rerender(
       <Dashboard
@@ -309,7 +309,7 @@ describe("Dashboard", () => {
       />,
     );
 
-    expect(screen.getByRole("checkbox", { name: "Meetチャット連動" })).toBeEnabled();
+    expect(screen.getByRole("checkbox", { name: "Mirror Meet chat" })).toBeEnabled();
   });
 
   it("records and clears the menu shortcut", () => {

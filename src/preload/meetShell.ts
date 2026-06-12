@@ -65,7 +65,12 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
   const setup = (): void => {
     const button = document.getElementById("update-button");
     const bubbleInput = document.getElementById("bubble-input");
-    if (!(button instanceof HTMLButtonElement) || !(bubbleInput instanceof HTMLInputElement)) {
+    const bubbleSidebar = document.getElementById("bubble-sidebar");
+    if (
+      !(button instanceof HTMLButtonElement) ||
+      !(bubbleInput instanceof HTMLInputElement) ||
+      !(bubbleSidebar instanceof HTMLElement)
+    ) {
       return;
     }
 
@@ -104,7 +109,7 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
     });
 
     api.onBubbleEnabledChanged((enabled) => {
-      bubbleInput.style.display = enabled ? "block" : "none";
+      bubbleSidebar.style.display = enabled ? "flex" : "none";
       if (!enabled) {
         bubbleInput.value = "";
       }

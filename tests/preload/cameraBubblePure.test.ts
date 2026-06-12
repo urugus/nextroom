@@ -119,8 +119,21 @@ describe("camera bubble pure functions", () => {
         left: 252,
         maxWidth: 240,
         right: 492,
+        shadowBlur: 8,
+        shadowOffsetY: 2,
         top: 58,
       });
+    });
+
+    it("keeps overlay shadow offsets at least one pixel for tiny inputs", () => {
+      expect(
+        computeOverlayBox({
+          rectHeight: 1,
+          rectLeft: 0,
+          rectTop: 0,
+          rectWidth: 1,
+        }).shadowOffsetY,
+      ).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -181,8 +194,21 @@ describe("camera bubble pure functions", () => {
       expect(layout.margin).toBe(29);
       expect(layout.maxBubbleWidth).toBe(576);
       expect(layout.textMaxWidth).toBe(536);
+      expect(layout.shadowBlur).toBe(24);
+      expect(layout.shadowOffsetY).toBe(6);
       expect(layout.width).toBe(layout.maxBubbleWidth);
       expect(layout.x).toBeGreaterThanOrEqual(layout.margin);
+    });
+
+    it("keeps canvas bubble shadow offsets at least one pixel for tiny inputs", () => {
+      expect(
+        computeBubbleLayout({
+          canvasHeight: 1,
+          canvasWidth: 1,
+          lineCount: 1,
+          maxLineWidth: 0,
+        }).shadowOffsetY,
+      ).toBeGreaterThanOrEqual(1);
     });
   });
 
