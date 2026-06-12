@@ -59,6 +59,7 @@ import { IPC_CHANNELS } from "@shared/ipc";
 import type {
   AppSettings,
   AppUpdateStatus,
+  CameraBubbleConfig,
   MenuShortcutStatus,
   ScreenShareSource,
 } from "@shared/types";
@@ -155,6 +156,12 @@ const saveAppSettings = (settings: AppSettings): Result<AppSettings, AppError> =
   }
 };
 
+const cameraBubbleConfigFor = (settings: AppSettings): CameraBubbleConfig => ({
+  chatMirrorEnabled: settings.cameraBubbleChatMirrorEnabled,
+  displaySpeedLevel: settings.cameraBubbleDisplaySpeedLevel,
+  enabled: settings.cameraBubbleEnabled,
+});
+
 const menuShortcutStatusFor = (
   accelerator: string | null,
   result: Result<void, AppError>,
@@ -185,13 +192,19 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
 
   const previousShortcutAccelerator = appSettings.menuShortcutAccelerator;
   const previousShortcutStatus = menuShortcutStatus;
+  const previousCameraBubbleChatMirrorEnabled = appSettings.cameraBubbleChatMirrorEnabled;
   const previousCameraBubbleEnabled = appSettings.cameraBubbleEnabled;
+  const previousCameraBubbleDisplaySpeedLevel = appSettings.cameraBubbleDisplaySpeedLevel;
   const shortcutChanged =
     "menuShortcutAccelerator" in parsed.value &&
     nextSettings.menuShortcutAccelerator !== previousShortcutAccelerator;
   const cameraBubbleChanged =
-    "cameraBubbleEnabled" in parsed.value &&
-    nextSettings.cameraBubbleEnabled !== previousCameraBubbleEnabled;
+    ("cameraBubbleEnabled" in parsed.value &&
+      nextSettings.cameraBubbleEnabled !== previousCameraBubbleEnabled) ||
+    ("cameraBubbleChatMirrorEnabled" in parsed.value &&
+      nextSettings.cameraBubbleChatMirrorEnabled !== previousCameraBubbleChatMirrorEnabled) ||
+    ("cameraBubbleDisplaySpeedLevel" in parsed.value &&
+      nextSettings.cameraBubbleDisplaySpeedLevel !== previousCameraBubbleDisplaySpeedLevel);
 
   if (shortcutChanged) {
     const registered = updateMenuShortcutRegistration(nextSettings.menuShortcutAccelerator);
@@ -216,7 +229,7 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
 
   Object.assign(appSettings, nextSettings);
   if (cameraBubbleChanged) {
-    meetWindowManager.setBubbleEnabled(appSettings.cameraBubbleEnabled);
+    meetWindowManager.setBubbleConfig(cameraBubbleConfigFor(appSettings));
   }
   return ok(appSettings);
 };
@@ -787,6 +800,8 @@ const createMeetWindow = fromThrowable(
       webPreferences: {
         additionalArguments: [
           `--nextroom-camera-bubble=${appSettings.cameraBubbleEnabled ? "1" : "0"}`,
+          `--nextroom-camera-bubble-chat=${appSettings.cameraBubbleChatMirrorEnabled ? "1" : "0"}`,
+          `--nextroom-camera-bubble-speed=${appSettings.cameraBubbleDisplaySpeedLevel}`,
         ],
         backgroundThrottling: false,
         partition: meetSessionPartition,
@@ -835,7 +850,7 @@ const createMeetWindow = fromThrowable(
       );
     });
     meetView.webContents.on("did-finish-load", () => {
-      meetView.webContents.send(IPC_CHANNELS.meetBubbleSetEnabled, appSettings.cameraBubbleEnabled);
+      meetView.webContents.send(IPC_CHANNELS.meetBubbleConfig, cameraBubbleConfigFor(appSettings));
     });
     void window.loadURL(meetShellUrl());
 
@@ -851,9 +866,9 @@ const createMeetWindow = fromThrowable(
         meetView.webContents.send(IPC_CHANNELS.meetBubbleShow, message);
       },
       setAlwaysOnTop: (flag: boolean, level?: "screen-saver") => window.setAlwaysOnTop(flag, level),
-      setBubbleEnabled: (enabled: boolean) => {
-        meetView.webContents.send(IPC_CHANNELS.meetBubbleSetEnabled, enabled);
-        window.webContents.send(IPC_CHANNELS.meetBubbleEnabledChanged, enabled);
+      setBubbleConfig: (config: CameraBubbleConfig) => {
+        meetView.webContents.send(IPC_CHANNELS.meetBubbleConfig, config);
+        window.webContents.send(IPC_CHANNELS.meetBubbleEnabledChanged, config.enabled);
       },
       show: () => window.show(),
       updateUpdateStatus: (status: AppUpdateStatus) => {

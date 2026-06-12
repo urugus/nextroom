@@ -17,6 +17,7 @@ type DashboardProps = {
   settings: AppSettings;
   syncedAt?: string;
   onAutoJoinEnabledChange: (enabled: boolean) => Promise<unknown>;
+  onCameraBubbleChatMirrorEnabledChange: (enabled: boolean) => Promise<unknown>;
   onCameraBubbleEnabledChange: (enabled: boolean) => Promise<unknown>;
   onCameraBubbleDisplaySpeedLevelChange: (level: number) => Promise<unknown>;
   onCheckForUpdates?: () => Promise<unknown>;
@@ -238,6 +239,7 @@ export const Dashboard = ({
   menuShortcutStatus,
   nextMeetingNotification,
   onAutoJoinEnabledChange,
+  onCameraBubbleChatMirrorEnabledChange,
   onCameraBubbleEnabledChange,
   onCameraBubbleDisplaySpeedLevelChange,
   onCheckForUpdates,
@@ -458,6 +460,22 @@ export const Dashboard = ({
                 checked={settings.cameraBubbleEnabled}
                 aria-label="カメラ吹き出し"
                 onChange={(event) => void onCameraBubbleEnabledChange(event.currentTarget.checked)}
+              />
+            </label>
+          </div>
+          <div className="preference-row preference-sub-row">
+            <div className="preference-copy">
+              <strong>Meetチャット連動</strong>
+              <span>送信したチャットを映像にも表示</span>
+            </div>
+            <label className="toggle-control">
+              <input
+                type="checkbox"
+                checked={settings.cameraBubbleChatMirrorEnabled}
+                aria-label="Meetチャット連動"
+                onChange={(event) =>
+                  void onCameraBubbleChatMirrorEnabledChange(event.currentTarget.checked)
+                }
               />
             </label>
           </div>

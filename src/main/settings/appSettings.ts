@@ -6,6 +6,7 @@ import { z } from "zod";
 export const defaultAppSettings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
+  cameraBubbleChatMirrorEnabled: false,
   cameraBubbleEnabled: false,
   cameraBubbleDisplaySpeedLevel: 3,
   joinOffsetSeconds: 0,
@@ -31,6 +32,7 @@ const settingsSchema = z
   .object({
     autoJoinEnabled: z.boolean().optional(),
     autoOpenEnabled: z.boolean().optional(),
+    cameraBubbleChatMirrorEnabled: z.boolean().optional(),
     cameraBubbleEnabled: z.boolean().optional(),
     cameraBubbleDisplaySpeedLevel: z.number().int().min(1).max(5).optional(),
     joinOffsetSeconds: minuteOffsetSchema("joinOffsetSeconds").optional(),
@@ -46,6 +48,7 @@ const settingsSchema = z
 const settingsUpdateSchema = settingsSchema
   .pick({
     autoJoinEnabled: true,
+    cameraBubbleChatMirrorEnabled: true,
     cameraBubbleEnabled: true,
     cameraBubbleDisplaySpeedLevel: true,
     joinOffsetSeconds: true,
@@ -58,6 +61,7 @@ type SettingsUpdate = Partial<
   Pick<
     AppSettings,
     | "autoJoinEnabled"
+    | "cameraBubbleChatMirrorEnabled"
     | "cameraBubbleEnabled"
     | "cameraBubbleDisplaySpeedLevel"
     | "joinOffsetSeconds"

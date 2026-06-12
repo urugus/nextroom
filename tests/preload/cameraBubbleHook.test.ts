@@ -2,13 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installCameraBubbleHook } from "../../src/preload/cameraBubbleHook";
 import {
   computeBubbleAlpha,
+  computeBubbleDisplayDurationMs,
   computeBubbleLayout,
   computeCanvasSize,
   computeOverlayBox,
   hasVideoConstraints,
   isDisplayCaptureLike,
   parseCameraBubbleEnvelope,
+  sanitizeBubbleText,
   scoreSelfViewCandidate,
+  shouldMirrorChatKey,
   wrapBubbleLines,
 } from "../../src/preload/cameraBubblePure";
 
@@ -29,16 +32,41 @@ type RTCRtpSenderConstructor = new (track: MediaStreamTrack | null) => RTCRtpSen
 
 const cameraBubbleDeps = {
   computeBubbleAlpha,
+  computeBubbleDisplayDurationMs,
   computeBubbleLayout,
   computeOverlayBox,
   computeCanvasSize,
   hasVideoConstraints,
   isDisplayCaptureLike,
   parseCameraBubbleEnvelope,
+  sanitizeBubbleText,
   scoreSelfViewCandidate,
+  shouldMirrorChatKey,
   wrapBubbleLines,
 };
 const expectedNonce = "hook-nonce";
+const enabledConfig = {
+  chatMirrorEnabled: true,
+  displaySpeedLevel: 3,
+  enabled: true,
+};
+
+const overlayWithText = (text: string): HTMLDivElement | undefined =>
+  Array.from(document.querySelectorAll("div")).find(
+    (element): element is HTMLDivElement => element.textContent === text,
+  );
+
+const dispatchEnter = (element: Element, init: KeyboardEventInit = {}): void => {
+  element.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "Enter",
+      keyCode: 13,
+      ...init,
+    }),
+  );
+};
 
 describe("installCameraBubbleHook", () => {
   const originalMediaStream = globalThis.MediaStream;
@@ -71,7 +99,12 @@ describe("installCameraBubbleHook", () => {
   const postCameraBubbleMessage = (
     message:
       | { durationMs: number; kind: "show"; text: string }
-      | { enabled: boolean; kind: "setEnabled" },
+      | {
+          chatMirrorEnabled: boolean;
+          displaySpeedLevel: number;
+          enabled: boolean;
+          kind: "config";
+        },
   ): void => {
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -371,7 +404,7 @@ describe("installCameraBubbleHook", () => {
     const displayTrack = createFakeTrack("video", {}, "Captured source");
     getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
 
-    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
     const displayStream = await navigator.mediaDevices.getDisplayMedia();
     const peerConnection = new RTCPeerConnection();
     const cameraStream = createFakeStream([cameraTrack]);
@@ -388,7 +421,7 @@ describe("installCameraBubbleHook", () => {
 
     const disabledPeerConnection = new RTCPeerConnection();
     const disabledCameraTrack = createFakeTrack("video", {}, "Camera");
-    postCameraBubbleMessage({ enabled: false, kind: "setEnabled" });
+    postCameraBubbleMessage({ ...enabledConfig, enabled: false, kind: "config" });
     disabledPeerConnection.addTrack(disabledCameraTrack);
 
     expect(addTrackMock.mock.calls.at(-1)?.[0]).toBe(disabledCameraTrack);
@@ -396,7 +429,7 @@ describe("installCameraBubbleHook", () => {
 
   it("reuses wrapped tracks on replaceTrack and passes through null and canvas tracks", async () => {
     const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
-    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
 
     const sender = new RTCPeerConnection().addTrack(sourceTrack);
     const canvasTrack = createdCanvasTracks[0];
@@ -417,7 +450,7 @@ describe("installCameraBubbleHook", () => {
       direction: "sendonly",
       sendEncodings: [{ rid: "high" }],
     };
-    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
 
     new RTCPeerConnection().addTransceiver(sourceTrack, init);
 
@@ -429,13 +462,13 @@ describe("installCameraBubbleHook", () => {
     const displayTrack = createFakeTrack("video", {}, "Captured source");
     const disabledTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
     getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
-    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
     const displayStream = await navigator.mediaDevices.getDisplayMedia();
     const peerConnection = new RTCPeerConnection();
 
     peerConnection.addTransceiver("video");
     peerConnection.addTransceiver(displayStream.getVideoTracks()[0]);
-    postCameraBubbleMessage({ enabled: false, kind: "setEnabled" });
+    postCameraBubbleMessage({ ...enabledConfig, enabled: false, kind: "config" });
     peerConnection.addTransceiver(disabledTrack);
 
     expect(addTransceiverMock.mock.calls[0][0]).toBe("video");
@@ -446,7 +479,7 @@ describe("installCameraBubbleHook", () => {
 
   it("reuses the same pipeline across addTrack and addTransceiver", () => {
     const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
-    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
     const peerConnection = new RTCPeerConnection();
 
     peerConnection.addTrack(sourceTrack);
@@ -459,7 +492,7 @@ describe("installCameraBubbleHook", () => {
 
   it("returns the source track from sender.track when the sender stores a canvas track", () => {
     const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
-    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
 
     const sender = new RTCPeerConnection().addTrack(sourceTrack);
 
@@ -468,7 +501,7 @@ describe("installCameraBubbleHook", () => {
 
   it("stops the pipeline without stopping the source and stops canvas when the source ends", () => {
     const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
-    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
 
     new RTCPeerConnection().addTrack(sourceTrack);
     const canvasTrack = createdCanvasTracks[0];
@@ -489,7 +522,7 @@ describe("installCameraBubbleHook", () => {
 
   it("forwards canvas track enabled changes to the source track", () => {
     const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
-    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
 
     new RTCPeerConnection().addTrack(sourceTrack);
     createdCanvasTracks[0].enabled = false;
@@ -500,7 +533,7 @@ describe("installCameraBubbleHook", () => {
   it("tags getDisplayMedia tracks and propagates tags to clones", async () => {
     const displayTrack = createFakeTrack("video", {}, "Captured source");
     getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
-    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
 
     const stream = await navigator.mediaDevices.getDisplayMedia();
     const taggedTrack = stream.getVideoTracks()[0];
@@ -515,14 +548,14 @@ describe("installCameraBubbleHook", () => {
   });
 
   it("does not patch getUserMedia", () => {
-    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
 
     expect(navigator.mediaDevices.getUserMedia).toBe(getUserMedia);
   });
 
   it("shows the local self-view overlay and hides it when disabled", () => {
     const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
-    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
     new RTCPeerConnection().addTrack(sourceTrack);
     createVisibleSelfView(sourceTrack);
 
@@ -535,10 +568,81 @@ describe("installCameraBubbleHook", () => {
     expect(overlay?.style.display).toBe("block");
     expect(overlay?.style.right).not.toBe("16px");
 
-    postCameraBubbleMessage({ enabled: false, kind: "setEnabled" });
+    postCameraBubbleMessage({ ...enabledConfig, enabled: false, kind: "config" });
     nextAnimationFrame();
 
     expect(overlay?.style.display).toBe("none");
+  });
+
+  it("mirrors own textarea chat messages into the overlay without IPC", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const textArea = document.createElement("textarea");
+    textArea.value = "  送信します\n";
+    document.body.append(textArea);
+
+    dispatchEnter(textArea);
+
+    const overlay = overlayWithText("送信します");
+    expect(overlay).toBeDefined();
+    expect(overlay?.style.display).toBe("block");
+  });
+
+  it("ignores composing, disabled, empty, non-textarea, and disabled-feature chat mirror events", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const textArea = document.createElement("textarea");
+    textArea.value = "ignored";
+    document.body.append(textArea);
+
+    dispatchEnter(textArea, { keyCode: 229 });
+    expect(overlayWithText("ignored")).toBeUndefined();
+
+    textArea.value = "";
+    dispatchEnter(textArea);
+    expect(overlayWithText("ignored")).toBeUndefined();
+
+    textArea.value = "disabled";
+    textArea.disabled = true;
+    dispatchEnter(textArea);
+    expect(overlayWithText("disabled")).toBeUndefined();
+
+    textArea.disabled = false;
+    postCameraBubbleMessage({ ...enabledConfig, chatMirrorEnabled: false, kind: "config" });
+    dispatchEnter(textArea);
+    expect(overlayWithText("disabled")).toBeUndefined();
+
+    postCameraBubbleMessage({ ...enabledConfig, enabled: false, kind: "config" });
+    dispatchEnter(textArea);
+    expect(overlayWithText("disabled")).toBeUndefined();
+
+    const input = document.createElement("input");
+    input.value = "input ignored";
+    document.body.append(input);
+    postCameraBubbleMessage({ ...enabledConfig, kind: "config" });
+    dispatchEnter(input);
+    expect(overlayWithText("input ignored")).toBeUndefined();
+  });
+
+  it("rate-limits mirrored chat messages locally", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const textArea = document.createElement("textarea");
+    document.body.append(textArea);
+
+    textArea.value = "first";
+    dispatchEnter(textArea);
+    textArea.value = "second";
+    vi.setSystemTime(1_100);
+    dispatchEnter(textArea);
+
+    expect(overlayWithText("first")).toBeDefined();
+    expect(overlayWithText("second")).toBeUndefined();
+
+    vi.setSystemTime(1_300);
+    dispatchEnter(textArea);
+
+    expect(overlayWithText("second")).toBeDefined();
   });
 
   it("falls back instead of anchoring to a weak non-pipeline video candidate", () => {
@@ -561,7 +665,7 @@ describe("installCameraBubbleHook", () => {
         }) as DOMRect,
     });
     document.body.append(remoteVideo);
-    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
 
     postCameraBubbleMessage({ durationMs: 2_000, kind: "show", text: "fallback" });
 
@@ -574,7 +678,7 @@ describe("installCameraBubbleHook", () => {
   it("does not anchor the overlay to a display-tagged video without displaySurface", async () => {
     const displayTrack = createFakeTrack("video", { height: 360, width: 640 }, "Captured source");
     getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
-    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
     const displayStream = await navigator.mediaDevices.getDisplayMedia();
     createVisibleSelfView(displayStream.getVideoTracks()[0]);
 
@@ -588,7 +692,7 @@ describe("installCameraBubbleHook", () => {
 
   it("hides the overlay when the canvas draw loop expires the shared bubble first", () => {
     const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
-    installCameraBubbleHook(true, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
     new RTCPeerConnection().addTrack(sourceTrack);
     createVisibleSelfView(sourceTrack);
 

@@ -45,6 +45,7 @@ const updateUnsupported: AppUpdateStatus = {
 const settings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
+  cameraBubbleChatMirrorEnabled: false,
   cameraBubbleEnabled: false,
   cameraBubbleDisplaySpeedLevel: 3,
   joinOffsetSeconds: 0,
@@ -58,6 +59,7 @@ const settings: AppSettings = {
 
 const dashboardActions = () => ({
   onAutoJoinEnabledChange: vi.fn(),
+  onCameraBubbleChatMirrorEnabledChange: vi.fn(),
   onCameraBubbleEnabledChange: vi.fn(),
   onCameraBubbleDisplaySpeedLevelChange: vi.fn(),
   onConnectAccount: vi.fn(),
@@ -269,6 +271,23 @@ describe("Dashboard", () => {
 
     expect(onAutoJoinEnabledChange).toHaveBeenCalledWith(false);
     expect(onJoinOffsetMinutesChange).toHaveBeenCalledWith(4);
+  });
+
+  it("updates camera bubble chat mirror setting", () => {
+    const onCameraBubbleChatMirrorEnabledChange = vi.fn();
+    render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        onCameraBubbleChatMirrorEnabledChange={onCameraBubbleChatMirrorEnabledChange}
+        settings={settings}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Meetチャット連動" }));
+
+    expect(onCameraBubbleChatMirrorEnabledChange).toHaveBeenCalledWith(true);
+    expect(screen.getByText("送信したチャットを映像にも表示")).toBeInTheDocument();
   });
 
   it("records and clears the menu shortcut", () => {

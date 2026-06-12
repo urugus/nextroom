@@ -10,6 +10,7 @@ describe("app settings", () => {
   it("loads auto-join defaults for older settings files", () => {
     expect(parseStoredAppSettings({ openOffsetSeconds: 5 * 60 })).toMatchObject({
       autoJoinEnabled: false,
+      cameraBubbleChatMirrorEnabled: false,
       cameraBubbleEnabled: false,
       cameraBubbleDisplaySpeedLevel: 3,
       joinOffsetSeconds: 0,
@@ -40,6 +41,9 @@ describe("app settings", () => {
   it("accepts camera bubble setting updates", () => {
     expect(parseSettingsUpdate({ cameraBubbleEnabled: true })._unsafeUnwrap()).toEqual({
       cameraBubbleEnabled: true,
+    });
+    expect(parseSettingsUpdate({ cameraBubbleChatMirrorEnabled: true })._unsafeUnwrap()).toEqual({
+      cameraBubbleChatMirrorEnabled: true,
     });
   });
 

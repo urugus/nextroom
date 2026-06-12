@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   computeBubbleAlpha,
+  computeBubbleDisplayDurationMs,
   computeBubbleLayout,
   computeCanvasSize,
   computeOverlayBox,
   hasVideoConstraints,
   isDisplayCaptureLike,
   parseCameraBubbleEnvelope,
+  sanitizeBubbleText,
   scoreSelfViewCandidate,
+  shouldMirrorChatKey,
   wrapBubbleLines,
 } from "../../src/preload/cameraBubblePure";
 
@@ -15,6 +18,23 @@ const measureByCodePoint = (text: string): number => [...text].length * 10;
 const expectedNonce = "nonce-1";
 
 describe("camera bubble pure functions", () => {
+  describe("sanitizeBubbleText", () => {
+    it("trims, collapses newlines, strips control characters, and clamps to 100 code points", () => {
+      expect(sanitizeBubbleText("  hello\nworld\r\n\u0000now\t  ")).toBe("hello world now");
+      expect([...sanitizeBubbleText("👍".repeat(120))]).toHaveLength(100);
+    });
+  });
+
+  describe("computeBubbleDisplayDurationMs", () => {
+    it("computes display duration from code points and speed level", () => {
+      expect(computeBubbleDisplayDurationMs(10, 3)).toBe(4_000);
+      expect(computeBubbleDisplayDurationMs(0, 5)).toBe(2_000);
+      expect(computeBubbleDisplayDurationMs(100, 1)).toBe(20_000);
+      expect(computeBubbleDisplayDurationMs(10, 99)).toBe(2_200);
+      expect(computeBubbleDisplayDurationMs(10, Number.NaN)).toBe(4_000);
+    });
+  });
+
   describe("hasVideoConstraints", () => {
     it("accepts present video constraints and rejects absent or disabled video", () => {
       expect(hasVideoConstraints({ video: true })).toBe(true);
@@ -241,23 +261,64 @@ describe("camera bubble pure functions", () => {
       ).toEqual({ durationMs: 7_000, kind: "show", text: "hello" });
     });
 
-    it("accepts setEnabled with strict true and coerces all other values to false", () => {
+    it("accepts config with strict booleans and normalized display speed", () => {
       expect(
         parseCameraBubbleEnvelope(
           {
-            __nextroomCameraBubble: { enabled: true, kind: "setEnabled", nonce: expectedNonce },
+            __nextroomCameraBubble: {
+              chatMirrorEnabled: true,
+              displaySpeedLevel: 5,
+              enabled: true,
+              kind: "config",
+              nonce: expectedNonce,
+            },
           },
           expectedNonce,
         ),
-      ).toEqual({ enabled: true, kind: "setEnabled" });
+      ).toEqual({
+        chatMirrorEnabled: true,
+        displaySpeedLevel: 5,
+        enabled: true,
+        kind: "config",
+      });
       expect(
         parseCameraBubbleEnvelope(
           {
-            __nextroomCameraBubble: { enabled: "true", kind: "setEnabled", nonce: expectedNonce },
+            __nextroomCameraBubble: {
+              chatMirrorEnabled: "true",
+              displaySpeedLevel: 99,
+              enabled: "true",
+              kind: "config",
+              nonce: expectedNonce,
+            },
           },
           expectedNonce,
         ),
-      ).toEqual({ enabled: false, kind: "setEnabled" });
+      ).toEqual({
+        chatMirrorEnabled: false,
+        displaySpeedLevel: 5,
+        enabled: false,
+        kind: "config",
+      });
+      expect(
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: {
+              chatMirrorEnabled: true,
+              displaySpeedLevel: Number.NaN,
+              enabled: true,
+              kind: "config",
+              nonce: expectedNonce,
+            },
+          },
+          expectedNonce,
+        ),
+      ).toEqual({
+        chatMirrorEnabled: true,
+        displaySpeedLevel: 3,
+        enabled: true,
+        kind: "config",
+      });
     });
 
     it("rejects missing or mismatched nonces", () => {
@@ -273,6 +334,20 @@ describe("camera bubble pure functions", () => {
         parseCameraBubbleEnvelope(
           {
             __nextroomCameraBubble: { kind: "show", nonce: "other", text: "hello" },
+          },
+          expectedNonce,
+        ),
+      ).toBeUndefined();
+      expect(
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: {
+              chatMirrorEnabled: true,
+              displaySpeedLevel: 3,
+              enabled: true,
+              kind: "config",
+              nonce: "other",
+            },
           },
           expectedNonce,
         ),
@@ -309,6 +384,42 @@ describe("camera bubble pure functions", () => {
           expectedNonce,
         ),
       ).toBeUndefined();
+    });
+  });
+
+  describe("shouldMirrorChatKey", () => {
+    const acceptedInput = {
+      altKey: false,
+      ctrlKey: false,
+      disabled: false,
+      isComposing: false,
+      isTextArea: true,
+      key: "Enter",
+      keyCode: 13,
+      metaKey: false,
+      readOnly: false,
+      shiftKey: false,
+    };
+
+    it("accepts plain Enter in an enabled writable textarea", () => {
+      expect(shouldMirrorChatKey(acceptedInput)).toBe(true);
+    });
+
+    it("rejects modifiers, composition, non-textareas, disabled/read-only, and wrong keys", () => {
+      [
+        { shiftKey: true },
+        { metaKey: true },
+        { ctrlKey: true },
+        { altKey: true },
+        { isComposing: true },
+        { keyCode: 229 },
+        { isTextArea: false },
+        { disabled: true },
+        { readOnly: true },
+        { key: "Escape" },
+      ].forEach((override) => {
+        expect(shouldMirrorChatKey({ ...acceptedInput, ...override })).toBe(false);
+      });
     });
   });
 });
