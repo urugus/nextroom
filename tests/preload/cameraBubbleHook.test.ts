@@ -567,6 +567,8 @@ describe("installCameraBubbleHook", () => {
     expect(overlay).toBeDefined();
     expect(overlay?.style.display).toBe("block");
     expect(overlay?.style.right).not.toBe("16px");
+    expect(overlay?.style.boxShadow).toContain("4px");
+    expect(overlay?.style.boxShadow).toContain("15px");
 
     postCameraBubbleMessage({ ...enabledConfig, enabled: false, kind: "config" });
     nextAnimationFrame();
@@ -586,6 +588,8 @@ describe("installCameraBubbleHook", () => {
     const overlay = overlayWithText("送信します");
     expect(overlay).toBeDefined();
     expect(overlay?.style.display).toBe("block");
+    expect(overlay?.style.boxShadow).toContain("2px");
+    expect(overlay?.style.boxShadow).toContain("10px");
   });
 
   it("ignores composing, disabled, empty, non-textarea, and disabled-feature chat mirror events", () => {

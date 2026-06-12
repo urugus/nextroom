@@ -449,31 +449,33 @@ export const Dashboard = ({
           </div>
           <div className="preference-row">
             <div className="preference-copy">
-              <strong>カメラ吹き出し</strong>
+              <strong>Camera bubble</strong>
               <span>
-                {settings.cameraBubbleEnabled ? "ミュート中の発言をカメラ映像に表示" : "Off"}
+                {settings.cameraBubbleEnabled
+                  ? "Show typed text on your camera while muted"
+                  : "Off"}
               </span>
             </div>
             <label className="toggle-control">
               <input
                 type="checkbox"
                 checked={settings.cameraBubbleEnabled}
-                aria-label="カメラ吹き出し"
+                aria-label="Camera bubble"
                 onChange={(event) => void onCameraBubbleEnabledChange(event.currentTarget.checked)}
               />
             </label>
           </div>
           <div className="preference-row preference-sub-row">
             <div className="preference-copy">
-              <strong>Meetチャット連動</strong>
-              <span>送信したチャットを映像にも表示</span>
+              <strong>Mirror Meet chat</strong>
+              <span>Also show your sent chat messages on camera</span>
             </div>
             <label className="toggle-control">
               <input
                 type="checkbox"
                 checked={settings.cameraBubbleChatMirrorEnabled}
                 disabled={!settings.cameraBubbleEnabled}
-                aria-label="Meetチャット連動"
+                aria-label="Mirror Meet chat"
                 onChange={(event) =>
                   void onCameraBubbleChatMirrorEnabledChange(event.currentTarget.checked)
                 }
@@ -482,8 +484,8 @@ export const Dashboard = ({
           </div>
           <div className="preference-row">
             <div className="preference-copy">
-              <strong>吹き出し表示速度</strong>
-              <span>1=ゆっくり / 5=はやい</span>
+              <strong>Bubble display speed</strong>
+              <span>1 = slow / 5 = fast</span>
             </div>
             <label className="range-control">
               <input
@@ -492,7 +494,7 @@ export const Dashboard = ({
                 max="5"
                 step="1"
                 value={settings.cameraBubbleDisplaySpeedLevel}
-                aria-label="吹き出し表示速度"
+                aria-label="Bubble display speed"
                 onChange={(event) =>
                   void onCameraBubbleDisplaySpeedLevelChange(Number(event.currentTarget.value))
                 }

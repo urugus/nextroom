@@ -28,7 +28,9 @@ const updateStatus = (status: AppUpdateStatus["status"]): AppUpdateStatus => ({
 
 const renderMeetShellDom = (): void => {
   document.body.innerHTML = `
-    <input id="bubble-input" type="text">
+    <aside id="bubble-sidebar">
+      <input id="bubble-input" type="text">
+    </aside>
     <button id="update-button" type="button">Update</button>
   `;
 };
@@ -76,16 +78,17 @@ describe("meet shell preload", () => {
     renderMeetShellDom();
   });
 
-  it("toggles the bubble input display from enabledChanged", async () => {
+  it("toggles the bubble sidebar display from enabledChanged", async () => {
     await importMeetShell();
+    const bubbleSidebar = document.getElementById("bubble-sidebar") as HTMLElement;
     const bubbleInput = document.getElementById("bubble-input") as HTMLInputElement;
 
     channelListeners.get("meetBubble:enabledChanged")?.({}, true);
-    expect(bubbleInput.style.display).toBe("block");
+    expect(bubbleSidebar.style.display).toBe("flex");
 
     bubbleInput.value = "hello";
     channelListeners.get("meetBubble:enabledChanged")?.({}, false);
-    expect(bubbleInput.style.display).toBe("none");
+    expect(bubbleSidebar.style.display).toBe("none");
     expect(bubbleInput.value).toBe("");
   });
 

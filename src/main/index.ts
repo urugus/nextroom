@@ -283,6 +283,7 @@ const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "Mee
   )();
 
 const meetShellHeight = 38;
+const bubbleSidebarWidth = 260;
 const strictRendererCsp = [
   "default-src 'self'",
   "base-uri 'none'",
@@ -399,12 +400,39 @@ const meetShellHtml = (): string => `<!doctype html>
         border-bottom: 1px solid #d6d6d8;
         background: #f5f5f7;
       }
-      input {
-        -webkit-app-region: no-drag;
+      #bubble-sidebar {
         box-sizing: border-box;
         display: none;
-        width: min(420px, 52vw);
-        height: 26px;
+        position: fixed;
+        top: ${meetShellHeight}px;
+        right: 0;
+        bottom: 0;
+        width: ${bubbleSidebarWidth}px;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+        border-left: 1px solid #d6d6d8;
+        background: #f5f5f7;
+      }
+      #bubble-sidebar h1 {
+        margin: 0;
+        color: #1d1d1f;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.3;
+      }
+      #bubble-sidebar p {
+        margin: 0;
+        color: #6e6e73;
+        font-size: 11px;
+        line-height: 1.4;
+      }
+      #bubble-input {
+        -webkit-app-region: no-drag;
+        box-sizing: border-box;
+        display: block;
+        width: 100%;
+        min-height: 30px;
         border: 1px solid #c4c4c6;
         border-radius: 6px;
         background: #ffffff;
@@ -414,7 +442,7 @@ const meetShellHtml = (): string => `<!doctype html>
         outline: none;
         padding: 4px 9px;
       }
-      input:focus {
+      #bubble-input:focus {
         border-color: #0071e3;
         box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.18);
       }
@@ -442,13 +470,19 @@ const meetShellHtml = (): string => `<!doctype html>
   </head>
   <body>
     <div class="bar">
+      <button type="button" id="update-button">Update</button>
+    </div>
+    <aside id="bubble-sidebar">
+      <h1 id="bubble-sidebar-title">Camera bubble</h1>
       <input
         type="text"
         id="bubble-input"
-        placeholder="ミュート中に映像へ表示するテキスト…"
+        placeholder="Type text to show on your camera…"
+        aria-labelledby="bubble-sidebar-title"
+        aria-describedby="bubble-sidebar-hint"
       >
-      <button type="button" id="update-button">Update</button>
-    </div>
+      <p id="bubble-sidebar-hint">Press Enter to send. The text appears on your camera for a few seconds.</p>
+    </aside>
   </body>
 </html>`;
 
@@ -827,11 +861,15 @@ const createMeetWindow = fromThrowable(
 
       event.preventDefault();
     });
+    const layoutState = {
+      bubbleSidebarVisible: appSettings.cameraBubbleEnabled,
+    };
     const layout = (): void => {
       const bounds = window.getContentBounds();
+      const sidebarWidth = layoutState.bubbleSidebarVisible ? bubbleSidebarWidth : 0;
       meetView.setBounds({
         height: Math.max(0, bounds.height - meetShellHeight),
-        width: bounds.width,
+        width: Math.max(0, bounds.width - sidebarWidth),
         x: 0,
         y: meetShellHeight,
       });
@@ -867,6 +905,8 @@ const createMeetWindow = fromThrowable(
       },
       setAlwaysOnTop: (flag: boolean, level?: "screen-saver") => window.setAlwaysOnTop(flag, level),
       setBubbleConfig: (config: CameraBubbleConfig) => {
+        layoutState.bubbleSidebarVisible = config.enabled;
+        layout();
         meetView.webContents.send(IPC_CHANNELS.meetBubbleConfig, config);
         window.webContents.send(IPC_CHANNELS.meetBubbleEnabledChanged, config.enabled);
       },
