@@ -149,6 +149,20 @@ describe("installCameraBubbleHook", () => {
   let getUserMedia: ReturnType<typeof vi.fn>;
   let getDisplayMedia: ReturnType<typeof vi.fn>;
   let createdCanvasTracks: FakeMediaStreamTrack[];
+  let canvasContexts: Array<{
+    beginPath: ReturnType<typeof vi.fn>;
+    closePath: ReturnType<typeof vi.fn>;
+    drawImage: ReturnType<typeof vi.fn>;
+    fill: ReturnType<typeof vi.fn>;
+    fillRect: ReturnType<typeof vi.fn>;
+    fillText: ReturnType<typeof vi.fn>;
+    lineTo: ReturnType<typeof vi.fn>;
+    measureText: ReturnType<typeof vi.fn>;
+    moveTo: ReturnType<typeof vi.fn>;
+    quadraticCurveTo: ReturnType<typeof vi.fn>;
+    restore: ReturnType<typeof vi.fn>;
+    save: ReturnType<typeof vi.fn>;
+  }>;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -156,6 +170,7 @@ describe("installCameraBubbleHook", () => {
     senderTrackState.tracks = new WeakMap();
     animationCallbacks.length = 0;
     createdCanvasTracks = [];
+    canvasContexts = [];
 
     class FakeMediaStreamTrackClass extends EventTarget {
       applyConstraints = vi.fn(() => Promise.resolve());
@@ -314,20 +329,24 @@ describe("installCameraBubbleHook", () => {
     });
     Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
       configurable: true,
-      value: vi.fn(() => ({
-        beginPath: vi.fn(),
-        closePath: vi.fn(),
-        drawImage: vi.fn(),
-        fill: vi.fn(),
-        fillRect: vi.fn(),
-        fillText: vi.fn(),
-        lineTo: vi.fn(),
-        measureText: vi.fn((text: string) => ({ width: text.length * 10 })),
-        moveTo: vi.fn(),
-        quadraticCurveTo: vi.fn(),
-        restore: vi.fn(),
-        save: vi.fn(),
-      })),
+      value: vi.fn(() => {
+        const context = {
+          beginPath: vi.fn(),
+          closePath: vi.fn(),
+          drawImage: vi.fn(),
+          fill: vi.fn(),
+          fillRect: vi.fn(),
+          fillText: vi.fn(),
+          lineTo: vi.fn(),
+          measureText: vi.fn((text: string) => ({ width: text.length * 10 })),
+          moveTo: vi.fn(),
+          quadraticCurveTo: vi.fn(),
+          restore: vi.fn(),
+          save: vi.fn(),
+        };
+        canvasContexts.push(context);
+        return context;
+      }),
     });
     Object.defineProperty(HTMLCanvasElement.prototype, "captureStream", {
       configurable: true,
@@ -490,6 +509,45 @@ describe("installCameraBubbleHook", () => {
     expect(createdCanvasTracks).toHaveLength(1);
   });
 
+  it("does not reinstall patches when the hook is installed twice", () => {
+    const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+
+    new RTCPeerConnection().addTrack(sourceTrack);
+
+    expect(addTrackMock).toHaveBeenCalledTimes(1);
+    expect(createdCanvasTracks).toHaveLength(1);
+  });
+
+  it("falls back to the source track when a canvas pipeline cannot be created", () => {
+    const noContextTrack = createFakeTrack("video", { height: 360, width: 640 }, "No context");
+    Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+      configurable: true,
+      value: vi.fn(() => null),
+    });
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+
+    new RTCPeerConnection().addTrack(noContextTrack);
+
+    expect(addTrackMock.mock.calls[0][0]).toBe(noContextTrack);
+    expect(createdCanvasTracks).toHaveLength(0);
+  });
+
+  it("falls back to the source track when captureStream has no video track", () => {
+    const noCanvasTrack = createFakeTrack("video", { height: 360, width: 640 }, "No canvas track");
+    Object.defineProperty(HTMLCanvasElement.prototype, "captureStream", {
+      configurable: true,
+      value: vi.fn(() => createFakeStream([])),
+    });
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+
+    new RTCPeerConnection().addTrack(noCanvasTrack);
+
+    expect(addTrackMock.mock.calls[0][0]).toBe(noCanvasTrack);
+    expect(createdCanvasTracks).toHaveLength(0);
+  });
+
   it("returns the source track from sender.track when the sender stores a canvas track", () => {
     const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
     installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
@@ -528,6 +586,29 @@ describe("installCameraBubbleHook", () => {
     createdCanvasTracks[0].enabled = false;
 
     expect(sourceTrack.enabled).toBe(false);
+  });
+
+  it("forwards canvas track content hints, settings, capabilities, constraints, and constraints", async () => {
+    const sourceTrack = createFakeTrack(
+      "video",
+      { aspectRatio: 16 / 9, height: 360, width: 640 },
+      "Camera",
+    );
+    sourceTrack.getCapabilities = vi.fn(() => ({ width: { max: 1920, min: 320 } }));
+    sourceTrack.getConstraints = vi.fn(() => ({ width: 640 }));
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+
+    new RTCPeerConnection().addTrack(sourceTrack);
+    const canvasTrack = createdCanvasTracks[0];
+    canvasTrack.contentHint = "motion";
+    await canvasTrack.applyConstraints({ width: 1280 });
+
+    expect(sourceTrack.contentHint).toBe("motion");
+    expect(canvasTrack.contentHint).toBe("motion");
+    expect(canvasTrack.getSettings()).toMatchObject({ height: 360, width: 640 });
+    expect(canvasTrack.getCapabilities()).toEqual({ width: { max: 1920, min: 320 } });
+    expect(canvasTrack.getConstraints()).toEqual({ width: 640 });
+    expect(sourceTrack.applyConstraints).toHaveBeenCalledWith({ width: 1280 });
   });
 
   it("tags getDisplayMedia tracks and propagates tags to clones", async () => {
@@ -574,6 +655,104 @@ describe("installCameraBubbleHook", () => {
     nextAnimationFrame();
 
     expect(overlay?.style.display).toBe("none");
+  });
+
+  it("hides a pending overlay frame after the bubble is cleared", () => {
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+
+    postCameraBubbleMessage({ durationMs: 2_000, kind: "show", text: "clear pending" });
+    const overlay = overlayWithText("clear pending");
+    postCameraBubbleMessage({ ...enabledConfig, enabled: false, kind: "config" });
+    nextAnimationFrame();
+
+    expect(overlay?.style.display).toBe("none");
+  });
+
+  it("draws active bubble text into the canvas pipeline", () => {
+    vi.setSystemTime(1_000);
+    const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    new RTCPeerConnection().addTrack(sourceTrack);
+
+    postCameraBubbleMessage({ durationMs: 2_000, kind: "show", text: "canvas bubble" });
+    nextAnimationFrame();
+
+    expect(canvasContexts[0].drawImage).toHaveBeenCalled();
+    expect(canvasContexts[0].beginPath).toHaveBeenCalled();
+    expect(canvasContexts[0].fill).toHaveBeenCalled();
+    expect(canvasContexts[0].fillText).toHaveBeenCalledWith(
+      "canvas bubble",
+      expect.any(Number),
+      expect.any(Number),
+    );
+    expect(canvasContexts[0].restore).toHaveBeenCalled();
+  });
+
+  it("resizes the canvas when video metadata has different dimensions", () => {
+    const sourceTrack = createFakeTrack("video", { height: 180, width: 320 }, "Camera");
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    new RTCPeerConnection().addTrack(sourceTrack);
+    const canvasTrack = createdCanvasTracks[0];
+
+    nextAnimationFrame();
+
+    expect(canvasTrack.getSettings()).toMatchObject({ height: 360, width: 640 });
+  });
+
+  it("clears expired canvas bubbles during drawing", () => {
+    vi.setSystemTime(1_000);
+    const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    new RTCPeerConnection().addTrack(sourceTrack);
+
+    postCameraBubbleMessage({ durationMs: 2_000, kind: "show", text: "expired canvas" });
+    vi.setSystemTime(3_000);
+    nextAnimationFrame();
+
+    expect(canvasContexts[0].fillText).not.toHaveBeenCalledWith(
+      "expired canvas",
+      expect.any(Number),
+      expect.any(Number),
+    );
+  });
+
+  it("draws a black frame when the source track is disabled or muted", () => {
+    const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
+    sourceTrack.enabled = false;
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    new RTCPeerConnection().addTrack(sourceTrack);
+
+    nextAnimationFrame();
+
+    expect(canvasContexts[0].fillRect).toHaveBeenCalledWith(0, 0, 640, 360);
+    expect(canvasContexts[0].drawImage).not.toHaveBeenCalled();
+  });
+
+  it("uses requestVideoFrameCallback when the video element supports it", () => {
+    const frameCallbacks: Array<(now: DOMHighResTimeStamp, metadata: unknown) => void> = [];
+    const requestVideoFrameCallback = vi.fn(
+      (callback: (now: DOMHighResTimeStamp, metadata: unknown) => void) => {
+        frameCallbacks.push(callback);
+        return frameCallbacks.length;
+      },
+    );
+    Object.defineProperty(HTMLVideoElement.prototype, "requestVideoFrameCallback", {
+      configurable: true,
+      value: requestVideoFrameCallback,
+    });
+    const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+
+    new RTCPeerConnection().addTrack(sourceTrack);
+    postCameraBubbleMessage({ durationMs: 2_000, kind: "show", text: "video frame" });
+    frameCallbacks.at(-1)?.(1_000, {});
+
+    expect(canvasContexts[0].fillText).toHaveBeenCalledWith(
+      "video frame",
+      expect.any(Number),
+      expect.any(Number),
+    );
+    expect(requestVideoFrameCallback).toHaveBeenCalled();
   });
 
   it("mirrors own textarea chat messages into the overlay without IPC", () => {
@@ -647,6 +826,42 @@ describe("installCameraBubbleHook", () => {
     dispatchEnter(textArea);
 
     expect(overlayWithText("second")).toBeDefined();
+  });
+
+  it("ignores chat mirror handler exceptions", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const textArea = document.createElement("textarea");
+    Object.defineProperty(textArea, "value", {
+      configurable: true,
+      get: () => {
+        throw new Error("textarea unavailable");
+      },
+    });
+    document.body.append(textArea);
+
+    expect(() => dispatchEnter(textArea)).not.toThrow();
+  });
+
+  it("continues installing when the chat mirror listener cannot be registered", () => {
+    const originalAddEventListener = document.addEventListener;
+    Object.defineProperty(document, "addEventListener", {
+      configurable: true,
+      value: vi.fn(() => {
+        throw new Error("listener denied");
+      }),
+    });
+
+    try {
+      expect(() =>
+        installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce),
+      ).not.toThrow();
+    } finally {
+      Object.defineProperty(document, "addEventListener", {
+        configurable: true,
+        value: originalAddEventListener,
+      });
+    }
   });
 
   it("falls back instead of anchoring to a weak non-pipeline video candidate", () => {

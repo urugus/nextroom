@@ -47,4 +47,69 @@ describe("createGoogleCalendarClient", () => {
       "Google Calendar API failed: Request had invalid authentication credentials.",
     );
   });
+
+  it("defaults missing items to an empty event list", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response(JSON.stringify({}))));
+    const client = createGoogleCalendarClient(fetchImpl);
+
+    const result = await client.listUpcomingEvents(
+      "access-token",
+      new Date("2026-05-29T00:00:00Z"),
+    );
+
+    expect(result._unsafeUnwrap()).toEqual([]);
+  });
+
+  it("uses Google error status and raw bodies when no message is available", async () => {
+    const statusFetch = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ error: { status: "UNAVAILABLE" } }), {
+          status: 503,
+        }),
+      ),
+    );
+    const rawFetch = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response(JSON.stringify(["unexpected"]), { status: 500 })),
+    );
+
+    const statusResult = await createGoogleCalendarClient(statusFetch).listUpcomingEvents(
+      "access-token",
+      new Date("2026-05-29T00:00:00Z"),
+    );
+    const rawResult = await createGoogleCalendarClient(rawFetch).listUpcomingEvents(
+      "access-token",
+      new Date("2026-05-29T00:00:00Z"),
+    );
+
+    expect(appErrorMessage(statusResult._unsafeUnwrapErr())).toBe(
+      "Google Calendar API failed: UNAVAILABLE",
+    );
+    expect(rawResult._unsafeUnwrapErr()).toMatchObject({
+      cause: ["unexpected"],
+      status: 500,
+      type: "CalendarApiFailed",
+    });
+  });
+
+  it("maps invalid success payloads and thrown fetch errors", async () => {
+    const invalidFetch = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response(JSON.stringify({ items: "not-array" }))),
+    );
+    const throwingFetch = vi.fn<typeof fetch>(() => Promise.reject(new Error("network down")));
+
+    const invalidResult = await createGoogleCalendarClient(invalidFetch).listUpcomingEvents(
+      "access-token",
+      new Date("2026-05-29T00:00:00Z"),
+    );
+    const thrownResult = await createGoogleCalendarClient(throwingFetch).listUpcomingEvents(
+      "access-token",
+      new Date("2026-05-29T00:00:00Z"),
+    );
+
+    expect(invalidResult._unsafeUnwrapErr()).toMatchObject({ type: "CalendarApiFailed" });
+    expect(thrownResult._unsafeUnwrapErr()).toMatchObject({
+      cause: new Error("network down"),
+      type: "CalendarApiFailed",
+    });
+  });
 });

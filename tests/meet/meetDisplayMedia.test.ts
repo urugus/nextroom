@@ -31,6 +31,13 @@ const windowSource: CapturableScreenShareSource = {
   thumbnail: createImage("data:image/png;base64,window"),
 };
 
+const windowSourceWithoutIcon: CapturableScreenShareSource = {
+  appIcon: createImage("data:image/png;base64,empty-icon", true),
+  id: "window:13:0",
+  name: "Empty icon",
+  thumbnail: createImage("data:image/png;base64,empty-window"),
+};
+
 const createRequest = (overrides: Partial<DisplayMediaRequest> = {}): DisplayMediaRequest => ({
   audioRequested: false,
   frame: null,
@@ -80,6 +87,24 @@ describe("handleMeetDisplayMediaRequest", () => {
         name: "Notes",
       },
     });
+  });
+
+  it("omits empty app icons from window sources", async () => {
+    const input = createInput({
+      getSources: vi.fn(async () => [windowSourceWithoutIcon]),
+    });
+
+    await handleMeetDisplayMediaRequest(createRequest(), input);
+
+    expect(input.chooseSource).toHaveBeenCalledWith([
+      {
+        appIconDataUrl: undefined,
+        id: "window:13:0",
+        kind: "window",
+        name: "Empty icon",
+        thumbnailDataUrl: "data:image/png;base64,empty-window",
+      },
+    ]);
   });
 
   it("ignores audio requests and returns only video", async () => {
@@ -139,6 +164,15 @@ describe("handleMeetDisplayMediaRequest", () => {
     expect(notifyScreenAccessDenied).toHaveBeenCalledTimes(2);
     expect(deniedInput.getSources).not.toHaveBeenCalled();
     expect(restrictedInput.getSources).not.toHaveBeenCalled();
+  });
+
+  it("denies restricted access when no notification callback is provided", async () => {
+    const input = createInput({
+      getScreenAccessStatus: vi.fn((): ScreenAccessStatus => "restricted"),
+      notifyScreenAccessDenied: undefined,
+    });
+
+    await expect(handleMeetDisplayMediaRequest(createRequest(), input)).resolves.toEqual({});
   });
 
   it("denies requests when source listing fails or is empty", async () => {
@@ -208,6 +242,30 @@ describe("configureMeetDisplayMediaHandler", () => {
           name: "Entire Screen",
         },
       });
+    });
+  });
+
+  it("denies through the registered handler when processing throws", async () => {
+    let registeredHandler: DisplayMediaRequestHandler | undefined;
+    const meetSession = {
+      setDisplayMediaRequestHandler: vi.fn((handler) => {
+        registeredHandler = handler;
+      }),
+    } satisfies Pick<Session, "setDisplayMediaRequestHandler">;
+    configureMeetDisplayMediaHandler({
+      meetSession,
+      ...createInput({
+        chooseSource: vi.fn(async () => {
+          throw new Error("picker failed");
+        }),
+      }),
+    });
+    const callback = vi.fn();
+
+    registeredHandler?.(createRequest(), callback);
+
+    await vi.waitFor(() => {
+      expect(callback).toHaveBeenCalledWith({});
     });
   });
 });

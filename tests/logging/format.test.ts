@@ -70,6 +70,32 @@ describe("formatLogEntry", () => {
     expect(Buffer.byteLength(line, "utf8")).toBeLessThanOrEqual(8 * 1024);
     expect(parsed.message.endsWith("…[truncated]")).toBe(true);
   });
+
+  it("falls back when oversized scopes leave no room for messages", () => {
+    const line = formatLogEntry({
+      ts: "2026-06-12T00:00:00.000Z",
+      level: "error",
+      scope: "main.".repeat(2_000),
+      message: "x".repeat(20_000),
+    });
+    const parsed = JSON.parse(line) as { message: string };
+
+    expect(parsed.message).toBe("…[truncated]");
+  });
+
+  it("truncates both data and message when metadata is too large", () => {
+    const line = formatLogEntry({
+      ts: "2026-06-12T00:00:00.000Z",
+      level: "error",
+      scope: "main.".repeat(2_000),
+      message: "x".repeat(20_000),
+      data: { text: "y".repeat(20_000) },
+    });
+    const parsed = JSON.parse(line) as { data: string; message: string };
+
+    expect(parsed.data.endsWith("…[truncated]")).toBe(true);
+    expect(parsed.message.endsWith("…[truncated]")).toBe(true);
+  });
 });
 
 describe("parseLogLevel", () => {

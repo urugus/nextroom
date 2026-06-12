@@ -316,6 +316,93 @@ describe("createMenuBarController", () => {
     });
   });
 
+  it("reports rejected tray actions for meetings, updates, and sync", async () => {
+    const reportError = vi.fn();
+    const menus: MenuItemConstructorOptions[][] = [];
+    const controller = createMenuBarController({
+      buildMenuFromTemplate: (template) => {
+        menus.push(template);
+        return template as unknown as Menu;
+      },
+      createTray: vi.fn(
+        () =>
+          ({
+            popUpContextMenu: vi.fn(),
+            setContextMenu: vi.fn(),
+            setToolTip: vi.fn(),
+          }) as unknown as Tray,
+      ),
+      icon: "icon" as unknown as NativeImage,
+      openMeetUrl: vi.fn(() => Promise.reject(new Error("open rejected"))),
+      quitApp: vi.fn(),
+      reportError,
+      runUpdate: vi.fn(() => Promise.reject(new Error("update rejected"))),
+      showSettingsWindow: vi.fn(),
+      syncNow: vi.fn(() => Promise.reject(new Error("sync rejected"))),
+    });
+
+    controller.updateMeetings({ meetings: [meeting] });
+    controller.updateUpdateStatus(updateAvailable);
+    const latestMenu = menus.at(-1) ?? [];
+
+    clickItem(
+      latestMenu.find((item) => item.label === "10:00 Product sync") as MenuItemConstructorOptions,
+    );
+    clickItem(latestMenu.find((item) => item.label === "Update") as MenuItemConstructorOptions);
+    clickItem(latestMenu.find((item) => item.label === "Sync Now") as MenuItemConstructorOptions);
+
+    await vi.waitFor(() => {
+      expect(reportError).toHaveBeenCalledWith(
+        "Failed to open Meet from the menu bar.",
+        new Error("open rejected"),
+      );
+      expect(reportError).toHaveBeenCalledWith(
+        "Failed to update from the menu bar.",
+        new Error("update rejected"),
+      );
+      expect(reportError).toHaveBeenCalledWith(
+        "Failed to sync Calendar from the menu bar.",
+        new Error("sync rejected"),
+      );
+    });
+  });
+
+  it("reports update result failures from tray actions", async () => {
+    const reportError = vi.fn();
+    const menus: MenuItemConstructorOptions[][] = [];
+    const updateError: AppError = { type: "UpdateFailed", cause: "update failed" };
+    const controller = createMenuBarController({
+      buildMenuFromTemplate: (template) => {
+        menus.push(template);
+        return template as unknown as Menu;
+      },
+      createTray: vi.fn(
+        () =>
+          ({
+            popUpContextMenu: vi.fn(),
+            setContextMenu: vi.fn(),
+            setToolTip: vi.fn(),
+          }) as unknown as Tray,
+      ),
+      icon: "icon" as unknown as NativeImage,
+      openMeetUrl: vi.fn(() => Promise.resolve(ok(undefined))),
+      quitApp: vi.fn(),
+      reportError,
+      runUpdate: vi.fn(() => Promise.resolve(err(updateError))),
+      showSettingsWindow: vi.fn(),
+      syncNow: vi.fn(() => Promise.resolve(ok({ meetings: [] }))),
+    });
+
+    controller.updateUpdateStatus(updateAvailable);
+    clickItem(
+      (menus.at(-1) ?? []).find((item) => item.label === "Update") as MenuItemConstructorOptions,
+    );
+
+    await vi.waitFor(() => {
+      expect(reportError).toHaveBeenCalledWith("Failed to update from the menu bar.", updateError);
+    });
+  });
+
   it("rebuilds the tray menu when update status changes", () => {
     const menus: MenuItemConstructorOptions[][] = [];
     const controller = createMenuBarController({

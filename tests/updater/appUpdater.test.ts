@@ -6,6 +6,7 @@ type AppUpdaterTestContext = {
   accessMock: ReturnType<typeof vi.fn>;
   autoUpdaterMock: {
     checkForUpdates: ReturnType<typeof vi.fn>;
+    on: ReturnType<typeof vi.fn>;
   };
   autoUpdaterHandlers: Map<string, AutoUpdaterHandler>;
   closeSyncMock: ReturnType<typeof vi.fn>;
@@ -23,6 +24,7 @@ const createAppUpdaterTestContext = async (
   accessImpl: (path: string) => Promise<void> = () => Promise.resolve(),
   storedUpdateCheckState?: unknown,
   checkForUpdatesImpl: () => Promise<void> = () => Promise.resolve(),
+  options: { isPackaged?: boolean } = {},
 ): Promise<AppUpdaterTestContext> => {
   vi.resetModules();
 
@@ -34,7 +36,7 @@ const createAppUpdaterTestContext = async (
       return `/mock/${name}`;
     }),
     getVersion: vi.fn(() => "0.1.3"),
-    isPackaged: true,
+    isPackaged: options.isPackaged ?? true,
   };
   const browserWindowMock = {
     getAllWindows: vi.fn(() => [{ webContents: { send: sendMock } }]),
@@ -171,6 +173,108 @@ const prepareAvailableUpdate = (context: AppUpdaterTestContext) => {
 };
 
 describe("appUpdater Homebrew updates", () => {
+  it("returns the unsupported status without running Homebrew outside packaged builds", async () => {
+    const context = await createAppUpdaterTestContext(
+      () => Promise.resolve(),
+      undefined,
+      () => Promise.resolve(),
+      { isPackaged: false },
+    );
+
+    const result = await context.module.runHomebrewAppUpdate();
+
+    expect(result._unsafeUnwrap()).toMatchObject({
+      canCheck: false,
+      canRunHomebrewUpdate: false,
+      status: "unsupported",
+    });
+    expect(context.accessMock).not.toHaveBeenCalled();
+    expect(context.execFileMock).not.toHaveBeenCalled();
+    expect(context.spawnMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects Homebrew updates when no update is available or the target version is missing", async () => {
+    const notAvailableContext = await createAppUpdaterTestContext();
+
+    expect((await notAvailableContext.module.runHomebrewAppUpdate())._unsafeUnwrapErr()).toEqual({
+      cause: "No Homebrew update is ready to run.",
+      type: "UpdateFailed",
+    });
+
+    const missingVersionContext = await createAppUpdaterTestContext();
+    missingVersionContext.module.configureAppUpdater();
+    missingVersionContext.autoUpdaterHandlers.get("update-available")?.({});
+
+    expect((await missingVersionContext.module.runHomebrewAppUpdate())._unsafeUnwrapErr()).toEqual({
+      cause: "No target Homebrew update version is available.",
+      type: "UpdateFailed",
+    });
+  });
+
+  it("publishes an error when Homebrew is not installed in a known path", async () => {
+    const context = await createAppUpdaterTestContext(() => Promise.reject(new Error("not found")));
+    prepareAvailableUpdate(context);
+
+    const result = await context.module.runHomebrewAppUpdate();
+
+    expect(result._unsafeUnwrapErr()).toEqual({
+      cause: "Homebrew was not found. Install NextRoom with Homebrew first.",
+      type: "UpdateFailed",
+    });
+    expect(context.accessMock).toHaveBeenCalledWith("/opt/homebrew/bin/brew");
+    expect(context.accessMock).toHaveBeenCalledWith("/usr/local/bin/brew");
+    expect(context.module.getAppUpdateStatus()).toMatchObject({
+      errorMessage: "Homebrew was not found. Install NextRoom with Homebrew first.",
+      status: "error",
+    });
+  });
+
+  it("uses the Intel Homebrew path when the Apple Silicon path is unavailable", async () => {
+    const context = await createAppUpdaterTestContext((path) =>
+      path === "/opt/homebrew/bin/brew" ? Promise.reject(new Error("missing")) : Promise.resolve(),
+    );
+    prepareAvailableUpdate(context);
+
+    const result = await context.module.runHomebrewAppUpdate();
+
+    expect(result.isOk()).toBe(true);
+    expect(context.execFileMock).toHaveBeenNthCalledWith(
+      1,
+      "/usr/local/bin/brew",
+      ["help", "trust"],
+      expect.any(Object),
+      expect.any(Function),
+    );
+  });
+
+  it("maps Homebrew command output into the status error message", async () => {
+    const context = await createAppUpdaterTestContext();
+    context.execFileMock.mockImplementation(
+      (
+        _file: string,
+        args: string[],
+        _options: unknown,
+        callback: (error: Error | null) => void,
+      ) => {
+        if (args.join(" ") === "list --cask nextroom") {
+          callback(Object.assign(new Error("list failed"), { stderr: "Cask is not installed\n" }));
+          return;
+        }
+
+        callback(null);
+      },
+    );
+    prepareAvailableUpdate(context);
+
+    const result = await context.module.runHomebrewAppUpdate();
+
+    expect(result._unsafeUnwrapErr()).toMatchObject({ type: "UpdateFailed" });
+    expect(context.module.getAppUpdateStatus()).toMatchObject({
+      errorMessage: "Cask is not installed",
+      status: "error",
+    });
+  });
+
   it("starts the detached Homebrew update with stable appdir, log path, and env", async () => {
     const context = await createAppUpdaterTestContext();
     prepareAvailableUpdate(context);
@@ -319,6 +423,19 @@ describe("appUpdater Homebrew updates", () => {
     );
   });
 
+  it("publishes an error when the detached update process emits an error", async () => {
+    const context = await createAppUpdaterTestContext();
+    prepareAvailableUpdate(context);
+    await context.module.runHomebrewAppUpdate();
+
+    context.spawnHandlers.get("error")?.(new Error("spawn failed"));
+
+    expect(context.module.getAppUpdateStatus()).toMatchObject({
+      errorMessage: "spawn failed",
+      status: "error",
+    });
+  });
+
   it("publishes an error with the Homebrew log path when the detached update fails", async () => {
     const context = await createAppUpdaterTestContext();
     prepareAvailableUpdate(context);
@@ -357,6 +474,49 @@ describe("appUpdater Homebrew updates", () => {
 });
 
 describe("appUpdater daily update checks", () => {
+  it("returns unsupported status without checking outside packaged builds", async () => {
+    const context = await createAppUpdaterTestContext(
+      () => Promise.resolve(),
+      undefined,
+      () => Promise.resolve(),
+      { isPackaged: false },
+    );
+
+    expect((await context.module.checkForAppUpdates())._unsafeUnwrap()).toMatchObject({
+      status: "unsupported",
+    });
+    expect((await context.module.checkForAppUpdatesIfDue())._unsafeUnwrap()).toMatchObject({
+      status: "unsupported",
+    });
+    expect(context.autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled();
+  });
+
+  it("ignores invalid stored update check state", async () => {
+    const context = await createAppUpdaterTestContext(() => Promise.resolve(), {
+      lastCheckedAt: 123,
+      lastCheckedLocalDate: "2026-06-02",
+    });
+
+    await context.module.checkForAppUpdatesIfDue(new Date(2026, 5, 2, 18));
+
+    expect(context.autoUpdaterMock.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps update check status when recording the check cannot be written", async () => {
+    const context = await createAppUpdaterTestContext();
+    context.writeFileSyncMock.mockImplementation(() => {
+      throw new Error("disk full");
+    });
+    const checkedAt = new Date(2026, 5, 2, 9);
+
+    const result = await context.module.checkForAppUpdatesIfDue(checkedAt);
+
+    expect(result.isOk()).toBe(true);
+    expect(context.module.getAppUpdateStatus()).toMatchObject({
+      lastCheckedAt: checkedAt.toISOString(),
+    });
+  });
+
   it("runs an automatic update check when no check has been recorded today", async () => {
     const context = await createAppUpdaterTestContext();
     const checkedAt = new Date(2026, 5, 2, 9);
@@ -453,5 +613,63 @@ describe("appUpdater daily update checks", () => {
         throw new Error("listener failed");
       });
     }).not.toThrow();
+
+    expect((await context.module.checkForAppUpdates()).isOk()).toBe(true);
+  });
+
+  it("removes status subscribers when unsubscribed", async () => {
+    const context = await createAppUpdaterTestContext();
+    const listener = vi.fn();
+    const unsubscribe = context.module.subscribeAppUpdateStatus(listener);
+    listener.mockClear();
+
+    unsubscribe();
+    await context.module.checkForAppUpdates();
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("publishes configured autoUpdater event states and ignores repeated configuration", async () => {
+    const context = await createAppUpdaterTestContext();
+
+    context.module.configureAppUpdater();
+    context.module.configureAppUpdater();
+    context.autoUpdaterHandlers.get("checking-for-update")?.();
+    expect(context.module.getAppUpdateStatus()).toMatchObject({ status: "checking" });
+
+    context.autoUpdaterHandlers.get("update-not-available")?.();
+    expect(context.module.getAppUpdateStatus()).toMatchObject({ status: "not-available" });
+
+    context.autoUpdaterHandlers.get("error")?.(
+      new Error("Unable to find latest version on GitHub"),
+    );
+    expect(context.module.getAppUpdateStatus()).toMatchObject({
+      errorMessage: "No compatible GitHub release metadata was found.",
+      status: "error",
+    });
+    expect(context.autoUpdaterMock.on).toHaveBeenCalledTimes(4);
+  });
+
+  it("normalizes update metadata and empty update errors", async () => {
+    const metadataContext = await createAppUpdaterTestContext(
+      () => Promise.resolve(),
+      undefined,
+      () => Promise.reject(new Error("app-update.yml missing")),
+    );
+    const emptyContext = await createAppUpdaterTestContext(
+      () => Promise.resolve(),
+      undefined,
+      () => Promise.reject(""),
+    );
+
+    await metadataContext.module.checkForAppUpdates();
+    await emptyContext.module.checkForAppUpdates();
+
+    expect(metadataContext.module.getAppUpdateStatus()).toMatchObject({
+      errorMessage: "Update metadata is missing from this build.",
+    });
+    expect(emptyContext.module.getAppUpdateStatus()).toMatchObject({
+      errorMessage: "Update check failed.",
+    });
   });
 });

@@ -132,4 +132,66 @@ describe("createOAuthClient", () => {
       "Google token refresh failed: Token has been expired or revoked.",
     );
   });
+
+  it("maps invalid token responses into OAuthFailed", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response(JSON.stringify({ access_token: "access-token" }))),
+    );
+    const client = createOAuthClient(fetchImpl);
+
+    const result = await client.exchangeAuthorizationCode({
+      clientId: "client-id",
+      code: "code",
+      codeVerifier: "verifier",
+      redirectUri: "http://127.0.0.1:1234/oauth/callback",
+    });
+
+    expect(result._unsafeUnwrapErr()).toMatchObject({ type: "OAuthFailed" });
+    expect(appErrorMessage(result._unsafeUnwrapErr())).toContain("Google authorization failed:");
+  });
+
+  it("uses OAuth error codes when token errors omit a description", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response(JSON.stringify({ error: "invalid_client" }), { status: 401 })),
+    );
+    const client = createOAuthClient(fetchImpl);
+
+    const result = await client.refreshAccessToken({
+      clientId: "client-id",
+      refreshToken: "refresh-token",
+    });
+
+    expect(result._unsafeUnwrapErr()).toMatchObject({
+      cause: {
+        message: "invalid_client",
+        oauthError: "invalid_client",
+        status: 401,
+      },
+      type: "TokenRefreshFailed",
+    });
+  });
+
+  it("preserves raw token error bodies and thrown fetch errors", async () => {
+    const rawErrorFetch = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response(JSON.stringify(["invalid"]), { status: 500 })),
+    );
+    const throwingFetch = vi.fn<typeof fetch>(() => Promise.reject(new Error("network down")));
+
+    const rawResult = await createOAuthClient(rawErrorFetch).exchangeAuthorizationCode({
+      clientId: "client-id",
+      code: "code",
+      codeVerifier: "verifier",
+      redirectUri: "http://127.0.0.1:1234/oauth/callback",
+    });
+    const thrownResult = await createOAuthClient(throwingFetch).refreshAccessToken({
+      clientId: "client-id",
+      refreshToken: "refresh-token",
+    });
+
+    expect(rawResult._unsafeUnwrapErr()).toMatchObject({ type: "OAuthFailed" });
+    expect(thrownResult._unsafeUnwrapErr()).toMatchObject({
+      cause: new Error("network down"),
+      type: "TokenRefreshFailed",
+    });
+  });
 });

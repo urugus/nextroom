@@ -48,6 +48,41 @@ const createReceiverMock = (
 };
 
 describe("createGoogleAuthService", () => {
+  it("rejects connect and refresh when the client id is missing", async () => {
+    const tokenStore = createTokenStoreMock();
+    const oauthClient = createOAuthClientMock();
+    const logger = {
+      child: vi.fn(),
+      debug: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    logger.child.mockReturnValue(logger);
+    const service = createGoogleAuthService({
+      clientId: "",
+      logger,
+      oauthClient,
+      openExternal: vi.fn(),
+      tokenStore,
+    });
+
+    expect((await service.connect())._unsafeUnwrapErr()).toEqual({
+      cause: "NEXTROOM_GOOGLE_CLIENT_ID is not configured.",
+      type: "OAuthFailed",
+    });
+    expect((await service.getAccessToken())._unsafeUnwrapErr()).toEqual({
+      cause: "NEXTROOM_GOOGLE_CLIENT_ID is not configured.",
+      type: "OAuthFailed",
+    });
+    expect(logger.error).toHaveBeenCalledWith("connect failed", {
+      error: {
+        cause: "NEXTROOM_GOOGLE_CLIENT_ID is not configured.",
+        type: "OAuthFailed",
+      },
+    });
+  });
+
   it("returns a cached access token without reading the token store again", async () => {
     let now = 0;
     const tokenStore = createTokenStoreMock({
@@ -72,6 +107,30 @@ describe("createGoogleAuthService", () => {
     expect(oauthClient.refreshAccessToken).toHaveBeenCalledTimes(1);
   });
 
+  it("uses Date.now by default when checking the cached access token", async () => {
+    const tokenStore = createTokenStoreMock({
+      getRefreshToken: vi.fn(() => okAsync<string | null, AppError>("refresh-token")),
+    });
+    const oauthClient = createOAuthClientMock({
+      refreshAccessToken: vi.fn(() =>
+        okAsync<TokenSet, AppError>({
+          accessToken: "default-clock-token",
+          expiresAt: Date.now() + 120_000,
+        }),
+      ),
+    });
+    const service = createGoogleAuthService({
+      clientId: "client-id",
+      oauthClient,
+      openExternal: vi.fn(),
+      tokenStore,
+    });
+
+    expect((await service.getAccessToken())._unsafeUnwrap()).toBe("default-clock-token");
+    expect((await service.getAccessToken())._unsafeUnwrap()).toBe("default-clock-token");
+    expect(oauthClient.refreshAccessToken).toHaveBeenCalledTimes(1);
+  });
+
   it("returns null when no refresh token is stored", async () => {
     const tokenStore = createTokenStoreMock();
     const oauthClient = createOAuthClientMock();
@@ -86,6 +145,35 @@ describe("createGoogleAuthService", () => {
 
     expect(result._unsafeUnwrap()).toBeNull();
     expect(oauthClient.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("refreshes again when a cached access token is near expiry", async () => {
+    let now = 0;
+    const tokenStore = createTokenStoreMock({
+      getRefreshToken: vi.fn(() => okAsync<string | null, AppError>("refresh-token")),
+    });
+    const oauthClient = createOAuthClientMock({
+      refreshAccessToken: vi
+        .fn()
+        .mockReturnValueOnce(
+          okAsync<TokenSet, AppError>({ accessToken: "first", expiresAt: 61_001 }),
+        )
+        .mockReturnValueOnce(
+          okAsync<TokenSet, AppError>({ accessToken: "second", expiresAt: 180_000 }),
+        ),
+    });
+    const service = createGoogleAuthService({
+      clientId: "client-id",
+      oauthClient,
+      openExternal: vi.fn(),
+      tokenStore,
+      now: () => now,
+    });
+
+    expect((await service.getAccessToken())._unsafeUnwrap()).toBe("first");
+    now = 2_000;
+    expect((await service.getAccessToken())._unsafeUnwrap()).toBe("second");
+    expect(oauthClient.refreshAccessToken).toHaveBeenCalledTimes(2);
   });
 
   it("clears the stored refresh token when Google reports invalid_grant", async () => {
@@ -139,6 +227,30 @@ describe("createGoogleAuthService", () => {
     expect(tokenStore.clearRefreshToken).toHaveBeenCalledTimes(1);
   });
 
+  it("does not clear stored tokens for refresh failures other than invalid_grant", async () => {
+    const refreshError: AppError = {
+      type: "TokenRefreshFailed",
+      cause: { oauthError: "temporarily_unavailable" },
+    };
+    const tokenStore = createTokenStoreMock({
+      getRefreshToken: vi.fn(() => okAsync<string | null, AppError>("refresh-token")),
+    });
+    const oauthClient = createOAuthClientMock({
+      refreshAccessToken: vi.fn(() => errAsync<TokenSet, AppError>(refreshError)),
+    });
+    const service = createGoogleAuthService({
+      clientId: "client-id",
+      oauthClient,
+      openExternal: vi.fn(),
+      tokenStore,
+    });
+
+    const result = await service.getAccessToken();
+
+    expect(result._unsafeUnwrapErr()).toBe(refreshError);
+    expect(tokenStore.clearRefreshToken).not.toHaveBeenCalled();
+  });
+
   it("stores the refresh token and closes the receiver after a successful connection", async () => {
     const { createCallbackReceiver, receiver } = createReceiverMock();
     const tokenStore = createTokenStoreMock();
@@ -155,6 +267,46 @@ describe("createGoogleAuthService", () => {
 
     expect(result.isOk()).toBe(true);
     expect(tokenStore.setRefreshToken).toHaveBeenCalledWith("refresh-token");
+    expect(receiver.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a receiver creation error before opening the browser", async () => {
+    const receiverError: AppError = { type: "OAuthFailed", cause: "listen failed" };
+    const tokenStore = createTokenStoreMock();
+    const oauthClient = createOAuthClientMock();
+    const openExternal = vi.fn();
+    const service = createGoogleAuthService({
+      clientId: "client-id",
+      createCallbackReceiver: vi.fn(() => errAsync<OAuthCallbackReceiver, AppError>(receiverError)),
+      oauthClient,
+      openExternal,
+      tokenStore,
+    });
+
+    const result = await service.connect();
+
+    expect(result._unsafeUnwrapErr()).toBe(receiverError);
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it("converts browser cancellation to an OAuth error and closes the receiver", async () => {
+    const { createCallbackReceiver, receiver } = createReceiverMock();
+    const tokenStore = createTokenStoreMock();
+    const oauthClient = createOAuthClientMock();
+    const service = createGoogleAuthService({
+      clientId: "client-id",
+      createCallbackReceiver,
+      oauthClient,
+      openExternal: vi.fn(() => Promise.resolve(false)),
+      tokenStore,
+    });
+
+    const result = await service.connect();
+
+    expect(result._unsafeUnwrapErr()).toEqual({
+      cause: "Could not open system browser.",
+      type: "OAuthFailed",
+    });
     expect(receiver.close).toHaveBeenCalledTimes(1);
   });
 
@@ -219,6 +371,28 @@ describe("createGoogleAuthService", () => {
     expect(receiver.close).toHaveBeenCalledTimes(1);
   });
 
+  it("closes the receiver when storing the refresh token fails", async () => {
+    const { createCallbackReceiver, receiver } = createReceiverMock();
+    const tokenStore = createTokenStoreMock({
+      setRefreshToken: vi.fn(() =>
+        errAsync<void, AppError>({ type: "KeychainUnavailable", cause: "write failed" }),
+      ),
+    });
+    const oauthClient = createOAuthClientMock();
+    const service = createGoogleAuthService({
+      clientId: "client-id",
+      createCallbackReceiver,
+      oauthClient,
+      openExternal: vi.fn(() => Promise.resolve(true)),
+      tokenStore,
+    });
+
+    const result = await service.connect();
+
+    expect(result._unsafeUnwrapErr()).toMatchObject({ type: "KeychainUnavailable" });
+    expect(receiver.close).toHaveBeenCalledTimes(1);
+  });
+
   it("closes the receiver when the callback returns an error", async () => {
     const { createCallbackReceiver, receiver } = createReceiverMock(
       vi.fn(() =>
@@ -240,5 +414,29 @@ describe("createGoogleAuthService", () => {
     expect(result._unsafeUnwrapErr()).toMatchObject({ type: "OAuthDenied" });
     expect(oauthClient.exchangeAuthorizationCode).not.toHaveBeenCalled();
     expect(receiver.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("disconnects and reports connection status through the token store", async () => {
+    const tokenStore = createTokenStoreMock({
+      getRefreshToken: vi
+        .fn()
+        .mockReturnValueOnce(okAsync<string | null, AppError>("refresh-token"))
+        .mockReturnValueOnce(
+          errAsync<string | null, AppError>({ type: "KeychainUnavailable", cause: "read failed" }),
+        ),
+    });
+    const service = createGoogleAuthService({
+      clientId: "client-id",
+      oauthClient: createOAuthClientMock(),
+      openExternal: vi.fn(),
+      tokenStore,
+    });
+
+    expect((await service.isConnected())._unsafeUnwrap()).toBe(true);
+    expect((await service.isConnected())._unsafeUnwrapErr()).toMatchObject({
+      type: "KeychainUnavailable",
+    });
+    expect((await service.disconnect()).isOk()).toBe(true);
+    expect(tokenStore.clearRefreshToken).toHaveBeenCalledTimes(1);
   });
 });
