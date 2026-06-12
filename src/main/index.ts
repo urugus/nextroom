@@ -473,13 +473,15 @@ const meetShellHtml = (): string => `<!doctype html>
       <button type="button" id="update-button">Update</button>
     </div>
     <aside id="bubble-sidebar">
-      <h1>Camera bubble</h1>
+      <h1 id="bubble-sidebar-title">Camera bubble</h1>
       <input
         type="text"
         id="bubble-input"
         placeholder="Type text to show on your camera…"
+        aria-labelledby="bubble-sidebar-title"
+        aria-describedby="bubble-sidebar-hint"
       >
-      <p>Press Enter to send. The text appears on your camera for a few seconds.</p>
+      <p id="bubble-sidebar-hint">Press Enter to send. The text appears on your camera for a few seconds.</p>
     </aside>
   </body>
 </html>`;
