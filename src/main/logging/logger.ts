@@ -25,6 +25,10 @@ type LoggerState = {
   maxBytes: number;
 };
 
+type LazyLoggerState = {
+  logger?: Logger;
+};
+
 const defaultMaxBytes = 5 * 1024 * 1024;
 const defaultFileName = "main.log";
 
@@ -105,6 +109,56 @@ export const createLogger = ({
 
   return createScopedLogger(state, "main");
 };
+
+const resolveLazyLogger = (factory: () => Logger, state: LazyLoggerState): Logger | undefined => {
+  if (state.logger !== undefined) return state.logger;
+
+  try {
+    const logger = factory();
+    state.logger = logger;
+    return logger;
+  } catch {
+    return undefined;
+  }
+};
+
+const applyLazyScopes = (logger: Logger, scopes: readonly string[]): Logger =>
+  scopes.reduce((scopedLogger, scope) => scopedLogger.child(scope), logger);
+
+const runLazyLogger = (
+  factory: () => Logger,
+  state: LazyLoggerState,
+  scopes: readonly string[],
+  operation: (logger: Logger) => void,
+): void => {
+  try {
+    const logger = resolveLazyLogger(factory, state);
+    if (logger === undefined) return;
+
+    operation(applyLazyScopes(logger, scopes));
+  } catch {
+    // Logging must never affect application behavior.
+  }
+};
+
+const createLazyScopedLogger = (
+  factory: () => Logger,
+  state: LazyLoggerState,
+  scopes: readonly string[],
+): Logger => ({
+  debug: (message, data) =>
+    runLazyLogger(factory, state, scopes, (logger) => logger.debug(message, data)),
+  info: (message, data) =>
+    runLazyLogger(factory, state, scopes, (logger) => logger.info(message, data)),
+  warn: (message, data) =>
+    runLazyLogger(factory, state, scopes, (logger) => logger.warn(message, data)),
+  error: (message, data) =>
+    runLazyLogger(factory, state, scopes, (logger) => logger.error(message, data)),
+  child: (scope) => createLazyScopedLogger(factory, state, [...scopes, scope]),
+});
+
+export const createLazyLogger = (factory: () => Logger): Logger =>
+  createLazyScopedLogger(factory, {}, []);
 
 export const noopLogger: Logger = {
   debug: () => undefined,

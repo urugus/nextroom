@@ -1,8 +1,8 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createLogger, noopLogger } from "@main/logging/logger";
-import { afterEach, describe, expect, it } from "vitest";
+import { createLazyLogger, createLogger, noopLogger } from "@main/logging/logger";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const tempDirs: string[] = [];
 
@@ -97,5 +97,59 @@ describe("createLogger", () => {
       noopLogger.info("ignored");
     }).not.toThrow();
     expect(existsSync(join(dir, "main.log"))).toBe(false);
+  });
+});
+
+describe("createLazyLogger", () => {
+  it("drops failed initialization logs and retries until the factory succeeds", () => {
+    const dir = createTempDir();
+    const factory = vi
+      .fn<() => ReturnType<typeof createLogger>>()
+      .mockImplementationOnce(() => {
+        throw new Error("not ready");
+      })
+      .mockImplementationOnce(() => {
+        throw new Error("still not ready");
+      })
+      .mockImplementation(() => createLogger({ dir, level: "debug" }));
+    const logger = createLazyLogger(factory);
+
+    expect(() => {
+      logger.info("dropped first");
+      logger.warn("dropped second");
+      logger.error("kept third");
+    }).not.toThrow();
+
+    expect(factory).toHaveBeenCalledTimes(3);
+    const entries = readJsonLines(join(dir, "main.log")) as Array<{ message: string }>;
+    expect(entries).toMatchObject([{ message: "kept third" }]);
+  });
+
+  it("memoizes the logger after the factory succeeds", () => {
+    const dir = createTempDir();
+    const factory = vi.fn(() => createLogger({ dir, level: "debug" }));
+    const logger = createLazyLogger(factory);
+
+    logger.info("first");
+    logger.info("second");
+
+    expect(factory).toHaveBeenCalledTimes(1);
+    const entries = readJsonLines(join(dir, "main.log")) as Array<{ message: string }>;
+    expect(entries).toMatchObject([{ message: "first" }, { message: "second" }]);
+  });
+
+  it("keeps child scopes created before the factory succeeds", () => {
+    const dir = createTempDir();
+    const factory = vi.fn(() => createLogger({ dir, level: "debug" }));
+    const logger = createLazyLogger(factory);
+    const childLogger = logger.child("calendar").child("sync");
+
+    childLogger.info("scoped");
+
+    const entries = readJsonLines(join(dir, "main.log")) as Array<{
+      message: string;
+      scope: string;
+    }>;
+    expect(entries).toMatchObject([{ message: "scoped", scope: "main.calendar.sync" }]);
   });
 });

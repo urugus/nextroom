@@ -8,7 +8,7 @@ import { createCalendarSyncService } from "@main/calendar/calendarSyncService";
 import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
 import { createIpcSenderGuard, type IpcSenderGuard } from "@main/ipc/senderGuard";
 import { parseLogLevel } from "@main/logging/format";
-import { createLogger, type Logger, noopLogger } from "@main/logging/logger";
+import { createLazyLogger, createLogger, type Logger } from "@main/logging/logger";
 import { createBubbleMessageGate } from "@main/meet/bubbleMessage";
 import { closeMeetContentsOnWindowClosed } from "@main/meet/meetContentsLifecycle";
 import {
@@ -119,16 +119,13 @@ let ipcSenderGuard: IpcSenderGuard;
 const bubbleMessageGate = createBubbleMessageGate();
 const appCanStart = app.requestSingleInstanceLock();
 const electronProcess = process as NodeJS.Process & { defaultApp?: boolean };
-const createMainLogger = (): Logger => {
-  try {
-    return createLogger({
+const createMainLogger = (): Logger =>
+  createLazyLogger(() =>
+    createLogger({
       dir: app.getPath("logs"),
       level: parseLogLevel(process.env.NEXTROOM_LOG_LEVEL),
-    });
-  } catch {
-    return noopLogger;
-  }
-};
+    }),
+  );
 const logger = createMainLogger();
 const menuBarLogger = logger.child("menuBar");
 const schedulerLogger = logger.child("scheduler");
