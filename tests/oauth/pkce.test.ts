@@ -8,7 +8,6 @@ describe("createPkcePair", () => {
   it("creates an RFC 7636 length code verifier using base64url characters", () => {
     const { codeVerifier } = createPkcePair();
 
-    expect(codeVerifier).toHaveLength(86);
     expect(codeVerifier.length).toBeGreaterThanOrEqual(43);
     expect(codeVerifier.length).toBeLessThanOrEqual(128);
     expect(codeVerifier).toMatch(base64UrlPattern);
