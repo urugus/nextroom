@@ -3,8 +3,11 @@ import {
   computeBubbleAlpha,
   computeBubbleLayout,
   computeCanvasSize,
+  computeOverlayBox,
   hasVideoConstraints,
+  isDisplayCaptureLike,
   parseCameraBubbleEnvelope,
+  scoreSelfViewCandidate,
   wrapBubbleLines,
 } from "../../src/preload/cameraBubblePure";
 
@@ -27,6 +30,77 @@ describe("camera bubble pure functions", () => {
       expect(computeCanvasSize({ height: 360, width: 640 })).toEqual({ height: 360, width: 640 });
       expect(computeCanvasSize({ height: 0, width: -1 })).toEqual({ height: 720, width: 1280 });
       expect(computeCanvasSize({})).toEqual({ height: 720, width: 1280 });
+    });
+  });
+
+  describe("isDisplayCaptureLike", () => {
+    it("detects display capture from settings only", () => {
+      expect(isDisplayCaptureLike({ displaySurface: "browser" })).toBe(true);
+      expect(isDisplayCaptureLike({})).toBe(false);
+    });
+
+    it("does not classify camera labels as display capture without displaySurface", () => {
+      const track = {
+        getSettings: () => ({}),
+        label: "Windows HD Camera",
+      };
+
+      expect(track.label).toBe("Windows HD Camera");
+      expect(isDisplayCaptureLike(track.getSettings())).toBe(false);
+    });
+  });
+
+  describe("scoreSelfViewCandidate", () => {
+    it("rejects invisible candidates and accepts strong self-view signals at score four or more", () => {
+      expect(
+        scoreSelfViewCandidate({
+          aspectDelta: 0,
+          isDisplayCapture: false,
+          isPipelineSource: true,
+          muted: true,
+          playsInline: true,
+          visible: false,
+        }),
+      ).toBe(0);
+      expect(
+        scoreSelfViewCandidate({
+          aspectDelta: 0.1,
+          isDisplayCapture: false,
+          isPipelineSource: true,
+          muted: true,
+          playsInline: true,
+          visible: true,
+        }),
+      ).toBe(10);
+      expect(
+        scoreSelfViewCandidate({
+          aspectDelta: 0.5,
+          isDisplayCapture: true,
+          isPipelineSource: false,
+          muted: false,
+          playsInline: false,
+          visible: true,
+        }),
+      ).toBe(2);
+    });
+  });
+
+  describe("computeOverlayBox", () => {
+    it("places the overlay inside the top-right of the video rectangle", () => {
+      expect(
+        computeOverlayBox({
+          rectHeight: 200,
+          rectLeft: 100,
+          rectTop: 50,
+          rectWidth: 400,
+        }),
+      ).toEqual({
+        fontSize: 14,
+        left: 252,
+        maxWidth: 240,
+        right: 492,
+        top: 58,
+      });
     });
   });
 

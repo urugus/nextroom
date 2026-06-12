@@ -19,9 +19,12 @@ export type CameraBubbleLayout = {
 export type CameraBubbleDeps = {
   computeBubbleAlpha: typeof computeBubbleAlpha;
   computeBubbleLayout: typeof computeBubbleLayout;
+  computeOverlayBox: typeof computeOverlayBox;
   computeCanvasSize: typeof computeCanvasSize;
   hasVideoConstraints: typeof hasVideoConstraints;
+  isDisplayCaptureLike: typeof isDisplayCaptureLike;
   parseCameraBubbleEnvelope: typeof parseCameraBubbleEnvelope;
+  scoreSelfViewCandidate: typeof scoreSelfViewCandidate;
   wrapBubbleLines: typeof wrapBubbleLines;
 };
 
@@ -39,6 +42,60 @@ export const computeCanvasSize = (settings: {
   const width = typeof settings.width === "number" && settings.width > 0 ? settings.width : 1280;
   const height = typeof settings.height === "number" && settings.height > 0 ? settings.height : 720;
   return { height, width };
+};
+
+export const isDisplayCaptureLike = (settings: { displaySurface?: unknown }): boolean =>
+  // Chromium exposes displaySurface on getDisplayMedia tracks; label heuristics cause false
+  // positives that silently disable bubbling for real cameras.
+  settings.displaySurface !== undefined;
+
+export const scoreSelfViewCandidate = ({
+  aspectDelta,
+  isDisplayCapture,
+  isPipelineSource,
+  muted,
+  playsInline,
+  visible,
+}: {
+  aspectDelta: number;
+  isDisplayCapture: boolean;
+  isPipelineSource: boolean;
+  muted: boolean;
+  playsInline: boolean;
+  visible: boolean;
+}): number => {
+  if (!visible) return 0;
+
+  return (
+    2 +
+    (isPipelineSource ? 4 : 0) +
+    (muted ? 1 : 0) +
+    (playsInline ? 1 : 0) +
+    (isDisplayCapture ? 0 : 1) +
+    (aspectDelta < 0.2 ? 1 : 0)
+  );
+};
+
+// Pipeline-source self-view candidates are accepted at score >= 4 in the hook.
+export const computeOverlayBox = ({
+  rectHeight,
+  rectLeft,
+  rectTop,
+  rectWidth,
+}: {
+  rectHeight: number;
+  rectLeft: number;
+  rectTop: number;
+  rectWidth: number;
+}): { fontSize: number; left: number; maxWidth: number; right: number; top: number } => {
+  const margin = Math.round(Math.min(rectWidth, rectHeight) * 0.04);
+  const fontSize = Math.max(12, Math.round(rectHeight * 0.07));
+  const maxWidth = Math.round(rectWidth * 0.6);
+  const right = rectLeft + rectWidth - margin;
+  const left = Math.max(rectLeft + margin, right - maxWidth);
+  const top = rectTop + margin;
+
+  return { fontSize, left, maxWidth, right, top };
 };
 
 export const wrapBubbleLines = (
