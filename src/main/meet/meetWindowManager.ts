@@ -1,4 +1,5 @@
 import { canonicalizeMeetUrl, type MeetUrl } from "@main/calendar/meetExtractor";
+import { type Logger, noopLogger } from "@main/logging/logger";
 import type { AppError } from "@shared/errors";
 import type { AppUpdateStatus, CameraBubbleConfig } from "@shared/types";
 import { err, ok, type Result } from "neverthrow";
@@ -33,6 +34,7 @@ type MeetWindowManagerInput = {
   createWindow: () => Result<ManagedMeetWindow, AppError>;
   focusApp?: () => void;
   focusDurationMs?: number;
+  logger?: Logger;
   onWindowClosed?: (meetUrl: string) => void;
   setTimeoutFn?: typeof setTimeout;
 };
@@ -160,6 +162,7 @@ export const createMeetWindowManager = ({
   createWindow,
   focusApp,
   focusDurationMs,
+  logger = noopLogger,
   onWindowClosed,
   setTimeoutFn = setTimeout,
 }: MeetWindowManagerInput): MeetWindowManager => {
@@ -219,6 +222,7 @@ export const createMeetWindowManager = ({
       if (!meetWindow.isDestroyed()) {
         meetWindow.destroy();
       }
+      logger.error("meet window load failed", { error: cause });
       return err({ type: "MeetWindowFailed", cause });
     }
   };
@@ -241,6 +245,7 @@ export const createMeetWindowManager = ({
           cause: "Meet join automation returned an unexpected result.",
         });
       } catch (cause) {
+        logger.error("meet auto-join script failed", { error: cause });
         return err({ type: "MeetWindowFailed", cause });
       }
     },
