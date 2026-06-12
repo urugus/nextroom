@@ -4,8 +4,11 @@ import {
   computeBubbleAlpha,
   computeBubbleLayout,
   computeCanvasSize,
+  computeOverlayBox,
   hasVideoConstraints,
+  isDisplayCaptureLike,
   parseCameraBubbleEnvelope,
+  scoreSelfViewCandidate,
   wrapBubbleLines,
 } from "./cameraBubblePure";
 
@@ -40,9 +43,12 @@ if (typeof webFrame?.executeJavaScript === "function") {
   const cameraBubbleDeps = `{
     computeBubbleAlpha: ${computeBubbleAlpha.toString()},
     computeBubbleLayout: ${computeBubbleLayout.toString()},
+    computeOverlayBox: ${computeOverlayBox.toString()},
     computeCanvasSize: ${computeCanvasSize.toString()},
     hasVideoConstraints: ${hasVideoConstraints.toString()},
+    isDisplayCaptureLike: ${isDisplayCaptureLike.toString()},
     parseCameraBubbleEnvelope: ${parseCameraBubbleEnvelope.toString()},
+    scoreSelfViewCandidate: ${scoreSelfViewCandidate.toString()},
     wrapBubbleLines: ${wrapBubbleLines.toString()}
   }`;
   void webFrame.executeJavaScript(
