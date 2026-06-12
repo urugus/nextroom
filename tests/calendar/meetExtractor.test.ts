@@ -1,4 +1,9 @@
-import { extractMeetUrl } from "@main/calendar/meetExtractor";
+import {
+  canonicalizeMeetUrl,
+  extractMeetCode,
+  extractMeetUrl,
+  isMeetUrl,
+} from "@main/calendar/meetExtractor";
 import type { CalendarEvent } from "@shared/types";
 import { describe, expect, it } from "vitest";
 
@@ -40,5 +45,26 @@ describe("extractMeetUrl", () => {
 
     expect(result.isErr()).toBe(true);
     expect(result._unsafeUnwrapErr()).toEqual({ type: "MeetUrlNotFound", eventId: "event-3" });
+  });
+
+  it("validates, canonicalizes, and extracts Meet URL codes", () => {
+    expect(isMeetUrl(null)).toBe(false);
+    expect(isMeetUrl(undefined)).toBe(false);
+    expect(isMeetUrl("not a url")).toBe(false);
+    expect(isMeetUrl("http://meet.google.com/abc-defg-hij")).toBe(false);
+    expect(isMeetUrl("https://meet.google.com/")).toBe(false);
+    expect(isMeetUrl("https://meet.google.com/abc-defg-hij")).toBe(true);
+
+    expect(canonicalizeMeetUrl("not a url")._unsafeUnwrapErr()).toEqual({
+      eventId: "unknown",
+      type: "MeetUrlNotFound",
+    });
+    expect(
+      canonicalizeMeetUrl(
+        "https://meet.google.com/abc-defg-hij/?authuser=0#fragment",
+      )._unsafeUnwrap(),
+    ).toBe("https://meet.google.com/abc-defg-hij");
+    expect(extractMeetCode("not a url")).toBeUndefined();
+    expect(extractMeetCode("https://meet.google.com/abc-defg-hij")).toBe("abc-defg-hij");
   });
 });

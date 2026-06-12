@@ -46,6 +46,15 @@ describe("isTrustedIpcSenderUrl", () => {
     );
     expect(isTrustedIpcSenderUrl("data:text/html,evil", { meetShellUrl })).toBe(false);
   });
+
+  it("rejects invalid dev renderer URLs", () => {
+    expect(
+      isTrustedIpcSenderUrl("http://localhost:5173/settings", {
+        appRendererUrl: "not a url",
+        meetShellUrl,
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("createIpcSenderGuard", () => {
@@ -94,7 +103,56 @@ describe("createIpcSenderGuard", () => {
     expect(
       guard.isTrustedEvent({
         sender: { id: 42 },
+        senderFrame: null,
+      } as unknown as Parameters<typeof guard.isTrustedEvent>[0]),
+    ).toBe(false);
+    expect(
+      guard.isTrustedEvent({
+        sender: { id: 42 },
         senderFrame: { url: meetShellUrl },
+      } as unknown as Parameters<typeof guard.isTrustedEvent>[0]),
+    ).toBe(false);
+  });
+
+  it("accepts matching Meet shell data URL payloads only for data shell windows", () => {
+    const trustedPayloadUrl = "data:text/html,%3C!doctype%20html%3E";
+    const dataWindow = {
+      on: vi.fn((_event: "closed", _handler: () => void) => dataWindow),
+      webContents: { id: 10 },
+    };
+    const regularWindow = {
+      on: vi.fn((_event: "closed", _handler: () => void) => regularWindow),
+      webContents: { id: 11 },
+    };
+    const guard = createIpcSenderGuard({ meetShellUrl });
+
+    guard.trustWindow(dataWindow as unknown as Parameters<typeof guard.trustWindow>[0], {
+      dataShell: true,
+    });
+    guard.trustWindow(regularWindow as unknown as Parameters<typeof guard.trustWindow>[0]);
+
+    expect(
+      guard.isTrustedEvent({
+        sender: { id: 10 },
+        senderFrame: { url: trustedPayloadUrl },
+      } as unknown as Parameters<typeof guard.isTrustedEvent>[0]),
+    ).toBe(true);
+    expect(
+      guard.isTrustedEvent({
+        sender: { id: 11 },
+        senderFrame: { url: trustedPayloadUrl },
+      } as unknown as Parameters<typeof guard.isTrustedEvent>[0]),
+    ).toBe(false);
+    expect(
+      guard.isTrustedEvent({
+        sender: { id: 10 },
+        senderFrame: { url: "data:text/html-without-comma" },
+      } as unknown as Parameters<typeof guard.isTrustedEvent>[0]),
+    ).toBe(false);
+    expect(
+      guard.isTrustedEvent({
+        sender: { id: 10 },
+        senderFrame: { url: "data:text/html,%E0%A4%A" },
       } as unknown as Parameters<typeof guard.isTrustedEvent>[0]),
     ).toBe(false);
   });

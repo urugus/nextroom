@@ -95,6 +95,48 @@ describe("app settings", () => {
     });
   });
 
+  it("loads valid stored settings and falls back for invalid stored settings", () => {
+    expect(
+      parseStoredAppSettings({
+        autoJoinEnabled: true,
+        autoOpenEnabled: false,
+        calendarId: "primary",
+        launchAtLogin: true,
+        menuShortcutAccelerator: null,
+        notifyBeforeMinutes: 5,
+        timezone: "Asia/Tokyo",
+      }),
+    ).toMatchObject({
+      autoJoinEnabled: true,
+      autoOpenEnabled: false,
+      launchAtLogin: true,
+      menuShortcutAccelerator: null,
+      notifyBeforeMinutes: 5,
+      timezone: "Asia/Tokyo",
+    });
+    expect(parseStoredAppSettings({ extra: true })).toEqual(defaultAppSettings);
+  });
+
+  it("accepts open offset and menu shortcut bounds and rejects invalid updates", () => {
+    expect(parseSettingsUpdate({ openOffsetSeconds: 10 * 60 })._unsafeUnwrap()).toEqual({
+      openOffsetSeconds: 10 * 60,
+    });
+    expect(
+      parseSettingsUpdate({ menuShortcutAccelerator: "  Command+Alt+N  " })._unsafeUnwrap(),
+    ).toEqual({
+      menuShortcutAccelerator: "Command+Alt+N",
+    });
+    expect(parseSettingsUpdate({ openOffsetSeconds: 11 * 60 })._unsafeUnwrapErr()).toMatchObject({
+      type: "DatabaseFailed",
+    });
+    expect(parseSettingsUpdate({ unknown: true })._unsafeUnwrapErr()).toMatchObject({
+      type: "DatabaseFailed",
+    });
+    expect(parseSettingsUpdate({ menuShortcutAccelerator: "" })._unsafeUnwrapErr()).toMatchObject({
+      type: "DatabaseFailed",
+    });
+  });
+
   it("rejects auto-join offsets that are not whole minutes", () => {
     expect(parseSettingsUpdate({ joinOffsetSeconds: 90 })._unsafeUnwrapErr()).toMatchObject({
       type: "DatabaseFailed",
@@ -113,5 +155,9 @@ describe("app settings", () => {
       cause: "joinOffsetSeconds must be less than or equal to openOffsetSeconds",
       type: "DatabaseFailed",
     });
+  });
+
+  it("accepts valid merged settings", () => {
+    expect(validateAppSettings(defaultAppSettings)._unsafeUnwrap()).toEqual(defaultAppSettings);
   });
 });
