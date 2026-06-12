@@ -345,11 +345,17 @@ describe("createCalendarSyncService", () => {
   });
 
   it("ignores duplicate startPolling calls while polling is already active", async () => {
+    const setTimeoutFn = vi.fn(
+      (_handler: TimerHandler, _timeout?: number) =>
+        789 as unknown as ReturnType<typeof setTimeout>,
+    ) as unknown as typeof setTimeout;
     const service = createCalendarSyncService({
       authService: createAuthService("access-token"),
       calendarClient: {
         listUpcomingEvents: vi.fn(() => okAsync([])),
       },
+      clearTimeoutFn: vi.fn() as unknown as typeof clearTimeout,
+      setTimeoutFn,
     });
 
     service.startPolling();
@@ -360,6 +366,7 @@ describe("createCalendarSyncService", () => {
       meetings: [],
       syncedAt: expect.any(String),
     });
+    expect(setTimeoutFn).toHaveBeenCalledTimes(1);
   });
 
   it("returns account status errors from the auth service", async () => {
