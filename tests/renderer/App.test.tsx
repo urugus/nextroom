@@ -22,6 +22,7 @@ const updateStatus: AppUpdateStatus = {
 const settings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
+  cameraBubbleChatMirrorEnabled: false,
   cameraBubbleEnabled: false,
   cameraBubbleDisplaySpeedLevel: 3,
   joinOffsetSeconds: 0,
@@ -298,6 +299,25 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("checkbox", { name: "カメラ吹き出し" }));
 
     await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ cameraBubbleEnabled: true }));
+  });
+
+  it("saves the camera bubble chat mirror setting", async () => {
+    const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() => Promise.resolve(okResult));
+    installMeetLauncher(openMeetUrl);
+    const updateSettings = vi.mocked(window.meetLauncher.updateSettings);
+
+    vi.mocked(window.meetLauncher.getSettings).mockResolvedValue({
+      ok: true,
+      value: { ...settings, cameraBubbleEnabled: true },
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Meetチャット連動" }));
+
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith({ cameraBubbleChatMirrorEnabled: true }),
+    );
   });
 
   it("saves the camera bubble display speed setting", async () => {

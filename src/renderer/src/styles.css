@@ -138,6 +138,11 @@ button:disabled {
   border-top: 1px solid #e5e5e7;
 }
 
+.preference-sub-row {
+  min-height: 58px;
+  padding-left: 32px;
+}
+
 .preference-copy {
   display: grid;
   gap: 3px;

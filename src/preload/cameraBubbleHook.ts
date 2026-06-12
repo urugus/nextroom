@@ -2,7 +2,7 @@ import type { CameraBubbleDeps } from "./cameraBubblePure";
 
 // oxlint-disable unicorn/consistent-function-scoping -- The hook is injected with toString(), so helpers must stay inside it.
 export const installCameraBubbleHook = (
-  initialEnabled: boolean,
+  initialConfig: { chatMirrorEnabled: boolean; displaySpeedLevel: number; enabled: boolean },
   deps: CameraBubbleDeps,
   nonce: string,
 ): void => {
@@ -25,9 +25,21 @@ export const installCameraBubbleHook = (
 
   const state: {
     bubble: { expiresAt: number; text: string } | undefined;
+    chatMirrorEnabled: boolean;
+    displaySpeedLevel: number;
     enabled: boolean;
-  } = { bubble: undefined, enabled: initialEnabled };
+  } = {
+    bubble: undefined,
+    chatMirrorEnabled: initialConfig.chatMirrorEnabled === true,
+    displaySpeedLevel:
+      typeof initialConfig.displaySpeedLevel === "number" &&
+      Number.isFinite(initialConfig.displaySpeedLevel)
+        ? Math.max(1, Math.min(5, Math.floor(initialConfig.displaySpeedLevel)))
+        : 3,
+    enabled: initialConfig.enabled === true,
+  };
   const overlayState: OverlayState = { element: undefined, frameId: undefined };
+  const chatMirrorRateLimit = { lastAcceptedAt: 0 };
   const activePipelines = new Set<Pipeline>();
   const sourceToPipeline = new WeakMap<MediaStreamTrack, Pipeline>();
   const canvasToPipeline = new WeakMap<MediaStreamTrack, Pipeline>();
@@ -572,12 +584,66 @@ export const installCameraBubbleHook = (
     runOverlayLoop();
   };
 
+  const showBubble = (text: string, durationMs: number): void => {
+    state.bubble = { expiresAt: Date.now() + durationMs, text };
+    showOverlay();
+  };
+
+  const installChatMirrorListener = (): void => {
+    try {
+      document.addEventListener(
+        "keydown",
+        (event) => {
+          try {
+            if (!state.enabled || !state.chatMirrorEnabled) return;
+
+            const target = event.target;
+            const isTextArea =
+              typeof HTMLTextAreaElement !== "undefined" && target instanceof HTMLTextAreaElement;
+            const textArea = isTextArea ? target : undefined;
+            const acceptedKey = deps.shouldMirrorChatKey({
+              altKey: event.altKey,
+              ctrlKey: event.ctrlKey,
+              disabled: textArea?.disabled === true,
+              isComposing: event.isComposing,
+              isTextArea,
+              key: event.key,
+              keyCode: event.keyCode,
+              metaKey: event.metaKey,
+              readOnly: textArea?.readOnly === true,
+              shiftKey: event.shiftKey,
+            });
+            if (!acceptedKey || textArea === undefined) return;
+
+            const text = deps.sanitizeBubbleText(textArea.value);
+            if (text.length === 0) return;
+
+            const now = Date.now();
+            if (now - chatMirrorRateLimit.lastAcceptedAt < 300) return;
+
+            chatMirrorRateLimit.lastAcceptedAt = now;
+            showBubble(
+              text,
+              deps.computeBubbleDisplayDurationMs([...text].length, state.displaySpeedLevel),
+            );
+          } catch {
+            return;
+          }
+        },
+        { capture: true },
+      );
+    } catch {
+      return;
+    }
+  };
+
   installGetDisplayMediaPatch();
   installClonePatch();
   installAddTrackPatch();
   installAddTransceiverPatch();
   installReplaceTrackPatch();
   installSenderTrackGetterPatch();
+  installChatMirrorListener();
 
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
@@ -587,13 +653,14 @@ export const installCameraBubbleHook = (
     if (message.kind === "show") {
       if (!state.enabled) return;
 
-      state.bubble = { expiresAt: Date.now() + message.durationMs, text: message.text };
-      showOverlay();
+      showBubble(message.text, message.durationMs);
       return;
     }
 
-    if (message.kind === "setEnabled") {
+    if (message.kind === "config") {
       state.enabled = message.enabled === true;
+      state.chatMirrorEnabled = message.chatMirrorEnabled === true;
+      state.displaySpeedLevel = message.displaySpeedLevel;
       if (!state.enabled) {
         state.bubble = undefined;
         hideOverlay();

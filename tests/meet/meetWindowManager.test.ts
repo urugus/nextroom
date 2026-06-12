@@ -428,11 +428,16 @@ describe("createMeetWindowManager", () => {
     });
   });
 
-  it("publishes bubble enabled state to open and newly-created Meet windows", async () => {
+  it("publishes bubble config to open and newly-created Meet windows", async () => {
     const firstWindow = createFakeMeetWindow();
     const secondWindow = createFakeMeetWindow();
-    firstWindow.setBubbleEnabled = vi.fn();
-    secondWindow.setBubbleEnabled = vi.fn();
+    firstWindow.setBubbleConfig = vi.fn();
+    secondWindow.setBubbleConfig = vi.fn();
+    const config = {
+      chatMirrorEnabled: true,
+      displaySpeedLevel: 4,
+      enabled: true,
+    };
     const createWindow = vi
       .fn()
       .mockReturnValueOnce(ok(firstWindow))
@@ -440,11 +445,11 @@ describe("createMeetWindowManager", () => {
     const manager = createMeetWindowManager({ createWindow });
 
     await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
-    manager.setBubbleEnabled(true);
+    manager.setBubbleConfig(config);
     await manager.openMeetUrl("https://meet.google.com/xyz-abcd-efg");
 
-    expect(firstWindow.setBubbleEnabled).toHaveBeenCalledWith(true);
-    expect(secondWindow.setBubbleEnabled).toHaveBeenCalledWith(true);
+    expect(firstWindow.setBubbleConfig).toHaveBeenCalledWith(config);
+    expect(secondWindow.setBubbleConfig).toHaveBeenCalledWith(config);
   });
 });
 

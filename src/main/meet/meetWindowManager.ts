@@ -1,6 +1,6 @@
 import { canonicalizeMeetUrl, type MeetUrl } from "@main/calendar/meetExtractor";
 import type { AppError } from "@shared/errors";
-import type { AppUpdateStatus } from "@shared/types";
+import type { AppUpdateStatus, CameraBubbleConfig } from "@shared/types";
 import { err, ok, type Result } from "neverthrow";
 
 type AlwaysOnTopLevel = "screen-saver";
@@ -22,7 +22,7 @@ export type ManagedMeetWindow = {
   restore: () => void;
   sendBubbleText?: (message: BubbleTextMessage) => void;
   setAlwaysOnTop: (flag: boolean, level?: AlwaysOnTopLevel) => void;
-  setBubbleEnabled?: (enabled: boolean) => void;
+  setBubbleConfig?: (config: CameraBubbleConfig) => void;
   show: () => void;
   updateUpdateStatus?: (status: AppUpdateStatus) => void;
   webContents: ManagedWebContents;
@@ -43,7 +43,7 @@ export type MeetWindowManager = {
   hasOpenMeetWindowExcept: (value: string) => boolean;
   openMeetUrl: (value: string) => Promise<Result<void, AppError>>;
   sendBubbleText: (message: BubbleTextMessage) => void;
-  setBubbleEnabled: (enabled: boolean) => void;
+  setBubbleConfig: (config: CameraBubbleConfig) => void;
   updateUpdateStatus: (status: AppUpdateStatus) => void;
 };
 
@@ -164,7 +164,7 @@ export const createMeetWindowManager = ({
   setTimeoutFn = setTimeout,
 }: MeetWindowManagerInput): MeetWindowManager => {
   const meetWindows = new Map<MeetUrl, ManagedMeetWindow>();
-  let bubbleEnabled: boolean | undefined;
+  let bubbleConfig: CameraBubbleConfig | undefined;
   let updateStatus: AppUpdateStatus | undefined;
 
   const removeWindow = (meetUrl: MeetUrl, meetWindow: ManagedMeetWindow): void => {
@@ -202,8 +202,8 @@ export const createMeetWindowManager = ({
     if (updateStatus !== undefined) {
       meetWindow.updateUpdateStatus?.(updateStatus);
     }
-    if (bubbleEnabled !== undefined) {
-      meetWindow.setBubbleEnabled?.(bubbleEnabled);
+    if (bubbleConfig !== undefined) {
+      meetWindow.setBubbleConfig?.(bubbleConfig);
     }
     meetWindows.set(meetUrl, meetWindow);
     meetWindow.on("closed", () => {
@@ -280,11 +280,11 @@ export const createMeetWindowManager = ({
         }
       });
     },
-    setBubbleEnabled: (enabled) => {
-      bubbleEnabled = enabled;
+    setBubbleConfig: (config) => {
+      bubbleConfig = config;
       meetWindows.forEach((meetWindow) => {
         if (!meetWindow.isDestroyed()) {
-          meetWindow.setBubbleEnabled?.(enabled);
+          meetWindow.setBubbleConfig?.(config);
         }
       });
     },
