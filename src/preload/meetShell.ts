@@ -60,3 +60,82 @@ const updateApi: MeetShellUpdateApi = {
 };
 
 contextBridge.exposeInMainWorld("meetLauncher", updateApi);
+
+export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
+  const setup = (): void => {
+    const button = document.getElementById("update-button");
+    const bubbleInput = document.getElementById("bubble-input");
+    if (!(button instanceof HTMLButtonElement) || !(bubbleInput instanceof HTMLInputElement)) {
+      return;
+    }
+
+    const render = (status: AppUpdateStatus | undefined): void => {
+      const visible = status?.status === "available" || status?.status === "homebrew-updating";
+      button.style.display = visible ? "inline-flex" : "none";
+      button.disabled = status?.status === "homebrew-updating";
+      button.textContent = status?.status === "homebrew-updating" ? "Updating" : "Update";
+    };
+
+    api
+      .getUpdateStatus()
+      .then((result) => {
+        if (result.ok) {
+          render(result.value);
+        }
+      })
+      .catch(() => undefined);
+    api.onUpdateStatusChanged(render);
+
+    button.addEventListener("click", () => {
+      button.disabled = true;
+      button.textContent = "Updating";
+      api
+        .runHomebrewUpdate()
+        .then((result) => {
+          if (!result.ok) {
+            button.disabled = false;
+            button.textContent = "Update";
+          }
+        })
+        .catch(() => {
+          button.disabled = false;
+          button.textContent = "Update";
+        });
+    });
+
+    api.onBubbleEnabledChanged((enabled) => {
+      bubbleInput.style.display = enabled ? "block" : "none";
+      if (!enabled) {
+        bubbleInput.value = "";
+      }
+    });
+
+    bubbleInput.addEventListener("keydown", (event) => {
+      if (!(event instanceof KeyboardEvent)) {
+        return;
+      }
+      if (event.key !== "Enter" || event.isComposing) {
+        return;
+      }
+
+      const value = bubbleInput.value;
+      if (value.trim().length === 0) {
+        return;
+      }
+
+      event.preventDefault();
+      api.sendBubbleText(value).finally(() => {
+        bubbleInput.value = "";
+      });
+    });
+  };
+
+  if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", setup, { once: true });
+    return;
+  }
+
+  setup();
+};
+
+setupMeetShellDom(updateApi);
