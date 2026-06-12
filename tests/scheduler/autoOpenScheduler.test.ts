@@ -93,6 +93,27 @@ describe("createAutoOpenScheduler", () => {
     expect(openMeetUrl).not.toHaveBeenCalled();
   });
 
+  it("uses the current time by default when no clock is injected", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-28T10:00:00+09:00"));
+    const openMeetUrl = vi.fn(() => Promise.resolve(ok(undefined)));
+    const scheduler = createAutoOpenScheduler({
+      activatedAt: new Date("2026-05-28T09:59:00+09:00"),
+      ...schedulerDefaults(),
+      deduper: createLaunchDeduper(),
+      openMeetUrl,
+      settings,
+    });
+
+    try {
+      await scheduler.evaluate(snapshot);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(openMeetUrl).toHaveBeenCalledWith("https://meet.google.com/abc-defg-hij");
+  });
+
   it("does not record a launch when opening fails so a later sync can retry", async () => {
     const deduper = createLaunchDeduper();
     const openMeetUrl = vi
@@ -164,6 +185,26 @@ describe("createAutoOpenScheduler", () => {
     await secondEvaluate;
 
     expect(openMeetUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it("continues evaluating after an unexpected evaluation rejection", async () => {
+    const openMeetUrl = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("unexpected open failure"))
+      .mockResolvedValue(ok(undefined));
+    const scheduler = createAutoOpenScheduler({
+      activatedAt: new Date("2026-05-28T09:59:00+09:00"),
+      ...schedulerDefaults(),
+      deduper: createLaunchDeduper(),
+      now: () => new Date("2026-05-28T10:00:00+09:00"),
+      openMeetUrl,
+      settings,
+    });
+
+    await expect(scheduler.evaluate(snapshot)).rejects.toThrow("unexpected open failure");
+    await expect(scheduler.evaluate(snapshot)).resolves.toMatchObject({ value: undefined });
+
+    expect(openMeetUrl).toHaveBeenCalledTimes(2);
   });
 
   it("respects disabled auto-open settings", async () => {

@@ -19,6 +19,13 @@ const updateError: AppUpdateStatus = {
   status: "error",
 };
 
+const updateErrorWithoutMessage: AppUpdateStatus = {
+  canCheck: true,
+  canRunHomebrewUpdate: false,
+  currentVersion: "0.1.0",
+  status: "error",
+};
+
 const updateChecking: AppUpdateStatus = {
   canCheck: false,
   canRunHomebrewUpdate: false,
@@ -40,6 +47,27 @@ const updateUnsupported: AppUpdateStatus = {
   canRunHomebrewUpdate: false,
   currentVersion: "0.1.0",
   status: "unsupported",
+};
+
+const updateIdle: AppUpdateStatus = {
+  canCheck: true,
+  canRunHomebrewUpdate: false,
+  currentVersion: "0.1.0",
+  status: "idle",
+};
+
+const updateNotAvailable: AppUpdateStatus = {
+  canCheck: true,
+  canRunHomebrewUpdate: false,
+  currentVersion: "0.1.0",
+  status: "not-available",
+};
+
+const updateHomebrewUpdated: AppUpdateStatus = {
+  canCheck: true,
+  canRunHomebrewUpdate: false,
+  currentVersion: "0.1.0",
+  status: "homebrew-updated",
 };
 
 const settings: AppSettings = {
@@ -130,6 +158,44 @@ describe("Dashboard", () => {
     expect(onRunHomebrewUpdate).toHaveBeenCalledTimes(1);
   });
 
+  it("renders idle, up-to-date, and completed update summaries", () => {
+    const { rerender } = render(
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        {...dashboardActions()}
+        settings={settings}
+        updateStatus={updateIdle}
+      />,
+    );
+
+    expect(screen.getByText("Ready to check")).toBeInTheDocument();
+    expect(screen.getByText("No update check has run yet.")).toBeInTheDocument();
+
+    rerender(
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        {...dashboardActions()}
+        settings={settings}
+        updateStatus={updateNotAvailable}
+      />,
+    );
+    expect(screen.getByText("Up to date")).toBeInTheDocument();
+    expect(screen.getByText("You are on the latest version.")).toBeInTheDocument();
+
+    rerender(
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        {...dashboardActions()}
+        settings={settings}
+        updateStatus={updateHomebrewUpdated}
+      />,
+    );
+    expect(screen.getByText("Updated")).toBeInTheDocument();
+    expect(
+      screen.getByText("Homebrew update completed. NextRoom was reopened."),
+    ).toBeInTheDocument();
+  });
+
   it("renders update checking as a busy state without progress", () => {
     render(
       <Dashboard
@@ -203,6 +269,21 @@ describe("Dashboard", () => {
     expect(screen.getByText("Failed")).toBeInTheDocument();
     expect(screen.getByText("GitHub Releases request failed")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Check for updates" })).toBeDisabled();
+  });
+
+  it("renders update error status without a separate error message", () => {
+    render(
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        {...dashboardActions()}
+        settings={settings}
+        updateStatus={updateErrorWithoutMessage}
+      />,
+    );
+
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.getByText("Update check failed.")).toBeInTheDocument();
+    expect(screen.queryByText("GitHub Releases request failed")).not.toBeInTheDocument();
   });
 
   it("renders update bridge errors as failed without stale loading state", () => {
@@ -355,5 +436,184 @@ describe("Dashboard", () => {
     );
 
     expect(screen.getByText("Shortcut is unavailable. Choose another one.")).toBeInTheDocument();
+  });
+
+  it("cancels, ignores, and records alternate menu shortcut keys", () => {
+    const onMenuShortcutAcceleratorChange = vi.fn();
+    render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        onMenuShortcutAcceleratorChange={onMenuShortcutAcceleratorChange}
+        settings={{ ...settings, menuShortcutAccelerator: "CommandOrControl+Shift+Space" }}
+      />,
+    );
+
+    expect(screen.getByText("⌘ ⇧ Space")).toBeInTheDocument();
+
+    const recordButton = screen.getByRole("button", { name: "Record" });
+    fireEvent.click(recordButton);
+    fireEvent.keyDown(recordButton, { code: "KeyA", key: "a" });
+    fireEvent.keyDown(recordButton, { altKey: true, code: "Alt", key: "Alt" });
+    expect(onMenuShortcutAcceleratorChange).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(recordButton, { code: "Escape", key: "Escape" });
+    expect(screen.getByRole("button", { name: "Record" })).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(recordButton);
+    fireEvent.keyDown(recordButton, {
+      code: "ArrowUp",
+      ctrlKey: true,
+      key: "Unidentified",
+      shiftKey: true,
+    });
+
+    expect(onMenuShortcutAcceleratorChange).toHaveBeenCalledWith("Control+Shift+Up");
+  });
+
+  it("records shortcut keys from keyboard event key names and blur cancels recording", () => {
+    const onMenuShortcutAcceleratorChange = vi.fn();
+    render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        onMenuShortcutAcceleratorChange={onMenuShortcutAcceleratorChange}
+        settings={{
+          ...settings,
+          menuShortcutAccelerator: "Control+Option+Shift+F12",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("⌃ ⌥ ⇧ F12")).toBeInTheDocument();
+
+    const recordButton = screen.getByRole("button", { name: "Record" });
+    const keyCases = [
+      ["Spacebar", "Space"],
+      ["ArrowUp", "Up"],
+      ["ArrowDown", "Down"],
+      ["ArrowLeft", "Left"],
+      ["ArrowRight", "Right"],
+      ["-", "Minus"],
+      ["=", "Plus"],
+      [",", "Comma"],
+      [".", "Period"],
+      ["/", "Slash"],
+      [";", "Semicolon"],
+      ["'", "Quote"],
+      ["[", "LeftBracket"],
+      ["]", "RightBracket"],
+      ["\\", "Backslash"],
+      ["`", "Backquote"],
+      ["7", "7"],
+      ["F24", "F24"],
+    ] as const;
+
+    for (const [key, acceleratorKey] of keyCases) {
+      fireEvent.click(recordButton);
+      fireEvent.keyDown(recordButton, {
+        altKey: true,
+        code: "Unidentified",
+        key,
+      });
+      expect(onMenuShortcutAcceleratorChange).toHaveBeenLastCalledWith(`Alt+${acceleratorKey}`);
+    }
+
+    fireEvent.click(recordButton);
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.blur(recordButton);
+    expect(screen.getByRole("button", { name: "Record" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("records shortcut keys from keyboard event codes", () => {
+    const onMenuShortcutAcceleratorChange = vi.fn();
+    render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        onMenuShortcutAcceleratorChange={onMenuShortcutAcceleratorChange}
+        settings={settings}
+      />,
+    );
+
+    const recordButton = screen.getByRole("button", { name: "Record" });
+    const codeCases = [
+      ["KeyZ", "Z"],
+      ["Digit8", "8"],
+      ["F24", "F24"],
+      ["Space", "Space"],
+      ["ArrowDown", "Down"],
+      ["ArrowLeft", "Left"],
+      ["ArrowRight", "Right"],
+      ["Minus", "Minus"],
+      ["Equal", "Plus"],
+      ["Comma", "Comma"],
+      ["Period", "Period"],
+      ["Slash", "Slash"],
+      ["Semicolon", "Semicolon"],
+      ["Quote", "Quote"],
+      ["BracketLeft", "LeftBracket"],
+      ["BracketRight", "RightBracket"],
+      ["Backslash", "Backslash"],
+      ["Backquote", "Backquote"],
+    ] as const;
+
+    for (const [code, acceleratorKey] of codeCases) {
+      fireEvent.click(recordButton);
+      fireEvent.keyDown(recordButton, {
+        code,
+        key: "Unidentified",
+        metaKey: true,
+      });
+      expect(onMenuShortcutAcceleratorChange).toHaveBeenLastCalledWith(`Command+${acceleratorKey}`);
+    }
+
+    fireEvent.click(recordButton);
+    fireEvent.keyDown(recordButton, {
+      altKey: true,
+      code: "Unidentified",
+      key: "Unidentified",
+    });
+
+    expect(onMenuShortcutAcceleratorChange).toHaveBeenCalledTimes(codeCases.length);
+  });
+
+  it("renders connected account action states and opens a meeting notification", () => {
+    const onOpenMeeting = vi.fn();
+    const meeting = {
+      calendarId: "primary",
+      endAt: "2026-05-28T10:30:00+09:00",
+      eventId: "event-1",
+      meetCode: "abc-defg-hij",
+      meetUrl: "https://meet.google.com/abc-defg-hij",
+      occurrenceKey: "primary:event-1:2026-05-28T10:00:00+09:00",
+      startAt: "2026-05-28T10:00:00+09:00",
+      status: "confirmed" as const,
+      summary: "Product sync",
+      updatedAt: "2026-05-28T09:00:00+09:00",
+    };
+    render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: true }}
+        {...dashboardActions()}
+        nextMeetingNotification={meeting}
+        onOpenMeeting={onOpenMeeting}
+        openingMeetUrl={meeting.meetUrl}
+        pendingAction="disconnect"
+        settings={settings}
+        syncedAt="2026-05-28T09:30:00+09:00"
+      />,
+    );
+
+    expect(screen.getByText("Google Calendar connected")).toBeInTheDocument();
+    expect(screen.getByText(/Last synced/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Syncing" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Disconnecting" })).toBeDisabled();
+
+    const notification = screen.getByRole("button", { name: /Next meeting is ready/ });
+    expect(notification).toBeDisabled();
+    expect(screen.getByText("Opening")).toBeInTheDocument();
+    fireEvent.click(notification);
+    expect(onOpenMeeting).not.toHaveBeenCalled();
   });
 });

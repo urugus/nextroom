@@ -148,4 +148,46 @@ describe("createKeychainTokenStore", () => {
     expect((await staleResult)._unsafeUnwrap()).toBe("stale-token");
     expect((await freshResult)._unsafeUnwrap()).toBeNull();
   });
+
+  it("waits for an in-flight mutation before reading the refresh token", async () => {
+    const mutation = deferred<void>();
+    let stored: string | null = "old-token";
+    const keychain: KeychainLike = {
+      getPassword: vi.fn(() => Promise.resolve(stored)),
+      setPassword: vi.fn(async (_service, _account, password) => {
+        await mutation.promise;
+        stored = password;
+      }),
+      deletePassword: () => Promise.resolve(true),
+    };
+    const store = createKeychainTokenStore(keychain);
+
+    const write = store.setRefreshToken("new-token");
+    const read = store.getRefreshToken();
+
+    expect(keychain.getPassword).not.toHaveBeenCalled();
+    mutation.resolve();
+
+    expect((await write).isOk()).toBe(true);
+    expect((await read)._unsafeUnwrap()).toBe("new-token");
+  });
+
+  it("maps keychain mutation rejections and allows later reads", async () => {
+    const keychain: KeychainLike = {
+      getPassword: vi.fn(() => Promise.resolve("stored-token")),
+      setPassword: vi.fn(() => Promise.reject(new Error("write denied"))),
+      deletePassword: vi.fn(() => Promise.reject(new Error("delete denied"))),
+    };
+    const store = createKeychainTokenStore(keychain, "service", "account");
+
+    expect((await store.setRefreshToken("refresh-token"))._unsafeUnwrapErr()).toMatchObject({
+      type: "KeychainUnavailable",
+    });
+    expect((await store.clearRefreshToken())._unsafeUnwrapErr()).toMatchObject({
+      type: "KeychainUnavailable",
+    });
+    expect((await store.getRefreshToken())._unsafeUnwrap()).toBe("stored-token");
+    expect(keychain.setPassword).toHaveBeenCalledWith("service", "account", "refresh-token");
+    expect(keychain.deletePassword).toHaveBeenCalledWith("service", "account");
+  });
 });

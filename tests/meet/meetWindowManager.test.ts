@@ -156,6 +156,16 @@ afterEach(() => {
 });
 
 describe("focusMeetWindow", () => {
+  it("does not focus destroyed windows", () => {
+    const meetWindow = createFakeMeetWindow();
+    meetWindow.setDestroyed(true);
+
+    focusMeetWindow(meetWindow);
+
+    expect(meetWindow.show).not.toHaveBeenCalled();
+    expect(meetWindow.focus).not.toHaveBeenCalled();
+  });
+
   it("shows, restores, focuses, and temporarily enables always-on-top", () => {
     vi.useFakeTimers();
     const meetWindow = createFakeMeetWindow();
@@ -193,6 +203,24 @@ describe("focusMeetWindow", () => {
 });
 
 describe("createMeetWindowManager", () => {
+  it("returns errors for invalid Meet URLs and window creation failures", async () => {
+    const createError = { type: "MeetWindowFailed" as const, cause: "create failed" };
+    const invalidManager = createMeetWindowManager({
+      createWindow: vi.fn(() => ok(createFakeMeetWindow())),
+    });
+    const failingManager = createMeetWindowManager({
+      createWindow: vi.fn(() => ({ isErr: () => true, error: createError }) as never),
+    });
+
+    expect((await invalidManager.openMeetUrl("not a meet url"))._unsafeUnwrapErr()).toEqual({
+      eventId: "unknown",
+      type: "MeetUrlNotFound",
+    });
+    expect(
+      (await failingManager.openMeetUrl("https://meet.google.com/abc-defg-hij"))._unsafeUnwrapErr(),
+    ).toBe(createError);
+  });
+
   it("loads the canonical Meet URL and focuses the created window", async () => {
     const meetWindow = createFakeMeetWindow();
     const createWindow = vi.fn(() => ok(meetWindow));
@@ -219,6 +247,41 @@ describe("createMeetWindowManager", () => {
     expect(createWindow).toHaveBeenCalledTimes(1);
     expect(meetWindow.loadURL).toHaveBeenCalledTimes(1);
     expect(meetWindow.focus).toHaveBeenCalledTimes(2);
+  });
+
+  it("replaces a destroyed tracked window for the same Meet URL", async () => {
+    const firstWindow = createFakeMeetWindow();
+    const secondWindow = createFakeMeetWindow();
+    const createWindow = vi
+      .fn()
+      .mockReturnValueOnce(ok(firstWindow))
+      .mockReturnValueOnce(ok(secondWindow));
+    const manager = createMeetWindowManager({ createWindow });
+
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+    firstWindow.setDestroyed(true);
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+
+    expect(createWindow).toHaveBeenCalledTimes(2);
+    expect(secondWindow.loadURL).toHaveBeenCalledWith("https://meet.google.com/abc-defg-hij");
+  });
+
+  it("applies stored update status to newly-created Meet windows", async () => {
+    const meetWindow = createFakeMeetWindow();
+    meetWindow.updateUpdateStatus = vi.fn();
+    const manager = createMeetWindowManager({ createWindow: vi.fn(() => ok(meetWindow)) });
+    const status = {
+      availableVersion: "0.2.0",
+      canCheck: true,
+      canRunHomebrewUpdate: true,
+      currentVersion: "0.1.0",
+      status: "available" as const,
+    };
+
+    manager.updateUpdateStatus(status);
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+
+    expect(meetWindow.updateUpdateStatus).toHaveBeenCalledWith(status);
   });
 
   it("forgets a window after it closes", async () => {
@@ -363,6 +426,53 @@ describe("createMeetWindowManager", () => {
     });
   });
 
+  it("returns open errors before running the auto-join script", async () => {
+    const createError = { type: "MeetWindowFailed" as const, cause: "create failed" };
+    const manager = createMeetWindowManager({
+      createWindow: vi.fn(() => ({ isErr: () => true, error: createError }) as never),
+    });
+
+    const result = await manager.autoJoinMeetUrl("https://meet.google.com/abc-defg-hij");
+
+    expect(result._unsafeUnwrapErr()).toBe(createError);
+  });
+
+  it("returns errors when auto-join returns an unexpected result or throws", async () => {
+    const unexpectedWindow = createFakeMeetWindow(
+      () => Promise.resolve(),
+      () => Promise.resolve({ ok: "yes" }),
+    );
+    const throwingWindow = createFakeMeetWindow(
+      () => Promise.resolve(),
+      () => Promise.reject(new Error("script failed")),
+    );
+    const logger = {
+      child: vi.fn(),
+      debug: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    logger.child.mockReturnValue(logger);
+    const createWindow = vi
+      .fn()
+      .mockReturnValueOnce(ok(unexpectedWindow))
+      .mockReturnValueOnce(ok(throwingWindow));
+    const manager = createMeetWindowManager({ createWindow, logger });
+
+    const unexpected = await manager.autoJoinMeetUrl("https://meet.google.com/abc-defg-hij");
+    const thrown = await manager.autoJoinMeetUrl("https://meet.google.com/xyz-abcd-efg");
+
+    expect(unexpected._unsafeUnwrapErr()).toMatchObject({
+      cause: "Meet join automation returned an unexpected result.",
+      type: "MeetWindowFailed",
+    });
+    expect(thrown._unsafeUnwrapErr()).toMatchObject({ type: "MeetWindowFailed" });
+    expect(logger.error).toHaveBeenCalledWith("meet auto-join script failed", {
+      error: new Error("script failed"),
+    });
+  });
+
   it("reports open Meet windows other than the candidate URL", async () => {
     const firstWindow = createFakeMeetWindow();
     const secondWindow = createFakeMeetWindow();
@@ -379,6 +489,7 @@ describe("createMeetWindowManager", () => {
     await manager.openMeetUrl("https://meet.google.com/xyz-abcd-efg");
 
     expect(manager.hasOpenMeetWindowExcept("https://meet.google.com/abc-defg-hij")).toBe(true);
+    expect(manager.hasOpenMeetWindowExcept("not a meet url")).toBe(true);
   });
 
   it("publishes update status to open Meet windows", async () => {
@@ -450,6 +561,30 @@ describe("createMeetWindowManager", () => {
 
     expect(firstWindow.setBubbleConfig).toHaveBeenCalledWith(config);
     expect(secondWindow.setBubbleConfig).toHaveBeenCalledWith(config);
+  });
+
+  it("does not publish bubble or update messages to destroyed Meet windows", async () => {
+    const meetWindow = createFakeMeetWindow();
+    meetWindow.sendBubbleText = vi.fn();
+    meetWindow.setBubbleConfig = vi.fn();
+    meetWindow.updateUpdateStatus = vi.fn();
+    const manager = createMeetWindowManager({ createWindow: vi.fn(() => ok(meetWindow)) });
+
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+    meetWindow.setDestroyed(true);
+    manager.sendBubbleText({ durationMs: 1_000, text: "hidden" });
+    manager.setBubbleConfig({ chatMirrorEnabled: true, displaySpeedLevel: 3, enabled: true });
+    manager.updateUpdateStatus({
+      availableVersion: "0.2.0",
+      canCheck: true,
+      canRunHomebrewUpdate: true,
+      currentVersion: "0.1.0",
+      status: "available",
+    });
+
+    expect(meetWindow.sendBubbleText).not.toHaveBeenCalled();
+    expect(meetWindow.setBubbleConfig).not.toHaveBeenCalled();
+    expect(meetWindow.updateUpdateStatus).not.toHaveBeenCalled();
   });
 });
 

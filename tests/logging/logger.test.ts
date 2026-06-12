@@ -94,6 +94,7 @@ describe("createLogger", () => {
 
     expect(() => {
       noopLogger.child("test").debug("ignored");
+      noopLogger.warn("ignored");
       noopLogger.info("ignored");
     }).not.toThrow();
     expect(existsSync(join(dir, "main.log"))).toBe(false);
@@ -151,5 +152,16 @@ describe("createLazyLogger", () => {
       scope: string;
     }>;
     expect(entries).toMatchObject([{ message: "scoped", scope: "main.calendar.sync" }]);
+  });
+
+  it("forwards debug calls after lazy initialization", () => {
+    const dir = createTempDir();
+    const factory = vi.fn(() => createLogger({ dir, level: "debug" }));
+    const logger = createLazyLogger(factory);
+
+    logger.debug("debug kept");
+
+    const entries = readJsonLines(join(dir, "main.log")) as Array<{ message: string }>;
+    expect(entries).toMatchObject([{ message: "debug kept" }]);
   });
 });
