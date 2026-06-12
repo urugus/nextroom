@@ -19,9 +19,10 @@
     "lint:arrows": "node scripts/assert-arrow-functions.mjs",
     "format": "pnpm exec biome format --write .",
     "format:check": "pnpm exec biome format .",
-    "typecheck": "pnpm exec tsc --noEmit",
+    "typecheck": "pnpm exec tsgo --version && pnpm exec tsgo --noEmit",
+    "typecheck:tsc": "pnpm exec tsc --noEmit",
     "ci": "pnpm run check && pnpm run build",
-    "check": "pnpm exec biome check . && pnpm exec oxlint . && pnpm run lint:arrows && pnpm exec vitest run && pnpm exec tsc --noEmit"
+    "check": "pnpm exec biome check . && pnpm exec oxlint . && pnpm run lint:arrows && pnpm exec vitest run && pnpm run typecheck"
   },
   "build": {
     "appId": "com.urugus.nextroom",
@@ -79,6 +80,7 @@
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
+    "@typescript/native-preview": "7.0.0-dev.20260612.1",
     "@vitejs/plugin-react": "^5.2.0",
     "@vitest/coverage-v8": "4.1.8",
     "electron": "^42.3.3",
