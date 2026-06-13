@@ -106,7 +106,7 @@ describe("camera bubble pure functions", () => {
   });
 
   describe("computeOverlayBox", () => {
-    it("places the overlay inside the top-right of the video rectangle", () => {
+    it("places the overlay at the right side and vertical center of the video rectangle", () => {
       expect(
         computeOverlayBox({
           rectHeight: 200,
@@ -121,7 +121,7 @@ describe("camera bubble pure functions", () => {
         right: 492,
         shadowBlur: 8,
         shadowOffsetY: 2,
-        top: 58,
+        top: 150,
       });
     });
 
@@ -198,6 +198,7 @@ describe("camera bubble pure functions", () => {
       expect(layout.shadowOffsetY).toBe(6);
       expect(layout.width).toBe(layout.maxBubbleWidth);
       expect(layout.x).toBeGreaterThanOrEqual(layout.margin);
+      expect(layout.y).toBe(291);
     });
 
     it("keeps canvas bubble shadow offsets at least one pixel for tiny inputs", () => {
@@ -209,6 +210,28 @@ describe("camera bubble pure functions", () => {
           maxLineWidth: 0,
         }).shadowOffsetY,
       ).toBeGreaterThanOrEqual(1);
+    });
+
+    it("centers the canvas bubble vertically when it fits", () => {
+      const layout = computeBubbleLayout({
+        canvasHeight: 100,
+        canvasWidth: 100,
+        lineCount: 1,
+        maxLineWidth: 20,
+      });
+
+      expect(layout.y).toBe(30);
+    });
+
+    it("clamps tall canvas bubbles to the top margin", () => {
+      const layout = computeBubbleLayout({
+        canvasHeight: 100,
+        canvasWidth: 100,
+        lineCount: 4,
+        maxLineWidth: 20,
+      });
+
+      expect(layout.y).toBe(layout.margin);
     });
   });
 

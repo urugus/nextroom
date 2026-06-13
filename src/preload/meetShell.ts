@@ -1,20 +1,22 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { ApiResult, IPC_CHANNELS as SHARED_IPC_CHANNELS } from "../shared/ipc";
-import type { AppUpdateStatus } from "../shared/types";
+import type { AppSettings, AppUpdateStatus, CameraBubbleShellState } from "../shared/types";
 
 type SharedIpcChannels = typeof SHARED_IPC_CHANNELS;
 
 // Keep preload bundles standalone: sandboxed Electron preload cannot load Rollup shared chunks.
 const IPC_CHANNELS = {
-  meetBubbleEnabledChanged: "meetBubble:enabledChanged",
   meetBubbleSend: "meetBubble:send",
+  meetBubbleSetSidebarHidden: "meetBubble:setSidebarHidden",
+  meetBubbleShellState: "meetBubble:shellState",
   updatesGetStatus: "updates:getStatus",
   updatesRunHomebrewUpdate: "updates:runHomebrewUpdate",
   updatesStatusChanged: "updates:status-changed",
 } as const satisfies Pick<
   SharedIpcChannels,
-  | "meetBubbleEnabledChanged"
   | "meetBubbleSend"
+  | "meetBubbleSetSidebarHidden"
+  | "meetBubbleShellState"
   | "updatesGetStatus"
   | "updatesRunHomebrewUpdate"
   | "updatesStatusChanged"
@@ -22,8 +24,9 @@ const IPC_CHANNELS = {
 
 type MeetShellUpdateApi = {
   getUpdateStatus: () => Promise<ApiResult<AppUpdateStatus>>;
-  sendBubbleText: (text: string) => Promise<ApiResult<void>>;
-  onBubbleEnabledChanged: (listener: (enabled: boolean) => void) => () => void;
+  sendBubbleText: (text: string) => Promise<ApiResult<string | undefined>>;
+  setSidebarHidden: (hidden: boolean) => Promise<ApiResult<AppSettings>>;
+  onShellStateChanged: (listener: (state: CameraBubbleShellState) => void) => () => void;
   runHomebrewUpdate: () => Promise<ApiResult<AppUpdateStatus>>;
   onUpdateStatusChanged: (listener: (status: AppUpdateStatus) => void) => () => void;
 };
@@ -32,15 +35,19 @@ const updateApi: MeetShellUpdateApi = {
   getUpdateStatus: () =>
     ipcRenderer.invoke(IPC_CHANNELS.updatesGetStatus) as Promise<ApiResult<AppUpdateStatus>>,
   sendBubbleText: (text) =>
-    ipcRenderer.invoke(IPC_CHANNELS.meetBubbleSend, text) as Promise<ApiResult<void>>,
-  onBubbleEnabledChanged: (listener) => {
-    const subscription = (_event: Electron.IpcRendererEvent, enabled: boolean) => {
-      listener(enabled);
+    ipcRenderer.invoke(IPC_CHANNELS.meetBubbleSend, text) as Promise<ApiResult<string | undefined>>,
+  setSidebarHidden: (hidden) =>
+    ipcRenderer.invoke(IPC_CHANNELS.meetBubbleSetSidebarHidden, hidden) as Promise<
+      ApiResult<AppSettings>
+    >,
+  onShellStateChanged: (listener) => {
+    const subscription = (_event: Electron.IpcRendererEvent, state: CameraBubbleShellState) => {
+      listener(state);
     };
 
-    ipcRenderer.on(IPC_CHANNELS.meetBubbleEnabledChanged, subscription);
+    ipcRenderer.on(IPC_CHANNELS.meetBubbleShellState, subscription);
     return () => {
-      ipcRenderer.removeListener(IPC_CHANNELS.meetBubbleEnabledChanged, subscription);
+      ipcRenderer.removeListener(IPC_CHANNELS.meetBubbleShellState, subscription);
     };
   },
   runHomebrewUpdate: () =>
@@ -64,11 +71,15 @@ contextBridge.exposeInMainWorld("meetLauncher", updateApi);
 export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
   const setup = (): void => {
     const button = document.getElementById("update-button");
+    const bubbleToggle = document.getElementById("bubble-toggle");
+    const bubbleHistory = document.getElementById("bubble-history");
     const bubbleInput = document.getElementById("bubble-input");
     const bubbleSidebar = document.getElementById("bubble-sidebar");
     if (
       !(button instanceof HTMLButtonElement) ||
-      !(bubbleInput instanceof HTMLInputElement) ||
+      !(bubbleToggle instanceof HTMLButtonElement) ||
+      !(bubbleHistory instanceof HTMLOListElement) ||
+      !(bubbleInput instanceof HTMLTextAreaElement) ||
       !(bubbleSidebar instanceof HTMLElement)
     ) {
       return;
@@ -79,6 +90,33 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
       button.style.display = visible ? "inline-flex" : "none";
       button.disabled = status?.status === "homebrew-updating";
       button.textContent = status?.status === "homebrew-updating" ? "Updating" : "Update";
+    };
+    const shellState = {
+      current: {
+        enabled: false,
+        sidebarHidden: false,
+      },
+    };
+    const appendBubbleHistory = (text: string): void => {
+      const trimmedText = text.trim();
+      if (trimmedText.length === 0) return;
+
+      const item = document.createElement("li");
+      item.textContent = trimmedText;
+      bubbleHistory.append(item);
+      bubbleHistory.classList.add("visible");
+      bubbleHistory.scrollTop = bubbleHistory.scrollHeight;
+    };
+    const renderShellState = (state: CameraBubbleShellState): void => {
+      shellState.current = state;
+      const sidebarVisible = state.enabled && !state.sidebarHidden;
+      bubbleToggle.style.display = state.enabled ? "inline-flex" : "none";
+      bubbleToggle.textContent = state.sidebarHidden ? "Show panel" : "Hide panel";
+      bubbleToggle.setAttribute("aria-expanded", String(sidebarVisible));
+      bubbleSidebar.style.display = sidebarVisible ? "flex" : "none";
+      if (!sidebarVisible) {
+        bubbleInput.value = "";
+      }
     };
 
     api
@@ -108,11 +146,10 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
         });
     });
 
-    api.onBubbleEnabledChanged((enabled) => {
-      bubbleSidebar.style.display = enabled ? "flex" : "none";
-      if (!enabled) {
-        bubbleInput.value = "";
-      }
+    api.onShellStateChanged(renderShellState);
+
+    bubbleToggle.addEventListener("click", () => {
+      void api.setSidebarHidden(!shellState.current.sidebarHidden);
     });
 
     bubbleInput.addEventListener("keydown", (event) => {
@@ -122,6 +159,9 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
       if (event.key !== "Enter" || event.isComposing) {
         return;
       }
+      if (event.shiftKey) {
+        return;
+      }
 
       const value = bubbleInput.value;
       if (value.trim().length === 0) {
@@ -129,9 +169,16 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
       }
 
       event.preventDefault();
-      api.sendBubbleText(value).finally(() => {
-        bubbleInput.value = "";
-      });
+      api
+        .sendBubbleText(value)
+        .then((result) => {
+          if (!result.ok) return;
+          if (result.value === undefined) return;
+
+          appendBubbleHistory(result.value);
+          bubbleInput.value = "";
+        })
+        .catch(() => undefined);
     });
   };
 
