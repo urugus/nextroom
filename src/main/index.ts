@@ -117,6 +117,7 @@ type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 type TrustedIpcHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
 const settingsFileName = "settings.json";
 let appSettings: AppSettings = { ...defaultAppSettings };
+let pinnedBubbleText: string | undefined;
 let ipcSenderGuard: IpcSenderGuard;
 const bubbleMessageGate = createBubbleMessageGate();
 const meetShellLayoutControllers = new WeakMap<WebContents, (settingsPanelOpen: boolean) => void>();
@@ -186,10 +187,14 @@ const cameraBubbleConfigFor = (settings: AppSettings): CameraBubbleConfig => ({
   sidebarHidden: settings.cameraBubbleSidebarHidden,
 });
 
-const cameraBubbleShellStateFor = (config: CameraBubbleConfig): CameraBubbleShellState => ({
+const cameraBubbleShellStateFor = (
+  config: CameraBubbleConfig,
+  pinnedText: string | undefined = pinnedBubbleText,
+): CameraBubbleShellState => ({
   chatMirrorEnabled: config.chatMirrorEnabled,
   displaySpeedLevel: config.displaySpeedLevel,
   enabled: config.enabled,
+  ...(pinnedText === undefined ? {} : { pinnedText }),
   sidebarHidden: config.sidebarHidden,
 });
 
@@ -1186,6 +1191,12 @@ const createMeetWindow = fromThrowable(
       updateUpdateStatus: (status: AppUpdateStatus) => {
         window.webContents.send(IPC_CHANNELS.updatesStatusChanged, status);
       },
+      updatePinnedBubbleText: (text: string | undefined) => {
+        window.webContents.send(
+          IPC_CHANNELS.meetBubbleShellState,
+          cameraBubbleShellStateFor(layoutState.bubbleConfig, text),
+        );
+      },
       webContents: meetView.webContents,
     };
   },
@@ -1444,10 +1455,14 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
       pinned: true,
       text: acceptedText,
     });
+    pinnedBubbleText = acceptedText;
+    meetWindowManager.updatePinnedBubbleText(acceptedText);
     return serializeResultForRenderer(ok(acceptedText));
   });
   handleTrustedIpc(IPC_CHANNELS.meetBubbleUnpin, () => {
     meetWindowManager.hideBubbleText();
+    pinnedBubbleText = undefined;
+    meetWindowManager.updatePinnedBubbleText(undefined);
     return serializeResultForRenderer(ok(undefined));
   });
   handleTrustedIpc(IPC_CHANNELS.meetBubbleSend, (_event, text) => {

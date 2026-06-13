@@ -25,6 +25,7 @@ export type ManagedMeetWindow = {
   sendBubbleText?: (message: BubbleTextMessage) => void;
   setAlwaysOnTop: (flag: boolean, level?: AlwaysOnTopLevel) => void;
   setBubbleConfig?: (config: CameraBubbleConfig) => void;
+  updatePinnedBubbleText?: (text: string | undefined) => void;
   show: () => void;
   updateUpdateStatus?: (status: AppUpdateStatus) => void;
   webContents: ManagedWebContents;
@@ -48,6 +49,7 @@ export type MeetWindowManager = {
   openMeetUrl: (value: string) => Promise<Result<void, AppError>>;
   sendBubbleText: (message: BubbleTextMessage) => void;
   setBubbleConfig: (config: CameraBubbleConfig) => void;
+  updatePinnedBubbleText: (text: string | undefined) => void;
   updateUpdateStatus: (status: AppUpdateStatus) => void;
 };
 
@@ -170,6 +172,7 @@ export const createMeetWindowManager = ({
 }: MeetWindowManagerInput): MeetWindowManager => {
   const meetWindows = new Map<MeetUrl, ManagedMeetWindow>();
   let bubbleConfig: CameraBubbleConfig | undefined;
+  let pinnedBubbleText: string | undefined;
   let updateStatus: AppUpdateStatus | undefined;
 
   const removeWindow = (meetUrl: MeetUrl, meetWindow: ManagedMeetWindow): void => {
@@ -209,6 +212,9 @@ export const createMeetWindowManager = ({
     }
     if (bubbleConfig !== undefined) {
       meetWindow.setBubbleConfig?.(bubbleConfig);
+    }
+    if (pinnedBubbleText !== undefined) {
+      meetWindow.updatePinnedBubbleText?.(pinnedBubbleText);
     }
     meetWindows.set(meetUrl, meetWindow);
     meetWindow.on("closed", () => {
@@ -299,6 +305,14 @@ export const createMeetWindowManager = ({
       meetWindows.forEach((meetWindow) => {
         if (!meetWindow.isDestroyed()) {
           meetWindow.setBubbleConfig?.(config);
+        }
+      });
+    },
+    updatePinnedBubbleText: (text) => {
+      pinnedBubbleText = text;
+      meetWindows.forEach((meetWindow) => {
+        if (!meetWindow.isDestroyed()) {
+          meetWindow.updatePinnedBubbleText?.(text);
         }
       });
     },

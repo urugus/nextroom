@@ -27,7 +27,6 @@ export type CameraBubbleLayout = {
 
 export type CameraBubbleDeps = {
   computeBubbleAnimation: typeof computeBubbleAnimation;
-  computeBubbleAlpha: typeof computeBubbleAlpha;
   computeBubbleLayout: typeof computeBubbleLayout;
   computeOverlayBox: typeof computeOverlayBox;
   computeCanvasSize: typeof computeCanvasSize;

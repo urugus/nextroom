@@ -145,6 +145,7 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
         chatMirrorEnabled: false,
         displaySpeedLevel: 3,
         enabled: false,
+        pinnedText: undefined as string | undefined,
         sidebarHidden: false,
       },
       settingsPanelOpen: false,
@@ -202,6 +203,7 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
         displaySpeedLevel:
           typeof state.displaySpeedLevel === "number" ? state.displaySpeedLevel : 3,
         enabled: state.enabled === true,
+        pinnedText: typeof state.pinnedText === "string" ? state.pinnedText : undefined,
         sidebarHidden: state.sidebarHidden === true,
       };
       const current = shellState.current;
@@ -222,6 +224,8 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
       bubblePin.disabled = !current.enabled;
       if (!current.enabled) {
         renderPinnedText(undefined);
+      } else {
+        renderPinnedText(current.pinnedText);
       }
       if (!sidebarVisible) {
         bubbleInput.value = "";
@@ -308,16 +312,21 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
     });
 
     bubbleEnabled.addEventListener("change", () => {
+      if (bubbleEnabled.checked === shellState.current.enabled) return;
+
       updateBubbleSettings({ cameraBubbleEnabled: bubbleEnabled.checked });
     });
 
     bubbleMirror.addEventListener("change", () => {
+      if (bubbleMirror.checked === shellState.current.chatMirrorEnabled) return;
+
       updateBubbleSettings({ cameraBubbleChatMirrorEnabled: bubbleMirror.checked });
     });
 
     bubbleSpeed.addEventListener("input", () => {
-      const displaySpeedLevel = Number(bubbleSpeed.value);
+      const displaySpeedLevel = Math.max(1, Math.min(5, Math.floor(Number(bubbleSpeed.value))));
       if (!Number.isFinite(displaySpeedLevel)) return;
+      if (displaySpeedLevel === shellState.current.displaySpeedLevel) return;
 
       updateBubbleSettings({ cameraBubbleDisplaySpeedLevel: displaySpeedLevel });
     });

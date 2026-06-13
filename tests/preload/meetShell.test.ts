@@ -268,6 +268,8 @@ describe("meet shell preload", () => {
 
   it("opens bubble settings and updates camera bubble settings from the Meet shell", async () => {
     await importMeetShell();
+    await Promise.resolve();
+    await Promise.resolve();
     const bubbleEnabled = document.getElementById("bubble-enabled") as HTMLInputElement;
     const bubbleMirror = document.getElementById("bubble-mirror") as HTMLInputElement;
     const bubbleSettingsPanel = document.getElementById("bubble-settings-panel") as HTMLElement;
@@ -282,7 +284,7 @@ describe("meet shell preload", () => {
     expect(bubbleSettingsToggle).toHaveAttribute("aria-expanded", "true");
     expect(electronMocks.invoke).toHaveBeenCalledWith("meetBubble:setSettingsPanelOpen", true);
 
-    bubbleEnabled.checked = true;
+    bubbleEnabled.checked = false;
     bubbleEnabled.dispatchEvent(new Event("change", { bubbles: true }));
     bubbleMirror.checked = true;
     bubbleMirror.dispatchEvent(new Event("change", { bubbles: true }));
@@ -292,7 +294,7 @@ describe("meet shell preload", () => {
     await Promise.resolve();
 
     expect(electronMocks.invoke).toHaveBeenCalledWith("settings:update", {
-      cameraBubbleEnabled: true,
+      cameraBubbleEnabled: false,
     });
     expect(electronMocks.invoke).toHaveBeenCalledWith("settings:update", {
       cameraBubbleChatMirrorEnabled: true,
@@ -301,6 +303,45 @@ describe("meet shell preload", () => {
       cameraBubbleDisplaySpeedLevel: 5,
     });
     expect(bubbleSpeedValue).toHaveTextContent("5 / 5");
+  });
+
+  it("skips no-op bubble setting updates from the Meet shell", async () => {
+    await importMeetShell();
+    await Promise.resolve();
+    await Promise.resolve();
+    electronMocks.invoke.mockClear();
+    const bubbleEnabled = document.getElementById("bubble-enabled") as HTMLInputElement;
+    const bubbleMirror = document.getElementById("bubble-mirror") as HTMLInputElement;
+    const bubbleSpeed = document.getElementById("bubble-speed") as HTMLInputElement;
+
+    bubbleEnabled.checked = true;
+    bubbleEnabled.dispatchEvent(new Event("change", { bubbles: true }));
+    bubbleMirror.checked = false;
+    bubbleMirror.dispatchEvent(new Event("change", { bubbles: true }));
+    bubbleSpeed.value = "3";
+    bubbleSpeed.dispatchEvent(new Event("input", { bubbles: true }));
+
+    expect(electronMocks.invoke).not.toHaveBeenCalledWith("settings:update", expect.any(Object));
+  });
+
+  it("renders pinned shell state delivered from another Meet window", async () => {
+    await importMeetShell();
+    const bubblePinned = document.getElementById("bubble-pinned") as HTMLElement;
+    const bubblePinnedText = document.getElementById("bubble-pinned-text") as HTMLElement;
+
+    channelListeners.get("meetBubble:shellState")?.(
+      {},
+      {
+        chatMirrorEnabled: false,
+        displaySpeedLevel: 3,
+        enabled: true,
+        pinnedText: "shared pin",
+        sidebarHidden: false,
+      },
+    );
+
+    expect(bubblePinned).toHaveClass("visible");
+    expect(bubblePinnedText).toHaveTextContent("shared pin");
   });
 
   it("contains rejected sidebar visibility updates", async () => {

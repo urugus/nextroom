@@ -1,7 +1,6 @@
 import { ipcRenderer, webFrame } from "electron";
 import { installCameraBubbleHook } from "./cameraBubbleHook";
 import {
-  computeBubbleAlpha,
   computeBubbleAnimation,
   computeBubbleDisplayDurationMs,
   computeBubbleLayout,
@@ -64,7 +63,6 @@ const postToMainWorld = (payload: CameraBubbleMessage): void => {
 if (typeof webFrame?.executeJavaScript === "function") {
   const cameraBubbleDeps = `{
     computeBubbleAnimation: ${computeBubbleAnimation.toString()},
-    computeBubbleAlpha: ${computeBubbleAlpha.toString()},
     computeBubbleDisplayDurationMs: ${computeBubbleDisplayDurationMs.toString()},
     computeBubbleLayout: ${computeBubbleLayout.toString()},
     computeOverlayBox: ${computeOverlayBox.toString()},

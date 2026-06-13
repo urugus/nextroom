@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installCameraBubbleHook } from "../../src/preload/cameraBubbleHook";
 import {
-  computeBubbleAlpha,
   computeBubbleAnimation,
   computeBubbleDisplayDurationMs,
   computeBubbleLayout,
@@ -33,7 +32,6 @@ type RTCRtpSenderConstructor = new (track: MediaStreamTrack | null) => RTCRtpSen
 
 const cameraBubbleDeps = {
   computeBubbleAnimation,
-  computeBubbleAlpha,
   computeBubbleDisplayDurationMs,
   computeBubbleLayout,
   computeOverlayBox,

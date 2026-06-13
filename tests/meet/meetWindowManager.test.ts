@@ -558,6 +558,30 @@ describe("createMeetWindowManager", () => {
     expect(secondWindow.hideBubbleText).toHaveBeenCalledTimes(1);
   });
 
+  it("publishes pinned bubble shell state to open and newly-created Meet windows", async () => {
+    const firstWindow = createFakeMeetWindow();
+    const secondWindow = createFakeMeetWindow();
+    firstWindow.updatePinnedBubbleText = vi.fn();
+    secondWindow.updatePinnedBubbleText = vi.fn();
+    const createWindow = vi
+      .fn()
+      .mockReturnValueOnce(ok(firstWindow))
+      .mockReturnValueOnce(ok(secondWindow));
+    const manager = createMeetWindowManager({ createWindow });
+
+    await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
+    manager.updatePinnedBubbleText("shared pin");
+    await manager.openMeetUrl("https://meet.google.com/xyz-abcd-efg");
+
+    expect(firstWindow.updatePinnedBubbleText).toHaveBeenCalledWith("shared pin");
+    expect(secondWindow.updatePinnedBubbleText).toHaveBeenCalledWith("shared pin");
+
+    manager.updatePinnedBubbleText(undefined);
+
+    expect(firstWindow.updatePinnedBubbleText).toHaveBeenCalledWith(undefined);
+    expect(secondWindow.updatePinnedBubbleText).toHaveBeenCalledWith(undefined);
+  });
+
   it("publishes bubble config to open and newly-created Meet windows", async () => {
     const firstWindow = createFakeMeetWindow();
     const secondWindow = createFakeMeetWindow();
@@ -588,6 +612,7 @@ describe("createMeetWindowManager", () => {
     meetWindow.hideBubbleText = vi.fn();
     meetWindow.sendBubbleText = vi.fn();
     meetWindow.setBubbleConfig = vi.fn();
+    meetWindow.updatePinnedBubbleText = vi.fn();
     meetWindow.updateUpdateStatus = vi.fn();
     const manager = createMeetWindowManager({ createWindow: vi.fn(() => ok(meetWindow)) });
 
@@ -595,6 +620,7 @@ describe("createMeetWindowManager", () => {
     meetWindow.setDestroyed(true);
     manager.hideBubbleText();
     manager.sendBubbleText({ durationMs: 1_000, text: "hidden" });
+    manager.updatePinnedBubbleText("hidden");
     manager.setBubbleConfig({
       chatMirrorEnabled: true,
       displaySpeedLevel: 3,
@@ -612,6 +638,7 @@ describe("createMeetWindowManager", () => {
     expect(meetWindow.hideBubbleText).not.toHaveBeenCalled();
     expect(meetWindow.sendBubbleText).not.toHaveBeenCalled();
     expect(meetWindow.setBubbleConfig).not.toHaveBeenCalled();
+    expect(meetWindow.updatePinnedBubbleText).not.toHaveBeenCalled();
     expect(meetWindow.updateUpdateStatus).not.toHaveBeenCalled();
   });
 });
