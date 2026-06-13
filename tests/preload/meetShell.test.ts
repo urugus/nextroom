@@ -193,6 +193,22 @@ describe("meet shell preload", () => {
     expect(electronMocks.invoke).toHaveBeenCalledWith("meetBubble:setSidebarHidden", true);
   });
 
+  it("contains rejected sidebar visibility updates", async () => {
+    document.body.innerHTML = "";
+    const { setupMeetShellDom } = await import("../../src/preload/meetShell");
+    const api = createMeetShellApi({
+      setSidebarHidden: vi.fn(() => Promise.reject(new Error("channel unavailable"))),
+    });
+    renderMeetShellDom();
+    setupMeetShellDom(api);
+    const bubbleToggle = document.getElementById("bubble-toggle") as HTMLButtonElement;
+
+    bubbleToggle.click();
+    await Promise.resolve();
+
+    expect(api.setSidebarHidden).toHaveBeenCalledWith(true);
+  });
+
   it("sends non-empty Enter text and clears the input", async () => {
     await importMeetShell();
     const bubbleHistory = document.getElementById("bubble-history") as HTMLOListElement;

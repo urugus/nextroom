@@ -149,7 +149,7 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
     api.onShellStateChanged(renderShellState);
 
     bubbleToggle.addEventListener("click", () => {
-      void api.setSidebarHidden(!shellState.current.sidebarHidden);
+      api.setSidebarHidden(!shellState.current.sidebarHidden).catch(() => undefined);
     });
 
     bubbleInput.addEventListener("keydown", (event) => {
