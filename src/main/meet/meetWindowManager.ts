@@ -7,7 +7,7 @@ import { err, ok, type Result } from "neverthrow";
 type AlwaysOnTopLevel = "screen-saver";
 
 type AutoJoinResult = { ok: true } | { ok: false; reason: string };
-export type BubbleTextMessage = { durationMs: number; text: string };
+export type BubbleTextMessage = { durationMs?: number; pinned?: boolean; text: string };
 
 type ManagedWebContents = {
   executeJavaScript: (code: string) => Promise<unknown>;
@@ -21,6 +21,7 @@ export type ManagedMeetWindow = {
   loadURL: (url: string) => Promise<void>;
   on: (event: "closed", listener: () => void) => unknown;
   restore: () => void;
+  hideBubbleText?: () => void;
   sendBubbleText?: (message: BubbleTextMessage) => void;
   setAlwaysOnTop: (flag: boolean, level?: AlwaysOnTopLevel) => void;
   setBubbleConfig?: (config: CameraBubbleConfig) => void;
@@ -43,6 +44,7 @@ export type MeetWindowManager = {
   autoJoinMeetUrl: (value: string) => Promise<Result<void, AppError>>;
   focusOpenMeetWindow: () => boolean;
   hasOpenMeetWindowExcept: (value: string) => boolean;
+  hideBubbleText: () => void;
   openMeetUrl: (value: string) => Promise<Result<void, AppError>>;
   sendBubbleText: (message: BubbleTextMessage) => void;
   setBubbleConfig: (config: CameraBubbleConfig) => void;
@@ -273,6 +275,13 @@ export const createMeetWindowManager = ({
       return [...meetWindows].some(
         ([meetUrl, meetWindow]) => meetUrl !== canonicalized.value && !meetWindow.isDestroyed(),
       );
+    },
+    hideBubbleText: () => {
+      meetWindows.forEach((meetWindow) => {
+        if (!meetWindow.isDestroyed()) {
+          meetWindow.hideBubbleText?.();
+        }
+      });
     },
     openMeetUrl: async (value) => {
       const opened = await openMeetWindow(value);

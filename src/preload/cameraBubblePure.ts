@@ -1,6 +1,13 @@
 export type CameraBubbleEnvelope =
   | { kind: "config"; chatMirrorEnabled: boolean; displaySpeedLevel: number; enabled: boolean }
-  | { durationMs: number; kind: "show"; text: string };
+  | { durationMs: number | undefined; kind: "show"; pinned: boolean; text: string }
+  | { kind: "hide" };
+
+export type CameraBubbleAnimation = {
+  opacity: number;
+  scale: number;
+  translateY: number;
+};
 
 export type CameraBubbleLayout = {
   fontSize: number;
@@ -19,6 +26,7 @@ export type CameraBubbleLayout = {
 };
 
 export type CameraBubbleDeps = {
+  computeBubbleAnimation: typeof computeBubbleAnimation;
   computeBubbleAlpha: typeof computeBubbleAlpha;
   computeBubbleLayout: typeof computeBubbleLayout;
   computeOverlayBox: typeof computeOverlayBox;
@@ -31,6 +39,37 @@ export type CameraBubbleDeps = {
   shouldMirrorChatKey: typeof shouldMirrorChatKey;
   computeBubbleDisplayDurationMs: typeof computeBubbleDisplayDurationMs;
   wrapBubbleLines: typeof wrapBubbleLines;
+};
+
+export const computeBubbleAnimation = ({
+  enterDurationMs,
+  expiresAt,
+  fadeDurationMs,
+  now,
+  startedAt,
+}: {
+  enterDurationMs: number;
+  expiresAt: number | undefined;
+  fadeDurationMs: number;
+  now: number;
+  startedAt: number;
+}): CameraBubbleAnimation => {
+  const remainingMs = expiresAt === undefined ? Number.POSITIVE_INFINITY : expiresAt - now;
+  const fadeOpacity =
+    expiresAt !== undefined && now >= expiresAt
+      ? 0
+      : expiresAt === undefined || fadeDurationMs <= 0 || remainingMs >= fadeDurationMs
+        ? 1
+        : Math.max(0, Math.min(1, remainingMs / fadeDurationMs));
+  const enterProgress =
+    enterDurationMs <= 0 ? 1 : Math.max(0, Math.min(1, (now - startedAt) / enterDurationMs));
+  const easedEnter = 1 - (1 - enterProgress) ** 3;
+
+  return {
+    opacity: fadeOpacity * easedEnter,
+    scale: 0.96 + 0.04 * easedEnter,
+    translateY: Math.round((1 - easedEnter) * 10),
+  };
 };
 
 export const sanitizeBubbleText = (value: string): string => {
@@ -297,6 +336,7 @@ export const parseCameraBubbleEnvelope = (
     enabled?: unknown;
     kind?: unknown;
     nonce?: unknown;
+    pinned?: unknown;
     text?: unknown;
   };
   if (message.nonce !== expectedNonce) {
@@ -309,13 +349,19 @@ export const parseCameraBubbleEnvelope = (
     }
 
     const text = message.text.trim();
-    const durationMs =
-      typeof message.durationMs === "number" &&
-      Number.isFinite(message.durationMs) &&
-      message.durationMs > 0
-        ? Math.max(2_000, Math.min(20_000, message.durationMs))
+    const pinned = message.pinned === true;
+    const durationMs = pinned
+      ? undefined
+      : typeof message.durationMs === "number" &&
+          Number.isFinite(message.durationMs) &&
+          message.durationMs > 0
+        ? Math.max(2_000, Math.min(60_000, message.durationMs))
         : 7_000;
-    return text.length === 0 ? undefined : { durationMs, kind: "show", text };
+    return text.length === 0 ? undefined : { durationMs, kind: "show", pinned, text };
+  }
+
+  if (message.kind === "hide") {
+    return { kind: "hide" };
   }
 
   if (message.kind === "config") {

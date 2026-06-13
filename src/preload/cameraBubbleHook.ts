@@ -24,7 +24,9 @@ export const installCameraBubbleHook = (
   };
 
   const state: {
-    bubble: { expiresAt: number; text: string } | undefined;
+    bubble:
+      | { expiresAt: number | undefined; pinned: boolean; startedAt: number; text: string }
+      | undefined;
     chatMirrorEnabled: boolean;
     displaySpeedLevel: number;
     enabled: boolean;
@@ -115,8 +117,14 @@ export const installCameraBubbleHook = (
     if (currentBubble === undefined) return;
 
     const now = Date.now();
-    const alpha = deps.computeBubbleAlpha(now, currentBubble.expiresAt, 500);
-    if (alpha === 0) {
+    const animation = deps.computeBubbleAnimation({
+      enterDurationMs: 260,
+      expiresAt: currentBubble.expiresAt,
+      fadeDurationMs: 500,
+      now,
+      startedAt: currentBubble.startedAt,
+    });
+    if (currentBubble.expiresAt !== undefined && now >= currentBubble.expiresAt) {
       state.bubble = undefined;
       hideOverlay();
       return;
@@ -144,8 +152,15 @@ export const installCameraBubbleHook = (
       maxLineWidth: measuredWidth,
     });
 
-    context.globalAlpha = alpha;
-    roundedRect(context, layout.x, layout.y, layout.width, layout.height, layout.radius);
+    context.globalAlpha = animation.opacity;
+    context.translate(
+      layout.x + layout.width / 2,
+      layout.y + layout.height / 2 + animation.translateY,
+    );
+    context.scale(animation.scale, animation.scale);
+    const bubbleX = -layout.width / 2;
+    const bubbleY = -layout.height / 2;
+    roundedRect(context, bubbleX, bubbleY, layout.width, layout.height, layout.radius);
     context.fillStyle = "rgba(255,255,255,0.92)";
     context.shadowColor = "rgba(0,0,0,0.35)";
     context.shadowBlur = layout.shadowBlur;
@@ -160,8 +175,8 @@ export const installCameraBubbleHook = (
     lines.forEach((line, index) => {
       context.fillText(
         line,
-        layout.x + layout.padding,
-        layout.y + layout.padding + layout.lineHeight * index,
+        bubbleX + layout.padding,
+        bubbleY + layout.padding + layout.lineHeight * index,
       );
     });
     context.restore();
@@ -505,13 +520,16 @@ export const installCameraBubbleHook = (
     element.style.position = "fixed";
     element.style.pointerEvents = "none";
     element.style.zIndex = "2147483646";
-    element.style.backgroundColor = "rgba(255,255,255,0.92)";
+    element.style.backgroundColor = "rgba(255,255,255,0.9)";
+    element.style.backdropFilter = "blur(18px)";
     element.style.color = "#202124";
     element.style.fontFamily = "sans-serif";
     element.style.lineHeight = "1.25";
     element.style.boxSizing = "border-box";
     element.style.overflowWrap = "anywhere";
-    element.style.transition = "opacity 500ms linear";
+    element.style.transition = "opacity 120ms ease-out, transform 120ms ease-out";
+    element.style.transformOrigin = "right center";
+    element.style.willChange = "opacity, transform";
     element.style.display = "none";
     document.documentElement.append(element);
     overlayState.element = element;
@@ -536,8 +554,14 @@ export const installCameraBubbleHook = (
       return;
     }
 
-    const alpha = deps.computeBubbleAlpha(now, currentBubble.expiresAt, 500);
-    if (alpha === 0) {
+    const animation = deps.computeBubbleAnimation({
+      enterDurationMs: 260,
+      expiresAt: currentBubble.expiresAt,
+      fadeDurationMs: 500,
+      now,
+      startedAt: currentBubble.startedAt,
+    });
+    if (currentBubble.expiresAt !== undefined && now >= currentBubble.expiresAt) {
       state.bubble = undefined;
       hideOverlay();
       return;
@@ -546,14 +570,14 @@ export const installCameraBubbleHook = (
     const candidate = bestSelfViewCandidate();
     element.textContent = currentBubble.text;
     element.style.display = "block";
-    element.style.opacity = String(alpha);
+    element.style.opacity = String(animation.opacity);
 
     if (candidate === undefined) {
       element.style.left = "";
       element.style.right = "16px";
       element.style.top = "";
       element.style.bottom = "16px";
-      element.style.transform = "";
+      element.style.transform = `translateY(${animation.translateY}px) scale(${animation.scale})`;
       element.style.maxWidth = "min(60vw, 360px)";
       element.style.fontSize = "16px";
       element.style.padding = "8px 10px";
@@ -572,7 +596,7 @@ export const installCameraBubbleHook = (
     element.style.right = `${Math.max(0, window.innerWidth - box.right)}px`;
     element.style.top = `${box.top}px`;
     element.style.bottom = "";
-    element.style.transform = "translateY(-50%)";
+    element.style.transform = `translateY(calc(-50% + ${animation.translateY}px)) scale(${animation.scale})`;
     element.style.maxWidth = `${box.maxWidth}px`;
     element.style.fontSize = `${box.fontSize}px`;
     element.style.padding = `${Math.round(box.fontSize * 0.5)}px ${Math.round(
@@ -596,8 +620,18 @@ export const installCameraBubbleHook = (
     runOverlayLoop();
   };
 
-  const showBubble = (text: string, durationMs: number): void => {
-    state.bubble = { expiresAt: Date.now() + durationMs, text };
+  const showBubble = (text: string, durationMs: number | undefined, pinned: boolean): void => {
+    if (state.bubble?.pinned === true && !pinned) {
+      return;
+    }
+
+    const now = Date.now();
+    state.bubble = {
+      expiresAt: pinned || durationMs === undefined ? undefined : now + durationMs,
+      pinned,
+      startedAt: now,
+      text,
+    };
     showOverlay();
   };
 
@@ -637,6 +671,7 @@ export const installCameraBubbleHook = (
             showBubble(
               text,
               deps.computeBubbleDisplayDurationMs([...text].length, state.displaySpeedLevel),
+              false,
             );
           } catch {
             return;
@@ -665,7 +700,13 @@ export const installCameraBubbleHook = (
     if (message.kind === "show") {
       if (!state.enabled) return;
 
-      showBubble(message.text, message.durationMs);
+      showBubble(message.text, message.durationMs, message.pinned);
+      return;
+    }
+
+    if (message.kind === "hide") {
+      state.bubble = undefined;
+      hideOverlay();
       return;
     }
 

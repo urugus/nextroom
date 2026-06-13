@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installCameraBubbleHook } from "../../src/preload/cameraBubbleHook";
 import {
   computeBubbleAlpha,
+  computeBubbleAnimation,
   computeBubbleDisplayDurationMs,
   computeBubbleLayout,
   computeCanvasSize,
@@ -31,6 +32,7 @@ type RTCPeerConnectionConstructor = new () => RTCPeerConnection;
 type RTCRtpSenderConstructor = new (track: MediaStreamTrack | null) => RTCRtpSender;
 
 const cameraBubbleDeps = {
+  computeBubbleAnimation,
   computeBubbleAlpha,
   computeBubbleDisplayDurationMs,
   computeBubbleLayout,
@@ -98,13 +100,14 @@ describe("installCameraBubbleHook", () => {
 
   const postCameraBubbleMessage = (
     message:
-      | { durationMs: number; kind: "show"; text: string }
+      | { durationMs?: number; kind: "show"; pinned?: boolean; text: string }
       | {
           chatMirrorEnabled: boolean;
           displaySpeedLevel: number;
           enabled: boolean;
           kind: "config";
-        },
+        }
+      | { kind: "hide" },
   ): void => {
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -162,6 +165,8 @@ describe("installCameraBubbleHook", () => {
     quadraticCurveTo: ReturnType<typeof vi.fn>;
     restore: ReturnType<typeof vi.fn>;
     save: ReturnType<typeof vi.fn>;
+    scale: ReturnType<typeof vi.fn>;
+    translate: ReturnType<typeof vi.fn>;
   }>;
 
   beforeEach(() => {
@@ -343,6 +348,8 @@ describe("installCameraBubbleHook", () => {
           quadraticCurveTo: vi.fn(),
           restore: vi.fn(),
           save: vi.fn(),
+          scale: vi.fn(),
+          translate: vi.fn(),
         };
         canvasContexts.push(context);
         return context;
@@ -648,7 +655,7 @@ describe("installCameraBubbleHook", () => {
     expect(overlay).toBeDefined();
     expect(overlay?.style.display).toBe("block");
     expect(overlay?.style.right).not.toBe("16px");
-    expect(overlay?.style.transform).toBe("translateY(-50%)");
+    expect(overlay?.style.transform).toContain("scale(");
     expect(overlay?.style.boxShadow).toContain("4px");
     expect(overlay?.style.boxShadow).toContain("15px");
 
@@ -667,6 +674,33 @@ describe("installCameraBubbleHook", () => {
     nextAnimationFrame();
 
     expect(overlay?.style.display).toBe("none");
+  });
+
+  it("keeps a pinned bubble visible until a hide message arrives", () => {
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+
+    postCameraBubbleMessage({ kind: "show", pinned: true, text: "stay pinned" });
+    const overlay = overlayWithText("stay pinned");
+    expect(overlay?.style.display).toBe("block");
+
+    vi.advanceTimersByTime(60_000);
+    nextAnimationFrame();
+    nextAnimationFrame();
+
+    expect(overlay?.style.display).toBe("block");
+
+    postCameraBubbleMessage({ kind: "hide" });
+    expect(overlay?.style.display).toBe("none");
+  });
+
+  it("keeps a pinned bubble from being replaced by temporary bubble text", () => {
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+
+    postCameraBubbleMessage({ kind: "show", pinned: true, text: "pinned comment" });
+    postCameraBubbleMessage({ durationMs: 2_000, kind: "show", text: "temporary comment" });
+
+    expect(overlayWithText("pinned comment")?.style.display).toBe("block");
+    expect(overlayWithText("temporary comment")).toBeUndefined();
   });
 
   it("draws active bubble text into the canvas pipeline", () => {
@@ -893,7 +927,7 @@ describe("installCameraBubbleHook", () => {
       (element) => element.textContent === "fallback",
     );
     expect(overlay?.style.right).toBe("16px");
-    expect(overlay?.style.transform).toBe("");
+    expect(overlay?.style.transform).toContain("scale(");
   });
 
   it("does not anchor the overlay to a display-tagged video without displaySurface", async () => {
@@ -909,7 +943,7 @@ describe("installCameraBubbleHook", () => {
       (element) => element.textContent === "tagged display",
     );
     expect(overlay?.style.right).toBe("16px");
-    expect(overlay?.style.transform).toBe("");
+    expect(overlay?.style.transform).toContain("scale(");
   });
 
   it("hides the overlay when the canvas draw loop expires the shared bubble first", () => {

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ApiResult } from "../../src/shared/ipc";
+import type { ApiResult, SettingsUpdate } from "../../src/shared/ipc";
 import type { AppSettings, AppUpdateStatus, CameraBubbleShellState } from "../../src/shared/types";
 
 const electronMocks = vi.hoisted(() => ({
@@ -31,7 +31,7 @@ const settings: AppSettings = {
   autoJoinEnabled: false,
   autoOpenEnabled: true,
   cameraBubbleChatMirrorEnabled: false,
-  cameraBubbleEnabled: false,
+  cameraBubbleEnabled: true,
   cameraBubbleSidebarHidden: false,
   cameraBubbleDisplaySpeedLevel: 3,
   joinOffsetSeconds: 0,
@@ -45,10 +45,23 @@ const settings: AppSettings = {
 
 const renderMeetShellDom = (): void => {
   document.body.innerHTML = `
+    <div id="bubble-settings-panel">
+      <input type="checkbox" id="bubble-enabled">
+      <input type="checkbox" id="bubble-mirror">
+      <input type="range" id="bubble-speed">
+      <span id="bubble-speed-value"></span>
+    </div>
     <aside id="bubble-sidebar">
+      <div id="bubble-pinned">
+        <span id="bubble-pinned-text"></span>
+        <button id="bubble-unpin" type="button">Unpin</button>
+      </div>
       <ol id="bubble-history"></ol>
       <textarea id="bubble-input"></textarea>
+      <button id="bubble-send" type="button">Send</button>
+      <button id="bubble-pin" type="button">Pin</button>
     </aside>
+    <button id="bubble-settings-toggle" type="button">Bubble</button>
     <button id="bubble-toggle" type="button">Hide panel</button>
     <button id="update-button" type="button">Update</button>
   `;
@@ -56,8 +69,12 @@ const renderMeetShellDom = (): void => {
 
 type MeetShellTestApi = {
   getUpdateStatus: () => Promise<ApiResult<AppUpdateStatus>>;
+  getSettings: () => Promise<ApiResult<AppSettings>>;
+  pinBubbleText: (text: string) => Promise<ApiResult<string | undefined>>;
   sendBubbleText: (text: string) => Promise<ApiResult<string | undefined>>;
   setSidebarHidden: (hidden: boolean) => Promise<ApiResult<AppSettings>>;
+  unpinBubbleText: () => Promise<ApiResult<void>>;
+  updateBubbleSettings: (settings: SettingsUpdate) => Promise<ApiResult<AppSettings>>;
   onShellStateChanged: (listener: (state: CameraBubbleShellState) => void) => () => void;
   runHomebrewUpdate: () => Promise<ApiResult<AppUpdateStatus>>;
   onUpdateStatusChanged: (listener: (status: AppUpdateStatus) => void) => () => void;
@@ -70,13 +87,19 @@ const createMeetShellApi = (overrides: Partial<MeetShellTestApi> = {}): MeetShel
 
 const baseMeetShellApi: MeetShellTestApi = {
   getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true as const, value: updateStatus("idle") })),
+  getSettings: vi.fn(() => Promise.resolve({ ok: true as const, value: settings })),
   onShellStateChanged: vi.fn(() => vi.fn()),
   onUpdateStatusChanged: vi.fn(() => vi.fn()),
+  pinBubbleText: vi.fn((text: string) => Promise.resolve({ ok: true as const, value: text })),
   runHomebrewUpdate: vi.fn(() =>
     Promise.resolve({ ok: true as const, value: updateStatus("homebrew-updated") }),
   ),
   sendBubbleText: vi.fn((text: string) => Promise.resolve({ ok: true as const, value: text })),
   setSidebarHidden: vi.fn(() => Promise.resolve({ ok: true as const, value: settings })),
+  unpinBubbleText: vi.fn(() => Promise.resolve({ ok: true as const, value: undefined })),
+  updateBubbleSettings: vi.fn((nextSettings) =>
+    Promise.resolve({ ok: true as const, value: { ...settings, ...nextSettings } }),
+  ),
 };
 
 const importMeetShell = async (): Promise<void> => {
@@ -104,18 +127,31 @@ describe("meet shell preload", () => {
     });
     channelListeners = new Map();
 
-    electronMocks.invoke.mockImplementation((channel: string, text?: string) => {
+    electronMocks.invoke.mockImplementation((channel: string, payload?: unknown) => {
       if (channel === "updates:getStatus") {
         return Promise.resolve({ ok: true as const, value: updateStatus("idle") });
       }
       if (channel === "updates:runHomebrewUpdate") {
         return Promise.resolve({ ok: true as const, value: updateStatus("homebrew-updated") });
       }
+      if (channel === "settings:get") {
+        return Promise.resolve({ ok: true as const, value: settings });
+      }
+      if (channel === "settings:update") {
+        const updates = typeof payload === "object" && payload !== null ? payload : {};
+        return Promise.resolve({ ok: true as const, value: { ...settings, ...updates } });
+      }
+      if (channel === "meetBubble:pin") {
+        return Promise.resolve({ ok: true as const, value: payload });
+      }
       if (channel === "meetBubble:send") {
-        return Promise.resolve({ ok: true as const, value: text });
+        return Promise.resolve({ ok: true as const, value: payload });
       }
       if (channel === "meetBubble:setSidebarHidden") {
         return Promise.resolve({ ok: true as const, value: settings });
+      }
+      if (channel === "meetBubble:unpin") {
+        return Promise.resolve({ ok: true as const, value: undefined });
       }
 
       return Promise.resolve({
@@ -139,7 +175,15 @@ describe("meet shell preload", () => {
     const bubbleSidebar = document.getElementById("bubble-sidebar") as HTMLElement;
     const bubbleToggle = document.getElementById("bubble-toggle") as HTMLButtonElement;
 
-    channelListeners.get("meetBubble:shellState")?.({}, { enabled: true, sidebarHidden: false });
+    channelListeners.get("meetBubble:shellState")?.(
+      {},
+      {
+        chatMirrorEnabled: false,
+        displaySpeedLevel: 3,
+        enabled: true,
+        sidebarHidden: false,
+      },
+    );
 
     expect(bubbleSidebar.style.display).toBe("flex");
     expect(bubbleToggle.style.display).toBe("inline-flex");
@@ -158,7 +202,15 @@ describe("meet shell preload", () => {
     historyItem.textContent = "sent before hiding";
     bubbleHistory.append(historyItem);
     bubbleInput.value = "hello";
-    channelListeners.get("meetBubble:shellState")?.({}, { enabled: true, sidebarHidden: true });
+    channelListeners.get("meetBubble:shellState")?.(
+      {},
+      {
+        chatMirrorEnabled: false,
+        displaySpeedLevel: 3,
+        enabled: true,
+        sidebarHidden: true,
+      },
+    );
 
     expect(bubbleSidebar.style.display).toBe("none");
     expect(bubbleHistory).toHaveTextContent("sent before hiding");
@@ -175,7 +227,15 @@ describe("meet shell preload", () => {
     const bubbleToggle = document.getElementById("bubble-toggle") as HTMLButtonElement;
 
     bubbleInput.value = "hello";
-    channelListeners.get("meetBubble:shellState")?.({}, { enabled: false, sidebarHidden: false });
+    channelListeners.get("meetBubble:shellState")?.(
+      {},
+      {
+        chatMirrorEnabled: false,
+        displaySpeedLevel: 3,
+        enabled: false,
+        sidebarHidden: false,
+      },
+    );
 
     expect(bubbleSidebar.style.display).toBe("none");
     expect(bubbleInput.value).toBe("");
@@ -187,10 +247,54 @@ describe("meet shell preload", () => {
     await importMeetShell();
     const bubbleToggle = document.getElementById("bubble-toggle") as HTMLButtonElement;
 
-    channelListeners.get("meetBubble:shellState")?.({}, { enabled: true, sidebarHidden: false });
+    channelListeners.get("meetBubble:shellState")?.(
+      {},
+      {
+        chatMirrorEnabled: false,
+        displaySpeedLevel: 3,
+        enabled: true,
+        sidebarHidden: false,
+      },
+    );
     bubbleToggle.click();
 
     expect(electronMocks.invoke).toHaveBeenCalledWith("meetBubble:setSidebarHidden", true);
+  });
+
+  it("opens bubble settings and updates camera bubble settings from the Meet shell", async () => {
+    await importMeetShell();
+    const bubbleEnabled = document.getElementById("bubble-enabled") as HTMLInputElement;
+    const bubbleMirror = document.getElementById("bubble-mirror") as HTMLInputElement;
+    const bubbleSettingsPanel = document.getElementById("bubble-settings-panel") as HTMLElement;
+    const bubbleSettingsToggle = document.getElementById(
+      "bubble-settings-toggle",
+    ) as HTMLButtonElement;
+    const bubbleSpeed = document.getElementById("bubble-speed") as HTMLInputElement;
+    const bubbleSpeedValue = document.getElementById("bubble-speed-value") as HTMLElement;
+
+    bubbleSettingsToggle.click();
+    expect(bubbleSettingsPanel).toHaveClass("open");
+    expect(bubbleSettingsToggle).toHaveAttribute("aria-expanded", "true");
+
+    bubbleEnabled.checked = true;
+    bubbleEnabled.dispatchEvent(new Event("change", { bubbles: true }));
+    bubbleMirror.checked = true;
+    bubbleMirror.dispatchEvent(new Event("change", { bubbles: true }));
+    bubbleSpeed.value = "5";
+    bubbleSpeed.dispatchEvent(new Event("input", { bubbles: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(electronMocks.invoke).toHaveBeenCalledWith("settings:update", {
+      cameraBubbleEnabled: true,
+    });
+    expect(electronMocks.invoke).toHaveBeenCalledWith("settings:update", {
+      cameraBubbleChatMirrorEnabled: true,
+    });
+    expect(electronMocks.invoke).toHaveBeenCalledWith("settings:update", {
+      cameraBubbleDisplaySpeedLevel: 5,
+    });
+    expect(bubbleSpeedValue).toHaveTextContent("5 / 5");
   });
 
   it("contains rejected sidebar visibility updates", async () => {
@@ -223,6 +327,55 @@ describe("meet shell preload", () => {
     expect(bubbleHistory).toHaveTextContent("hello");
     expect(bubbleHistory).toHaveClass("visible");
     expect(bubbleInput.value).toBe("");
+  });
+
+  it("pins non-empty bubble text until unpinned and clears the input", async () => {
+    await importMeetShell();
+    const bubbleInput = document.getElementById("bubble-input") as HTMLTextAreaElement;
+    const bubblePin = document.getElementById("bubble-pin") as HTMLButtonElement;
+    const bubblePinned = document.getElementById("bubble-pinned") as HTMLElement;
+    const bubblePinnedText = document.getElementById("bubble-pinned-text") as HTMLElement;
+    const bubbleUnpin = document.getElementById("bubble-unpin") as HTMLButtonElement;
+
+    bubbleInput.value = "keep this visible";
+    bubblePin.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(electronMocks.invoke).toHaveBeenCalledWith("meetBubble:pin", "keep this visible");
+    expect(bubblePinned).toHaveClass("visible");
+    expect(bubblePinnedText).toHaveTextContent("keep this visible");
+    expect(bubbleInput.value).toBe("");
+
+    bubbleUnpin.click();
+    await Promise.resolve();
+
+    expect(electronMocks.invoke).toHaveBeenCalledWith("meetBubble:unpin");
+    expect(bubblePinned).not.toHaveClass("visible");
+    expect(bubblePinnedText).toHaveTextContent("");
+  });
+
+  it("pins a specific sent history comment without changing the input", async () => {
+    await importMeetShell();
+    const bubbleHistory = document.getElementById("bubble-history") as HTMLOListElement;
+    const bubbleInput = document.getElementById("bubble-input") as HTMLTextAreaElement;
+    const bubblePinnedText = document.getElementById("bubble-pinned-text") as HTMLElement;
+
+    bubbleInput.value = "first";
+    bubbleInput.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+    await Promise.resolve();
+    await Promise.resolve();
+    bubbleInput.value = "draft";
+
+    const historyPin = bubbleHistory.querySelector(".bubble-history-pin");
+    expect(historyPin).toBeInstanceOf(HTMLButtonElement);
+    historyPin?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(electronMocks.invoke).toHaveBeenCalledWith("meetBubble:pin", "first");
+    expect(bubblePinnedText).toHaveTextContent("first");
+    expect(bubbleInput.value).toBe("draft");
   });
 
   it("records sanitized accepted bubble text returned by main", async () => {
@@ -346,12 +499,19 @@ describe("meet shell preload", () => {
     const unsubscribeBubble = exposedApi.onShellStateChanged(bubbleListener);
     const unsubscribeUpdate = exposedApi.onUpdateStatusChanged(updateListener);
 
-    channelListeners.get("meetBubble:shellState")?.({}, { enabled: true, sidebarHidden: true });
+    const shellState: CameraBubbleShellState = {
+      chatMirrorEnabled: true,
+      displaySpeedLevel: 4,
+      enabled: true,
+      sidebarHidden: true,
+    };
+
+    channelListeners.get("meetBubble:shellState")?.({}, shellState);
     channelListeners.get("updates:status-changed")?.({}, updateStatus("available"));
     unsubscribeBubble();
     unsubscribeUpdate();
 
-    expect(bubbleListener).toHaveBeenCalledWith({ enabled: true, sidebarHidden: true });
+    expect(bubbleListener).toHaveBeenCalledWith(shellState);
     expect(updateListener).toHaveBeenCalledWith(updateStatus("available"));
     expect(electronMocks.removeListener).toHaveBeenCalledWith(
       "meetBubble:shellState",
