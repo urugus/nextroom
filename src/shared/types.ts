@@ -68,6 +68,7 @@ export type AppSettings = {
   autoOpenEnabled: boolean;
   cameraBubbleChatMirrorEnabled: boolean;
   cameraBubbleEnabled: boolean;
+  cameraBubbleSidebarHidden: boolean;
   cameraBubbleDisplaySpeedLevel: number;
   joinOffsetSeconds: number;
   notifyBeforeMinutes: number;
@@ -78,10 +79,19 @@ export type AppSettings = {
   timezone: string;
 };
 
-export type CameraBubbleConfig = {
+export type CameraBubbleMeetViewConfig = {
   chatMirrorEnabled: boolean;
   displaySpeedLevel: number;
   enabled: boolean;
+};
+
+export type CameraBubbleConfig = CameraBubbleMeetViewConfig & {
+  sidebarHidden: boolean;
+};
+
+export type CameraBubbleShellState = {
+  enabled: boolean;
+  sidebarHidden: boolean;
 };
 
 export type MenuShortcutStatus = {

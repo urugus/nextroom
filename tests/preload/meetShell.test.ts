@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiResult } from "../../src/shared/ipc";
-import type { AppUpdateStatus } from "../../src/shared/types";
+import type { AppSettings, AppUpdateStatus, CameraBubbleShellState } from "../../src/shared/types";
 
 const electronMocks = vi.hoisted(() => ({
   exposeInMainWorld: vi.fn(),
@@ -27,19 +27,38 @@ const updateStatus = (status: AppUpdateStatus["status"]): AppUpdateStatus => ({
   status,
 });
 
+const settings: AppSettings = {
+  autoJoinEnabled: false,
+  autoOpenEnabled: true,
+  cameraBubbleChatMirrorEnabled: false,
+  cameraBubbleEnabled: false,
+  cameraBubbleSidebarHidden: false,
+  cameraBubbleDisplaySpeedLevel: 3,
+  joinOffsetSeconds: 0,
+  notifyBeforeMinutes: 1,
+  openOffsetSeconds: 0,
+  menuShortcutAccelerator: "Command+Alt+N",
+  launchAtLogin: false,
+  calendarId: "primary",
+  timezone: "Asia/Tokyo",
+};
+
 const renderMeetShellDom = (): void => {
   document.body.innerHTML = `
     <aside id="bubble-sidebar">
-      <input id="bubble-input" type="text">
+      <ol id="bubble-history"></ol>
+      <textarea id="bubble-input"></textarea>
     </aside>
+    <button id="bubble-toggle" type="button">Hide panel</button>
     <button id="update-button" type="button">Update</button>
   `;
 };
 
 type MeetShellTestApi = {
   getUpdateStatus: () => Promise<ApiResult<AppUpdateStatus>>;
-  sendBubbleText: (text: string) => Promise<ApiResult<void>>;
-  onBubbleEnabledChanged: (listener: (enabled: boolean) => void) => () => void;
+  sendBubbleText: (text: string) => Promise<ApiResult<string | undefined>>;
+  setSidebarHidden: (hidden: boolean) => Promise<ApiResult<AppSettings>>;
+  onShellStateChanged: (listener: (state: CameraBubbleShellState) => void) => () => void;
   runHomebrewUpdate: () => Promise<ApiResult<AppUpdateStatus>>;
   onUpdateStatusChanged: (listener: (status: AppUpdateStatus) => void) => () => void;
 };
@@ -51,12 +70,13 @@ const createMeetShellApi = (overrides: Partial<MeetShellTestApi> = {}): MeetShel
 
 const baseMeetShellApi: MeetShellTestApi = {
   getUpdateStatus: vi.fn(() => Promise.resolve({ ok: true as const, value: updateStatus("idle") })),
-  onBubbleEnabledChanged: vi.fn(() => vi.fn()),
+  onShellStateChanged: vi.fn(() => vi.fn()),
   onUpdateStatusChanged: vi.fn(() => vi.fn()),
   runHomebrewUpdate: vi.fn(() =>
     Promise.resolve({ ok: true as const, value: updateStatus("homebrew-updated") }),
   ),
-  sendBubbleText: vi.fn(() => Promise.resolve({ ok: true as const, value: undefined })),
+  sendBubbleText: vi.fn((text: string) => Promise.resolve({ ok: true as const, value: text })),
+  setSidebarHidden: vi.fn(() => Promise.resolve({ ok: true as const, value: settings })),
 };
 
 const importMeetShell = async (): Promise<void> => {
@@ -77,9 +97,14 @@ describe("meet shell preload", () => {
     electronMocks.invoke.mockReset();
     electronMocks.on.mockReset();
     electronMocks.removeListener.mockReset();
+    Object.values(baseMeetShellApi).forEach((value) => {
+      if (vi.isMockFunction(value)) {
+        value.mockClear();
+      }
+    });
     channelListeners = new Map();
 
-    electronMocks.invoke.mockImplementation((channel: string) => {
+    electronMocks.invoke.mockImplementation((channel: string, text?: string) => {
       if (channel === "updates:getStatus") {
         return Promise.resolve({ ok: true as const, value: updateStatus("idle") });
       }
@@ -87,7 +112,10 @@ describe("meet shell preload", () => {
         return Promise.resolve({ ok: true as const, value: updateStatus("homebrew-updated") });
       }
       if (channel === "meetBubble:send") {
-        return Promise.resolve({ ok: true as const, value: undefined });
+        return Promise.resolve({ ok: true as const, value: text });
+      }
+      if (channel === "meetBubble:setSidebarHidden") {
+        return Promise.resolve({ ok: true as const, value: settings });
       }
 
       return Promise.resolve({
@@ -106,35 +134,195 @@ describe("meet shell preload", () => {
     renderMeetShellDom();
   });
 
-  it("toggles the bubble sidebar display from enabledChanged", async () => {
+  it("renders enabled visible shell state with the hide button", async () => {
     await importMeetShell();
     const bubbleSidebar = document.getElementById("bubble-sidebar") as HTMLElement;
-    const bubbleInput = document.getElementById("bubble-input") as HTMLInputElement;
+    const bubbleToggle = document.getElementById("bubble-toggle") as HTMLButtonElement;
 
-    channelListeners.get("meetBubble:enabledChanged")?.({}, true);
+    channelListeners.get("meetBubble:shellState")?.({}, { enabled: true, sidebarHidden: false });
+
     expect(bubbleSidebar.style.display).toBe("flex");
+    expect(bubbleToggle.style.display).toBe("inline-flex");
+    expect(bubbleToggle.textContent).toBe("Hide panel");
+    expect(bubbleToggle).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("renders enabled hidden shell state and clears the input", async () => {
+    await importMeetShell();
+    const bubbleHistory = document.getElementById("bubble-history") as HTMLOListElement;
+    const bubbleSidebar = document.getElementById("bubble-sidebar") as HTMLElement;
+    const bubbleInput = document.getElementById("bubble-input") as HTMLTextAreaElement;
+    const bubbleToggle = document.getElementById("bubble-toggle") as HTMLButtonElement;
+
+    const historyItem = document.createElement("li");
+    historyItem.textContent = "sent before hiding";
+    bubbleHistory.append(historyItem);
+    bubbleInput.value = "hello";
+    channelListeners.get("meetBubble:shellState")?.({}, { enabled: true, sidebarHidden: true });
+
+    expect(bubbleSidebar.style.display).toBe("none");
+    expect(bubbleHistory).toHaveTextContent("sent before hiding");
+    expect(bubbleInput.value).toBe("");
+    expect(bubbleToggle.style.display).toBe("inline-flex");
+    expect(bubbleToggle.textContent).toBe("Show panel");
+    expect(bubbleToggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("hides the sidebar and toggle when camera bubble is disabled", async () => {
+    await importMeetShell();
+    const bubbleSidebar = document.getElementById("bubble-sidebar") as HTMLElement;
+    const bubbleInput = document.getElementById("bubble-input") as HTMLTextAreaElement;
+    const bubbleToggle = document.getElementById("bubble-toggle") as HTMLButtonElement;
 
     bubbleInput.value = "hello";
-    channelListeners.get("meetBubble:enabledChanged")?.({}, false);
+    channelListeners.get("meetBubble:shellState")?.({}, { enabled: false, sidebarHidden: false });
+
     expect(bubbleSidebar.style.display).toBe("none");
     expect(bubbleInput.value).toBe("");
+    expect(bubbleToggle.style.display).toBe("none");
+    expect(bubbleToggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("invokes sidebar visibility updates with the toggled value", async () => {
+    await importMeetShell();
+    const bubbleToggle = document.getElementById("bubble-toggle") as HTMLButtonElement;
+
+    channelListeners.get("meetBubble:shellState")?.({}, { enabled: true, sidebarHidden: false });
+    bubbleToggle.click();
+
+    expect(electronMocks.invoke).toHaveBeenCalledWith("meetBubble:setSidebarHidden", true);
+  });
+
+  it("contains rejected sidebar visibility updates", async () => {
+    document.body.innerHTML = "";
+    const { setupMeetShellDom } = await import("../../src/preload/meetShell");
+    const api = createMeetShellApi({
+      setSidebarHidden: vi.fn(() => Promise.reject(new Error("channel unavailable"))),
+    });
+    renderMeetShellDom();
+    setupMeetShellDom(api);
+    const bubbleToggle = document.getElementById("bubble-toggle") as HTMLButtonElement;
+
+    bubbleToggle.click();
+    await Promise.resolve();
+
+    expect(api.setSidebarHidden).toHaveBeenCalledWith(true);
   });
 
   it("sends non-empty Enter text and clears the input", async () => {
     await importMeetShell();
-    const bubbleInput = document.getElementById("bubble-input") as HTMLInputElement;
+    const bubbleHistory = document.getElementById("bubble-history") as HTMLOListElement;
+    const bubbleInput = document.getElementById("bubble-input") as HTMLTextAreaElement;
 
     bubbleInput.value = "hello";
     bubbleInput.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
     await Promise.resolve();
+    await Promise.resolve();
 
     expect(electronMocks.invoke).toHaveBeenCalledWith("meetBubble:send", "hello");
+    expect(bubbleHistory).toHaveTextContent("hello");
+    expect(bubbleHistory).toHaveClass("visible");
     expect(bubbleInput.value).toBe("");
+  });
+
+  it("records sanitized accepted bubble text returned by main", async () => {
+    document.body.innerHTML = "";
+    const { setupMeetShellDom } = await import("../../src/preload/meetShell");
+    const api = createMeetShellApi({
+      sendBubbleText: vi.fn(() =>
+        Promise.resolve({ ok: true as const, value: "hello world".repeat(10).slice(0, 100) }),
+      ),
+    });
+    renderMeetShellDom();
+    setupMeetShellDom(api);
+    const bubbleHistory = document.getElementById("bubble-history") as HTMLOListElement;
+    const bubbleInput = document.getElementById("bubble-input") as HTMLTextAreaElement;
+
+    bubbleInput.value = "  hello\nworld".repeat(12);
+    bubbleInput.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(api.sendBubbleText).toHaveBeenCalledWith("  hello\nworld".repeat(12));
+    expect(bubbleHistory).toHaveTextContent("hello world".repeat(10).slice(0, 100));
+    expect(bubbleInput.value).toBe("");
+  });
+
+  it("keeps rate-limited bubble sends out of history and preserves the input", async () => {
+    document.body.innerHTML = "";
+    const { setupMeetShellDom } = await import("../../src/preload/meetShell");
+    const api = createMeetShellApi({
+      sendBubbleText: vi.fn(() => Promise.resolve({ ok: true as const, value: undefined })),
+    });
+    renderMeetShellDom();
+    setupMeetShellDom(api);
+    const bubbleHistory = document.getElementById("bubble-history") as HTMLOListElement;
+    const bubbleInput = document.getElementById("bubble-input") as HTMLTextAreaElement;
+
+    bubbleInput.value = "hello";
+    bubbleInput.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(api.sendBubbleText).toHaveBeenCalledWith("hello");
+    expect(bubbleHistory.childElementCount).toBe(0);
+    expect(bubbleHistory).not.toHaveClass("visible");
+    expect(bubbleInput.value).toBe("hello");
+  });
+
+  it("keeps Shift+Enter available for multiline bubble text", async () => {
+    await importMeetShell();
+    const bubbleInput = document.getElementById("bubble-input") as HTMLTextAreaElement;
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "Enter",
+      shiftKey: true,
+    });
+
+    bubbleInput.value = "hello";
+    bubbleInput.dispatchEvent(event);
+    await Promise.resolve();
+
+    expect(electronMocks.invoke).not.toHaveBeenCalledWith("meetBubble:send", "hello");
+    expect(event.defaultPrevented).toBe(false);
+    expect(bubbleInput.value).toBe("hello");
+  });
+
+  it("keeps failed bubble sends out of history and preserves the input", async () => {
+    document.body.innerHTML = "";
+    const { setupMeetShellDom } = await import("../../src/preload/meetShell");
+    const api = createMeetShellApi({
+      sendBubbleText: vi.fn(() =>
+        Promise.resolve({
+          ok: false as const,
+          error: {
+            message: "Send failed",
+            recoverable: true,
+            type: "DatabaseFailed" as const,
+          },
+        }),
+      ),
+    });
+    renderMeetShellDom();
+    setupMeetShellDom(api);
+    const bubbleHistory = document.getElementById("bubble-history") as HTMLOListElement;
+    const bubbleInput = document.getElementById("bubble-input") as HTMLTextAreaElement;
+
+    bubbleInput.value = "hello";
+    bubbleInput.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(api.sendBubbleText).toHaveBeenCalledWith("hello");
+    expect(bubbleHistory.childElementCount).toBe(0);
+    expect(bubbleHistory).not.toHaveClass("visible");
+    expect(bubbleInput.value).toBe("hello");
   });
 
   it("does not send composing Enter text", async () => {
     await importMeetShell();
-    const bubbleInput = document.getElementById("bubble-input") as HTMLInputElement;
+    const bubbleInput = document.getElementById("bubble-input") as HTMLTextAreaElement;
     const event = new KeyboardEvent("keydown", { bubbles: true, key: "Enter" });
     Object.defineProperty(event, "isComposing", {
       configurable: true,
@@ -155,18 +343,18 @@ describe("meet shell preload", () => {
     const bubbleListener = vi.fn();
     const updateListener = vi.fn();
 
-    const unsubscribeBubble = exposedApi.onBubbleEnabledChanged(bubbleListener);
+    const unsubscribeBubble = exposedApi.onShellStateChanged(bubbleListener);
     const unsubscribeUpdate = exposedApi.onUpdateStatusChanged(updateListener);
 
-    channelListeners.get("meetBubble:enabledChanged")?.({}, true);
+    channelListeners.get("meetBubble:shellState")?.({}, { enabled: true, sidebarHidden: true });
     channelListeners.get("updates:status-changed")?.({}, updateStatus("available"));
     unsubscribeBubble();
     unsubscribeUpdate();
 
-    expect(bubbleListener).toHaveBeenCalledWith(true);
+    expect(bubbleListener).toHaveBeenCalledWith({ enabled: true, sidebarHidden: true });
     expect(updateListener).toHaveBeenCalledWith(updateStatus("available"));
     expect(electronMocks.removeListener).toHaveBeenCalledWith(
-      "meetBubble:enabledChanged",
+      "meetBubble:shellState",
       expect.any(Function),
     );
     expect(electronMocks.removeListener).toHaveBeenCalledWith(
@@ -184,7 +372,25 @@ describe("meet shell preload", () => {
 
     expect(api.getUpdateStatus).not.toHaveBeenCalled();
     expect(api.onUpdateStatusChanged).not.toHaveBeenCalled();
-    expect(api.onBubbleEnabledChanged).not.toHaveBeenCalled();
+    expect(api.onShellStateChanged).not.toHaveBeenCalled();
+  });
+
+  it("skips DOM setup when the bubble toggle is missing", async () => {
+    const { setupMeetShellDom } = await import("../../src/preload/meetShell");
+    const api = createMeetShellApi();
+    document.body.innerHTML = `
+      <aside id="bubble-sidebar">
+        <ol id="bubble-history"></ol>
+        <textarea id="bubble-input"></textarea>
+      </aside>
+      <button id="update-button" type="button">Update</button>
+    `;
+
+    setupMeetShellDom(api);
+
+    expect(api.getUpdateStatus).not.toHaveBeenCalled();
+    expect(api.onUpdateStatusChanged).not.toHaveBeenCalled();
+    expect(api.onShellStateChanged).not.toHaveBeenCalled();
   });
 
   it("defers DOM setup until DOMContentLoaded while the document is loading", async () => {
@@ -255,7 +461,7 @@ describe("meet shell preload", () => {
     const { setupMeetShellDom } = await import("../../src/preload/meetShell");
     const api = createMeetShellApi();
     setupMeetShellDom(api);
-    const bubbleInput = document.getElementById("bubble-input") as HTMLInputElement;
+    const bubbleInput = document.getElementById("bubble-input") as HTMLTextAreaElement;
 
     bubbleInput.value = "hello";
     bubbleInput.dispatchEvent(new Event("keydown", { bubbles: true }));
@@ -288,7 +494,7 @@ describe("meet shell preload", () => {
     const { setupMeetShellDom } = await import("../../src/preload/meetShell");
     const api = createMeetShellApi();
     setupMeetShellDom(api);
-    const bubbleInput = document.getElementById("bubble-input") as HTMLInputElement;
+    const bubbleInput = document.getElementById("bubble-input") as HTMLTextAreaElement;
 
     bubbleInput.value = "   ";
     bubbleInput.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));

@@ -24,6 +24,7 @@ const settings: AppSettings = {
   autoOpenEnabled: true,
   cameraBubbleChatMirrorEnabled: false,
   cameraBubbleEnabled: false,
+  cameraBubbleSidebarHidden: false,
   cameraBubbleDisplaySpeedLevel: 3,
   joinOffsetSeconds: 0,
   notifyBeforeMinutes: 1,

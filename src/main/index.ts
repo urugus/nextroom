@@ -62,6 +62,8 @@ import type {
   AppSettings,
   AppUpdateStatus,
   CameraBubbleConfig,
+  CameraBubbleMeetViewConfig,
+  CameraBubbleShellState,
   MenuShortcutStatus,
   ScreenShareSource,
 } from "@shared/types";
@@ -180,6 +182,22 @@ const cameraBubbleConfigFor = (settings: AppSettings): CameraBubbleConfig => ({
   chatMirrorEnabled: settings.cameraBubbleChatMirrorEnabled,
   displaySpeedLevel: settings.cameraBubbleDisplaySpeedLevel,
   enabled: settings.cameraBubbleEnabled,
+  sidebarHidden: settings.cameraBubbleSidebarHidden,
+});
+
+const cameraBubbleShellStateFor = (config: CameraBubbleConfig): CameraBubbleShellState => ({
+  enabled: config.enabled,
+  sidebarHidden: config.sidebarHidden,
+});
+
+const cameraBubbleMeetViewConfigFor = ({
+  chatMirrorEnabled,
+  displaySpeedLevel,
+  enabled,
+}: CameraBubbleConfig): CameraBubbleMeetViewConfig => ({
+  chatMirrorEnabled,
+  displaySpeedLevel,
+  enabled,
 });
 
 const menuShortcutStatusFor = (
@@ -214,6 +232,7 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
   const previousShortcutStatus = menuShortcutStatus;
   const previousCameraBubbleChatMirrorEnabled = appSettings.cameraBubbleChatMirrorEnabled;
   const previousCameraBubbleEnabled = appSettings.cameraBubbleEnabled;
+  const previousCameraBubbleSidebarHidden = appSettings.cameraBubbleSidebarHidden;
   const previousCameraBubbleDisplaySpeedLevel = appSettings.cameraBubbleDisplaySpeedLevel;
   const shortcutChanged =
     "menuShortcutAccelerator" in parsed.value &&
@@ -223,6 +242,8 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
       nextSettings.cameraBubbleEnabled !== previousCameraBubbleEnabled) ||
     ("cameraBubbleChatMirrorEnabled" in parsed.value &&
       nextSettings.cameraBubbleChatMirrorEnabled !== previousCameraBubbleChatMirrorEnabled) ||
+    ("cameraBubbleSidebarHidden" in parsed.value &&
+      nextSettings.cameraBubbleSidebarHidden !== previousCameraBubbleSidebarHidden) ||
     ("cameraBubbleDisplaySpeedLevel" in parsed.value &&
       nextSettings.cameraBubbleDisplaySpeedLevel !== previousCameraBubbleDisplaySpeedLevel);
 
@@ -442,12 +463,54 @@ const meetShellHtml = (): string => `<!doctype html>
         border-left: 1px solid #d6d6d8;
         background: #f5f5f7;
       }
+      #bubble-sidebar-content {
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+        height: 100%;
+        max-height: 100%;
+        min-height: 0;
+      }
       #bubble-sidebar h1 {
         margin: 0;
         color: #1d1d1f;
         font-size: 13px;
         font-weight: 600;
         line-height: 1.3;
+      }
+      #bubble-history {
+        display: none;
+        flex: 1 1 auto;
+        min-height: 0;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        overflow-y: auto;
+      }
+      #bubble-history.visible {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      #bubble-history li {
+        border: 1px solid #dedee1;
+        border-radius: 7px;
+        background: #ffffff;
+        color: #1d1d1f;
+        font-size: 12px;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+        padding: 7px 9px;
+        white-space: pre-wrap;
+      }
+      #bubble-composer {
+        display: flex;
+        flex: 0 0 auto;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: auto;
       }
       #bubble-sidebar p {
         margin: 0;
@@ -460,15 +523,18 @@ const meetShellHtml = (): string => `<!doctype html>
         box-sizing: border-box;
         display: block;
         width: 100%;
-        min-height: 30px;
+        min-height: 84px;
+        max-height: 160px;
         border: 1px solid #c4c4c6;
         border-radius: 6px;
         background: #ffffff;
         color: #1d1d1f;
         font: inherit;
         font-size: 12px;
+        line-height: 1.45;
         outline: none;
         padding: 4px 9px;
+        resize: none;
       }
       #bubble-input:focus {
         border-color: #0071e3;
@@ -494,22 +560,42 @@ const meetShellHtml = (): string => `<!doctype html>
         color: #6e6e73;
         cursor: progress;
       }
+      #bubble-toggle {
+        border-color: #c4c4c6;
+        background: #ffffff;
+        color: #1d1d1f;
+      }
+      #bubble-toggle:hover {
+        border-color: #9f9fa3;
+        background: #fdfdfd;
+      }
     </style>
   </head>
   <body>
     <div class="bar">
+      <button
+        type="button"
+        id="bubble-toggle"
+        aria-controls="bubble-sidebar"
+        aria-expanded="false"
+      >Hide panel</button>
       <button type="button" id="update-button">Update</button>
     </div>
     <aside id="bubble-sidebar">
-      <h1 id="bubble-sidebar-title">Camera bubble</h1>
-      <input
-        type="text"
-        id="bubble-input"
-        placeholder="Type text to show on your camera…"
-        aria-labelledby="bubble-sidebar-title"
-        aria-describedby="bubble-sidebar-hint"
-      >
-      <p id="bubble-sidebar-hint">Press Enter to send. The text appears on your camera for a few seconds.</p>
+      <div id="bubble-sidebar-content">
+        <h1 id="bubble-sidebar-title">Camera bubble</h1>
+        <ol id="bubble-history" aria-label="Camera bubble history"></ol>
+        <div id="bubble-composer">
+          <textarea
+            id="bubble-input"
+            rows="4"
+            placeholder="Type text to show on your camera…"
+            aria-labelledby="bubble-sidebar-title"
+            aria-describedby="bubble-sidebar-hint"
+          ></textarea>
+          <p id="bubble-sidebar-hint">Press Enter to send. Shift+Enter adds a new line.</p>
+        </div>
+      </div>
     </aside>
   </body>
 </html>`;
@@ -892,11 +978,14 @@ const createMeetWindow = fromThrowable(
       event.preventDefault();
     });
     const layoutState = {
-      bubbleSidebarVisible: appSettings.cameraBubbleEnabled,
+      bubbleConfig: cameraBubbleConfigFor(appSettings),
     };
     const layout = (): void => {
       const bounds = window.getContentBounds();
-      const sidebarWidth = layoutState.bubbleSidebarVisible ? bubbleSidebarWidth : 0;
+      const sidebarWidth =
+        layoutState.bubbleConfig.enabled && !layoutState.bubbleConfig.sidebarHidden
+          ? bubbleSidebarWidth
+          : 0;
       meetView.setBounds({
         height: Math.max(0, bounds.height - meetShellHeight),
         width: Math.max(0, bounds.width - sidebarWidth),
@@ -913,12 +1002,15 @@ const createMeetWindow = fromThrowable(
     ipcSenderGuard.trustWindow(window, { dataShell: true });
     window.webContents.on("did-finish-load", () => {
       window.webContents.send(
-        IPC_CHANNELS.meetBubbleEnabledChanged,
-        appSettings.cameraBubbleEnabled,
+        IPC_CHANNELS.meetBubbleShellState,
+        cameraBubbleShellStateFor(cameraBubbleConfigFor(appSettings)),
       );
     });
     meetView.webContents.on("did-finish-load", () => {
-      meetView.webContents.send(IPC_CHANNELS.meetBubbleConfig, cameraBubbleConfigFor(appSettings));
+      meetView.webContents.send(
+        IPC_CHANNELS.meetBubbleConfig,
+        cameraBubbleMeetViewConfigFor(cameraBubbleConfigFor(appSettings)),
+      );
     });
     void window.loadURL(meetShellUrl());
 
@@ -935,10 +1027,16 @@ const createMeetWindow = fromThrowable(
       },
       setAlwaysOnTop: (flag: boolean, level?: "screen-saver") => window.setAlwaysOnTop(flag, level),
       setBubbleConfig: (config: CameraBubbleConfig) => {
-        layoutState.bubbleSidebarVisible = config.enabled;
+        layoutState.bubbleConfig = config;
         layout();
-        meetView.webContents.send(IPC_CHANNELS.meetBubbleConfig, config);
-        window.webContents.send(IPC_CHANNELS.meetBubbleEnabledChanged, config.enabled);
+        meetView.webContents.send(
+          IPC_CHANNELS.meetBubbleConfig,
+          cameraBubbleMeetViewConfigFor(config),
+        );
+        window.webContents.send(
+          IPC_CHANNELS.meetBubbleShellState,
+          cameraBubbleShellStateFor(config),
+        );
       },
       show: () => window.show(),
       updateUpdateStatus: (status: AppUpdateStatus) => {
@@ -1193,7 +1291,7 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
       return serializeResultForRenderer(ok(undefined));
     }
 
-    bubbleMessageGate
+    const acceptedText = bubbleMessageGate
       .accept(parsed.data, Date.now(), appSettings.cameraBubbleDisplaySpeedLevel)
       .match(
         (accepted) => {
@@ -1201,11 +1299,24 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
             durationMs: accepted.durationMs,
             text: accepted.text,
           });
+          return accepted.text;
         },
         () => undefined,
       );
 
-    return serializeResultForRenderer(ok(undefined));
+    return serializeResultForRenderer(ok(acceptedText));
+  });
+  handleTrustedIpc(IPC_CHANNELS.meetBubbleSetSidebarHidden, (_event, hidden) => {
+    const parsed = z.boolean().safeParse(hidden);
+    if (!parsed.success) {
+      return serializeResultForRenderer(
+        err({ type: "DatabaseFailed", cause: "Sidebar hidden state must be a boolean." }),
+      );
+    }
+
+    return serializeResultForRenderer(
+      updateAppSettings({ cameraBubbleSidebarHidden: parsed.data }),
+    );
   });
   handleTrustedIpc(IPC_CHANNELS.settingsGet, () => serializeResultForRenderer(ok(appSettings)));
   handleTrustedIpc(IPC_CHANNELS.settingsUpdate, (_event, settings) =>

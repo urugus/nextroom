@@ -12,6 +12,7 @@ describe("app settings", () => {
       autoJoinEnabled: false,
       cameraBubbleChatMirrorEnabled: false,
       cameraBubbleEnabled: false,
+      cameraBubbleSidebarHidden: false,
       cameraBubbleDisplaySpeedLevel: 3,
       joinOffsetSeconds: 0,
       menuShortcutAccelerator: "Command+Alt+N",
@@ -45,6 +46,14 @@ describe("app settings", () => {
     expect(parseSettingsUpdate({ cameraBubbleChatMirrorEnabled: true })._unsafeUnwrap()).toEqual({
       cameraBubbleChatMirrorEnabled: true,
     });
+    expect(parseSettingsUpdate({ cameraBubbleSidebarHidden: true })._unsafeUnwrap()).toEqual({
+      cameraBubbleSidebarHidden: true,
+    });
+  });
+
+  it("defaults the camera bubble sidebar hidden state to false", () => {
+    expect(defaultAppSettings.cameraBubbleSidebarHidden).toBe(false);
+    expect(parseStoredAppSettings({}).cameraBubbleSidebarHidden).toBe(false);
   });
 
   it("defaults the camera bubble display speed level to 3", () => {
@@ -80,6 +89,11 @@ describe("app settings", () => {
 
   it("rejects non-boolean camera bubble updates", () => {
     expect(parseSettingsUpdate({ cameraBubbleEnabled: "true" })._unsafeUnwrapErr()).toMatchObject({
+      type: "DatabaseFailed",
+    });
+    expect(
+      parseSettingsUpdate({ cameraBubbleSidebarHidden: "true" })._unsafeUnwrapErr(),
+    ).toMatchObject({
       type: "DatabaseFailed",
     });
   });

@@ -648,6 +648,7 @@ describe("installCameraBubbleHook", () => {
     expect(overlay).toBeDefined();
     expect(overlay?.style.display).toBe("block");
     expect(overlay?.style.right).not.toBe("16px");
+    expect(overlay?.style.transform).toBe("translateY(-50%)");
     expect(overlay?.style.boxShadow).toContain("4px");
     expect(overlay?.style.boxShadow).toContain("15px");
 
@@ -892,6 +893,7 @@ describe("installCameraBubbleHook", () => {
       (element) => element.textContent === "fallback",
     );
     expect(overlay?.style.right).toBe("16px");
+    expect(overlay?.style.transform).toBe("");
   });
 
   it("does not anchor the overlay to a display-tagged video without displaySurface", async () => {
@@ -907,6 +909,7 @@ describe("installCameraBubbleHook", () => {
       (element) => element.textContent === "tagged display",
     );
     expect(overlay?.style.right).toBe("16px");
+    expect(overlay?.style.transform).toBe("");
   });
 
   it("hides the overlay when the canvas draw loop expires the shared bubble first", () => {

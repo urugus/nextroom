@@ -6,6 +6,8 @@ import type {
   AppSettings,
   AppUpdateStatus,
   CameraBubbleConfig,
+  CameraBubbleMeetViewConfig,
+  CameraBubbleShellState,
   MeetEventsSnapshot,
   MenuShortcutStatus,
   ScreenShareSource,
@@ -18,6 +20,7 @@ export type SettingsUpdate = Partial<
     | "autoJoinEnabled"
     | "cameraBubbleChatMirrorEnabled"
     | "cameraBubbleEnabled"
+    | "cameraBubbleSidebarHidden"
     | "cameraBubbleDisplaySpeedLevel"
     | "joinOffsetSeconds"
     | "menuShortcutAccelerator"
@@ -34,9 +37,10 @@ export const IPC_CHANNELS = {
   meetListUpcoming: "meet:listUpcoming",
   meetOpen: "meet:open",
   meetBubbleSend: "meetBubble:send",
+  meetBubbleSetSidebarHidden: "meetBubble:setSidebarHidden",
   meetBubbleShow: "meetBubble:show",
   meetBubbleConfig: "meetBubble:config",
-  meetBubbleEnabledChanged: "meetBubble:enabledChanged",
+  meetBubbleShellState: "meetBubble:shellState",
   settingsGet: "settings:get",
   settingsUpdate: "settings:update",
   settingsMenuShortcutStatusGet: "settings:menuShortcutStatusGet",
@@ -55,7 +59,7 @@ export type ScreenSharePickerApi = {
   cancel: () => Promise<void>;
 };
 
-export type { CameraBubbleConfig };
+export type { CameraBubbleConfig, CameraBubbleMeetViewConfig, CameraBubbleShellState };
 
 export type MeetLauncherApi = {
   getAccountStatus: () => Promise<ApiResult<AccountStatus>>;

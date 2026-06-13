@@ -548,6 +548,7 @@ describe("createMeetWindowManager", () => {
       chatMirrorEnabled: true,
       displaySpeedLevel: 4,
       enabled: true,
+      sidebarHidden: true,
     };
     const createWindow = vi
       .fn()
@@ -573,7 +574,12 @@ describe("createMeetWindowManager", () => {
     await manager.openMeetUrl("https://meet.google.com/abc-defg-hij");
     meetWindow.setDestroyed(true);
     manager.sendBubbleText({ durationMs: 1_000, text: "hidden" });
-    manager.setBubbleConfig({ chatMirrorEnabled: true, displaySpeedLevel: 3, enabled: true });
+    manager.setBubbleConfig({
+      chatMirrorEnabled: true,
+      displaySpeedLevel: 3,
+      enabled: true,
+      sidebarHidden: false,
+    });
     manager.updateUpdateStatus({
       availableVersion: "0.2.0",
       canCheck: true,
