@@ -38,6 +38,7 @@ export const IPC_CHANNELS = {
   meetOpen: "meet:open",
   meetBubblePin: "meetBubble:pin",
   meetBubbleSend: "meetBubble:send",
+  meetBubbleSetSettingsPanelOpen: "meetBubble:setSettingsPanelOpen",
   meetBubbleSetSidebarHidden: "meetBubble:setSidebarHidden",
   meetBubbleUnpin: "meetBubble:unpin",
   meetBubbleHide: "meetBubble:hide",

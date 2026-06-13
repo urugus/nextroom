@@ -119,6 +119,7 @@ const settingsFileName = "settings.json";
 let appSettings: AppSettings = { ...defaultAppSettings };
 let ipcSenderGuard: IpcSenderGuard;
 const bubbleMessageGate = createBubbleMessageGate();
+const meetShellLayoutControllers = new WeakMap<WebContents, (settingsPanelOpen: boolean) => void>();
 const appCanStart = app.requestSingleInstanceLock();
 const electronProcess = process as NodeJS.Process & { defaultApp?: boolean };
 const createMainLogger = (): Logger =>
@@ -316,6 +317,7 @@ const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "Mee
   )();
 
 const meetShellHeight = 38;
+const bubbleSettingsPanelReservedHeight = 150;
 const bubbleSidebarWidth = 260;
 const strictRendererCsp = [
   "default-src 'self'",
@@ -1111,6 +1113,7 @@ const createMeetWindow = fromThrowable(
     });
     const layoutState = {
       bubbleConfig: cameraBubbleConfigFor(appSettings),
+      settingsPanelOpen: false,
     };
     const layout = (): void => {
       const bounds = window.getContentBounds();
@@ -1118,11 +1121,13 @@ const createMeetWindow = fromThrowable(
         layoutState.bubbleConfig.enabled && !layoutState.bubbleConfig.sidebarHidden
           ? bubbleSidebarWidth
           : 0;
+      const meetViewTop =
+        meetShellHeight + (layoutState.settingsPanelOpen ? bubbleSettingsPanelReservedHeight : 0);
       meetView.setBounds({
-        height: Math.max(0, bounds.height - meetShellHeight),
+        height: Math.max(0, bounds.height - meetViewTop),
         width: Math.max(0, bounds.width - sidebarWidth),
         x: 0,
-        y: meetShellHeight,
+        y: meetViewTop,
       });
     };
 
@@ -1131,6 +1136,10 @@ const createMeetWindow = fromThrowable(
     window.on("resize", layout);
     window.on("resized", layout);
     layout();
+    meetShellLayoutControllers.set(window.webContents, (settingsPanelOpen) => {
+      layoutState.settingsPanelOpen = settingsPanelOpen;
+      layout();
+    });
     ipcSenderGuard.trustWindow(window, { dataShell: true });
     window.webContents.on("did-finish-load", () => {
       window.webContents.send(
@@ -1467,6 +1476,17 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
       );
 
     return serializeResultForRenderer(ok(acceptedText));
+  });
+  handleTrustedIpc(IPC_CHANNELS.meetBubbleSetSettingsPanelOpen, (event, open) => {
+    const parsed = z.boolean().safeParse(open);
+    if (!parsed.success) {
+      return serializeResultForRenderer(
+        err({ type: "DatabaseFailed", cause: "Settings panel open state must be a boolean." }),
+      );
+    }
+
+    meetShellLayoutControllers.get(event.sender)?.(parsed.data);
+    return serializeResultForRenderer(ok(undefined));
   });
   handleTrustedIpc(IPC_CHANNELS.meetBubbleSetSidebarHidden, (_event, hidden) => {
     const parsed = z.boolean().safeParse(hidden);

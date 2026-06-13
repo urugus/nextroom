@@ -8,6 +8,7 @@ type SharedIpcChannels = typeof SHARED_IPC_CHANNELS;
 const IPC_CHANNELS = {
   meetBubblePin: "meetBubble:pin",
   meetBubbleSend: "meetBubble:send",
+  meetBubbleSetSettingsPanelOpen: "meetBubble:setSettingsPanelOpen",
   meetBubbleSetSidebarHidden: "meetBubble:setSidebarHidden",
   meetBubbleShellState: "meetBubble:shellState",
   meetBubbleUnpin: "meetBubble:unpin",
@@ -20,6 +21,7 @@ const IPC_CHANNELS = {
   SharedIpcChannels,
   | "meetBubblePin"
   | "meetBubbleSend"
+  | "meetBubbleSetSettingsPanelOpen"
   | "meetBubbleSetSidebarHidden"
   | "meetBubbleShellState"
   | "meetBubbleUnpin"
@@ -35,6 +37,7 @@ type MeetShellUpdateApi = {
   getSettings: () => Promise<ApiResult<AppSettings>>;
   pinBubbleText: (text: string) => Promise<ApiResult<string | undefined>>;
   sendBubbleText: (text: string) => Promise<ApiResult<string | undefined>>;
+  setSettingsPanelOpen: (open: boolean) => Promise<ApiResult<void>>;
   setSidebarHidden: (hidden: boolean) => Promise<ApiResult<AppSettings>>;
   unpinBubbleText: () => Promise<ApiResult<void>>;
   updateBubbleSettings: (settings: SettingsUpdate) => Promise<ApiResult<AppSettings>>;
@@ -52,6 +55,10 @@ const updateApi: MeetShellUpdateApi = {
     ipcRenderer.invoke(IPC_CHANNELS.meetBubblePin, text) as Promise<ApiResult<string | undefined>>,
   sendBubbleText: (text) =>
     ipcRenderer.invoke(IPC_CHANNELS.meetBubbleSend, text) as Promise<ApiResult<string | undefined>>,
+  setSettingsPanelOpen: (open) =>
+    ipcRenderer.invoke(IPC_CHANNELS.meetBubbleSetSettingsPanelOpen, open) as Promise<
+      ApiResult<void>
+    >,
   setSidebarHidden: (hidden) =>
     ipcRenderer.invoke(IPC_CHANNELS.meetBubbleSetSidebarHidden, hidden) as Promise<
       ApiResult<AppSettings>
@@ -213,6 +220,9 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
       bubbleInput.disabled = !current.enabled;
       bubbleSend.disabled = !current.enabled;
       bubblePin.disabled = !current.enabled;
+      if (!current.enabled) {
+        renderPinnedText(undefined);
+      }
       if (!sidebarVisible) {
         bubbleInput.value = "";
       }
@@ -294,6 +304,7 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
     bubbleSettingsToggle.addEventListener("click", () => {
       shellState.settingsPanelOpen = !shellState.settingsPanelOpen;
       renderShellState(shellState.current);
+      api.setSettingsPanelOpen(shellState.settingsPanelOpen).catch(() => undefined);
     });
 
     bubbleEnabled.addEventListener("change", () => {
