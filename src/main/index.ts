@@ -194,7 +194,7 @@ const cameraBubbleShellStateFor = (
   chatMirrorEnabled: config.chatMirrorEnabled,
   displaySpeedLevel: config.displaySpeedLevel,
   enabled: config.enabled,
-  ...(pinnedText === undefined ? {} : { pinnedText }),
+  ...(!config.enabled || pinnedText === undefined ? {} : { pinnedText }),
   sidebarHidden: config.sidebarHidden,
 });
 
@@ -278,6 +278,10 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
 
   Object.assign(appSettings, nextSettings);
   if (cameraBubbleChanged) {
+    if (!appSettings.cameraBubbleEnabled && pinnedBubbleText !== undefined) {
+      pinnedBubbleText = undefined;
+      meetWindowManager.updatePinnedBubbleText(undefined);
+    }
     meetWindowManager.setBubbleConfig(cameraBubbleConfigFor(appSettings));
   }
   return ok(appSettings);
