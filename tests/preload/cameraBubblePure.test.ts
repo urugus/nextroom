@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeBubbleAlpha,
+  computeBubbleAnimation,
   computeBubbleDisplayDurationMs,
   computeBubbleLayout,
   computeCanvasSize,
@@ -32,6 +33,50 @@ describe("camera bubble pure functions", () => {
       expect(computeBubbleDisplayDurationMs(100, 1)).toBe(20_000);
       expect(computeBubbleDisplayDurationMs(10, 99)).toBe(2_200);
       expect(computeBubbleDisplayDurationMs(10, Number.NaN)).toBe(4_000);
+    });
+  });
+
+  describe("computeBubbleAnimation", () => {
+    it("eases the bubble in and fades it out near expiry", () => {
+      expect(
+        computeBubbleAnimation({
+          enterDurationMs: 260,
+          expiresAt: 5_000,
+          fadeDurationMs: 500,
+          now: 1_000,
+          startedAt: 1_000,
+        }),
+      ).toEqual({ opacity: 0, scale: 0.96, translateY: 10 });
+
+      const entered = computeBubbleAnimation({
+        enterDurationMs: 260,
+        expiresAt: 5_000,
+        fadeDurationMs: 500,
+        now: 1_260,
+        startedAt: 1_000,
+      });
+      expect(entered.opacity).toBe(1);
+      expect(entered.scale).toBe(1);
+      expect(entered.translateY).toBe(0);
+
+      expect(
+        computeBubbleAnimation({
+          enterDurationMs: 260,
+          expiresAt: 5_000,
+          fadeDurationMs: 500,
+          now: 4_750,
+          startedAt: 1_000,
+        }).opacity,
+      ).toBe(0.5);
+      expect(
+        computeBubbleAnimation({
+          enterDurationMs: 260,
+          expiresAt: undefined,
+          fadeDurationMs: 500,
+          now: 60_000,
+          startedAt: 1_000,
+        }).opacity,
+      ).toBe(1);
     });
   });
 
@@ -244,7 +289,7 @@ describe("camera bubble pure functions", () => {
           },
           expectedNonce,
         ),
-      ).toEqual({ durationMs: 7_000, kind: "show", text: "発言中です" });
+      ).toEqual({ durationMs: 7_000, kind: "show", pinned: false, text: "発言中です" });
     });
 
     it("rejects show messages with missing or non-string text", () => {
@@ -279,7 +324,7 @@ describe("camera bubble pure functions", () => {
           },
           expectedNonce,
         ),
-      ).toEqual({ durationMs: 2_345, kind: "show", text: "hello" });
+      ).toEqual({ durationMs: 2_345, kind: "show", pinned: false, text: "hello" });
       expect(
         parseCameraBubbleEnvelope(
           {
@@ -292,12 +337,12 @@ describe("camera bubble pure functions", () => {
           },
           expectedNonce,
         ),
-      ).toEqual({ durationMs: 2_000, kind: "show", text: "hello" });
+      ).toEqual({ durationMs: 2_000, kind: "show", pinned: false, text: "hello" });
       expect(
         parseCameraBubbleEnvelope(
           {
             __nextroomCameraBubble: {
-              durationMs: 30_001,
+              durationMs: 70_000,
               kind: "show",
               nonce: expectedNonce,
               text: "hello",
@@ -305,7 +350,7 @@ describe("camera bubble pure functions", () => {
           },
           expectedNonce,
         ),
-      ).toEqual({ durationMs: 20_000, kind: "show", text: "hello" });
+      ).toEqual({ durationMs: 60_000, kind: "show", pinned: false, text: "hello" });
       expect(
         parseCameraBubbleEnvelope(
           {
@@ -318,7 +363,40 @@ describe("camera bubble pure functions", () => {
           },
           expectedNonce,
         ),
-      ).toEqual({ durationMs: 7_000, kind: "show", text: "hello" });
+      ).toEqual({ durationMs: 7_000, kind: "show", pinned: false, text: "hello" });
+    });
+
+    it("accepts pinned and hide messages", () => {
+      expect(
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: {
+              durationMs: 2_000,
+              kind: "show",
+              nonce: expectedNonce,
+              pinned: true,
+              text: "keep showing",
+            },
+          },
+          expectedNonce,
+        ),
+      ).toEqual({
+        durationMs: undefined,
+        kind: "show",
+        pinned: true,
+        text: "keep showing",
+      });
+      expect(
+        parseCameraBubbleEnvelope(
+          {
+            __nextroomCameraBubble: {
+              kind: "hide",
+              nonce: expectedNonce,
+            },
+          },
+          expectedNonce,
+        ),
+      ).toEqual({ kind: "hide" });
     });
 
     it("accepts config with strict booleans and normalized display speed", () => {

@@ -1,7 +1,7 @@
 import { ipcRenderer, webFrame } from "electron";
 import { installCameraBubbleHook } from "./cameraBubbleHook";
 import {
-  computeBubbleAlpha,
+  computeBubbleAnimation,
   computeBubbleDisplayDurationMs,
   computeBubbleLayout,
   computeCanvasSize,
@@ -17,6 +17,7 @@ import {
 
 const IPC_CHANNELS = {
   meetBubbleConfig: "meetBubble:config",
+  meetBubbleHide: "meetBubble:hide",
   meetBubbleShow: "meetBubble:show",
 } as const;
 
@@ -52,7 +53,8 @@ const cameraBubbleNonce = createCameraBubbleNonce();
 
 type CameraBubbleMessage =
   | { chatMirrorEnabled: boolean; displaySpeedLevel: number; enabled: boolean; kind: "config" }
-  | { durationMs: number; kind: "show"; text: string };
+  | { durationMs: number | undefined; kind: "show"; pinned: boolean; text: string }
+  | { kind: "hide" };
 
 const postToMainWorld = (payload: CameraBubbleMessage): void => {
   window.postMessage({ __nextroomCameraBubble: { nonce: cameraBubbleNonce, ...payload } }, "*");
@@ -60,7 +62,7 @@ const postToMainWorld = (payload: CameraBubbleMessage): void => {
 
 if (typeof webFrame?.executeJavaScript === "function") {
   const cameraBubbleDeps = `{
-    computeBubbleAlpha: ${computeBubbleAlpha.toString()},
+    computeBubbleAnimation: ${computeBubbleAnimation.toString()},
     computeBubbleDisplayDurationMs: ${computeBubbleDisplayDurationMs.toString()},
     computeBubbleLayout: ${computeBubbleLayout.toString()},
     computeOverlayBox: ${computeOverlayBox.toString()},
@@ -86,8 +88,8 @@ if (typeof webFrame?.executeJavaScript === "function") {
 ipcRenderer.on(IPC_CHANNELS.meetBubbleShow, (_event, payload: unknown) => {
   const message =
     typeof payload === "object" && payload !== null
-      ? (payload as { durationMs?: unknown; text?: unknown })
-      : { durationMs: undefined, text: payload };
+      ? (payload as { durationMs?: unknown; pinned?: unknown; text?: unknown })
+      : { durationMs: undefined, pinned: undefined, text: payload };
   if (typeof message.text !== "string") {
     return;
   }
@@ -95,8 +97,13 @@ ipcRenderer.on(IPC_CHANNELS.meetBubbleShow, (_event, payload: unknown) => {
   postToMainWorld({
     durationMs: Number(message.durationMs),
     kind: "show",
+    pinned: message.pinned === true,
     text: message.text,
   });
+});
+
+ipcRenderer.on(IPC_CHANNELS.meetBubbleHide, () => {
+  postToMainWorld({ kind: "hide" });
 });
 
 ipcRenderer.on(IPC_CHANNELS.meetBubbleConfig, (_event, payload: unknown) => {

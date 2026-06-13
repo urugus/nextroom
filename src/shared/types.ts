@@ -90,7 +90,10 @@ export type CameraBubbleConfig = CameraBubbleMeetViewConfig & {
 };
 
 export type CameraBubbleShellState = {
+  chatMirrorEnabled: boolean;
+  displaySpeedLevel: number;
   enabled: boolean;
+  pinnedText?: string;
   sidebarHidden: boolean;
 };
 

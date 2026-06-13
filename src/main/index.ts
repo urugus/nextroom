@@ -9,7 +9,7 @@ import { canonicalizeMeetUrl, isMeetUrl } from "@main/calendar/meetExtractor";
 import { createIpcSenderGuard, type IpcSenderGuard } from "@main/ipc/senderGuard";
 import { parseLogLevel } from "@main/logging/format";
 import { createLazyLogger, createLogger, type Logger } from "@main/logging/logger";
-import { createBubbleMessageGate } from "@main/meet/bubbleMessage";
+import { createBubbleMessageGate, sanitizeBubbleMessageText } from "@main/meet/bubbleMessage";
 import { closeMeetContentsOnWindowClosed } from "@main/meet/meetContentsLifecycle";
 import {
   type CapturableScreenShareSource,
@@ -117,8 +117,10 @@ type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 type TrustedIpcHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
 const settingsFileName = "settings.json";
 let appSettings: AppSettings = { ...defaultAppSettings };
+let pinnedBubbleText: string | undefined;
 let ipcSenderGuard: IpcSenderGuard;
 const bubbleMessageGate = createBubbleMessageGate();
+const meetShellLayoutControllers = new WeakMap<WebContents, (settingsPanelOpen: boolean) => void>();
 const appCanStart = app.requestSingleInstanceLock();
 const electronProcess = process as NodeJS.Process & { defaultApp?: boolean };
 const createMainLogger = (): Logger =>
@@ -185,8 +187,14 @@ const cameraBubbleConfigFor = (settings: AppSettings): CameraBubbleConfig => ({
   sidebarHidden: settings.cameraBubbleSidebarHidden,
 });
 
-const cameraBubbleShellStateFor = (config: CameraBubbleConfig): CameraBubbleShellState => ({
+const cameraBubbleShellStateFor = (
+  config: CameraBubbleConfig,
+  pinnedText: string | undefined = pinnedBubbleText,
+): CameraBubbleShellState => ({
+  chatMirrorEnabled: config.chatMirrorEnabled,
+  displaySpeedLevel: config.displaySpeedLevel,
   enabled: config.enabled,
+  ...(!config.enabled || pinnedText === undefined ? {} : { pinnedText }),
   sidebarHidden: config.sidebarHidden,
 });
 
@@ -270,6 +278,10 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
 
   Object.assign(appSettings, nextSettings);
   if (cameraBubbleChanged) {
+    if (!appSettings.cameraBubbleEnabled && pinnedBubbleText !== undefined) {
+      pinnedBubbleText = undefined;
+      meetWindowManager.updatePinnedBubbleText(undefined);
+    }
     meetWindowManager.setBubbleConfig(cameraBubbleConfigFor(appSettings));
   }
   return ok(appSettings);
@@ -314,6 +326,7 @@ const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "Mee
   )();
 
 const meetShellHeight = 38;
+const bubbleSettingsPanelReservedHeight = 150;
 const bubbleSidebarWidth = 260;
 const strictRendererCsp = [
   "default-src 'self'",
@@ -449,6 +462,50 @@ const meetShellHtml = (): string => `<!doctype html>
         border-bottom: 1px solid #d6d6d8;
         background: #f5f5f7;
       }
+      #bubble-settings-panel {
+        box-sizing: border-box;
+        display: none;
+        position: fixed;
+        top: ${meetShellHeight + 8}px;
+        right: 12px;
+        z-index: 2;
+        width: 260px;
+        padding: 12px;
+        border: 1px solid rgba(120, 120, 128, 0.22);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.88);
+        box-shadow: 0 10px 32px rgba(0, 0, 0, 0.18);
+        backdrop-filter: blur(18px);
+      }
+      #bubble-settings-panel.open {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .bubble-setting-row {
+        -webkit-app-region: no-drag;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        color: #1d1d1f;
+        font-size: 12px;
+        line-height: 1.35;
+      }
+      .bubble-setting-row span {
+        min-width: 0;
+      }
+      .bubble-setting-row input[type="checkbox"] {
+        flex: 0 0 auto;
+      }
+      .bubble-setting-row input[type="range"] {
+        width: 118px;
+      }
+      #bubble-speed-value {
+        min-width: 34px;
+        color: #6e6e73;
+        text-align: right;
+      }
       #bubble-sidebar {
         box-sizing: border-box;
         display: none;
@@ -495,6 +552,10 @@ const meetShellHtml = (): string => `<!doctype html>
         gap: 8px;
       }
       #bubble-history li {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
         border: 1px solid #dedee1;
         border-radius: 7px;
         background: #ffffff;
@@ -505,6 +566,9 @@ const meetShellHtml = (): string => `<!doctype html>
         padding: 7px 9px;
         white-space: pre-wrap;
       }
+      .bubble-history-text {
+        min-width: 0;
+      }
       #bubble-composer {
         display: flex;
         flex: 0 0 auto;
@@ -512,11 +576,37 @@ const meetShellHtml = (): string => `<!doctype html>
         gap: 8px;
         margin-top: auto;
       }
+      #bubble-pinned {
+        display: none;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+        border: 1px solid rgba(0, 122, 255, 0.28);
+        border-radius: 7px;
+        background: rgba(0, 122, 255, 0.08);
+        color: #1d1d1f;
+        font-size: 12px;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+        padding: 7px 9px;
+        white-space: pre-wrap;
+      }
+      #bubble-pinned.visible {
+        display: grid;
+      }
+      #bubble-pinned-text {
+        min-width: 0;
+      }
       #bubble-sidebar p {
         margin: 0;
         color: #6e6e73;
         font-size: 11px;
         line-height: 1.4;
+      }
+      #bubble-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
       }
       #bubble-input {
         -webkit-app-region: no-drag;
@@ -565,14 +655,44 @@ const meetShellHtml = (): string => `<!doctype html>
         background: #ffffff;
         color: #1d1d1f;
       }
-      #bubble-toggle:hover {
+      #bubble-settings-toggle {
+        display: inline-flex;
+        border-color: #c4c4c6;
+        background: #ffffff;
+        color: #1d1d1f;
+      }
+      #bubble-toggle:hover,
+      #bubble-settings-toggle:hover {
         border-color: #9f9fa3;
         background: #fdfdfd;
+      }
+      #bubble-pin {
+        display: inline-flex;
+        border-color: #6e6e73;
+        background: #2c2c2e;
+      }
+      #bubble-send {
+        display: inline-flex;
+      }
+      .bubble-history-pin,
+      #bubble-unpin {
+        display: inline-flex;
+        border-color: #c4c4c6;
+        background: #ffffff;
+        color: #1d1d1f;
+        font-size: 11px;
+        padding: 4px 7px;
       }
     </style>
   </head>
   <body>
     <div class="bar">
+      <button
+        type="button"
+        id="bubble-settings-toggle"
+        aria-controls="bubble-settings-panel"
+        aria-expanded="false"
+      >Bubble</button>
       <button
         type="button"
         id="bubble-toggle"
@@ -581,9 +701,28 @@ const meetShellHtml = (): string => `<!doctype html>
       >Hide panel</button>
       <button type="button" id="update-button">Update</button>
     </div>
+    <div id="bubble-settings-panel" role="dialog" aria-label="Camera bubble settings">
+      <label class="bubble-setting-row">
+        <span>Accept bubble input</span>
+        <input type="checkbox" id="bubble-enabled">
+      </label>
+      <label class="bubble-setting-row">
+        <span>Mirror Meet chat</span>
+        <input type="checkbox" id="bubble-mirror">
+      </label>
+      <label class="bubble-setting-row">
+        <span>Speed</span>
+        <input type="range" id="bubble-speed" min="1" max="5" step="1">
+        <span id="bubble-speed-value">3 / 5</span>
+      </label>
+    </div>
     <aside id="bubble-sidebar">
       <div id="bubble-sidebar-content">
         <h1 id="bubble-sidebar-title">Camera bubble</h1>
+        <div id="bubble-pinned" aria-live="polite">
+          <span id="bubble-pinned-text"></span>
+          <button type="button" id="bubble-unpin">Unpin</button>
+        </div>
         <ol id="bubble-history" aria-label="Camera bubble history"></ol>
         <div id="bubble-composer">
           <textarea
@@ -593,6 +732,10 @@ const meetShellHtml = (): string => `<!doctype html>
             aria-labelledby="bubble-sidebar-title"
             aria-describedby="bubble-sidebar-hint"
           ></textarea>
+          <div id="bubble-actions">
+            <button type="button" id="bubble-send">Send</button>
+            <button type="button" id="bubble-pin">Pin</button>
+          </div>
           <p id="bubble-sidebar-hint">Press Enter to send. Shift+Enter adds a new line.</p>
         </div>
       </div>
@@ -979,6 +1122,7 @@ const createMeetWindow = fromThrowable(
     });
     const layoutState = {
       bubbleConfig: cameraBubbleConfigFor(appSettings),
+      settingsPanelOpen: false,
     };
     const layout = (): void => {
       const bounds = window.getContentBounds();
@@ -986,11 +1130,13 @@ const createMeetWindow = fromThrowable(
         layoutState.bubbleConfig.enabled && !layoutState.bubbleConfig.sidebarHidden
           ? bubbleSidebarWidth
           : 0;
+      const meetViewTop =
+        meetShellHeight + (layoutState.settingsPanelOpen ? bubbleSettingsPanelReservedHeight : 0);
       meetView.setBounds({
-        height: Math.max(0, bounds.height - meetShellHeight),
+        height: Math.max(0, bounds.height - meetViewTop),
         width: Math.max(0, bounds.width - sidebarWidth),
         x: 0,
-        y: meetShellHeight,
+        y: meetViewTop,
       });
     };
 
@@ -999,6 +1145,10 @@ const createMeetWindow = fromThrowable(
     window.on("resize", layout);
     window.on("resized", layout);
     layout();
+    meetShellLayoutControllers.set(window.webContents, (settingsPanelOpen) => {
+      layoutState.settingsPanelOpen = settingsPanelOpen;
+      layout();
+    });
     ipcSenderGuard.trustWindow(window, { dataShell: true });
     window.webContents.on("did-finish-load", () => {
       window.webContents.send(
@@ -1022,6 +1172,9 @@ const createMeetWindow = fromThrowable(
       loadURL: (url: string) => meetView.webContents.loadURL(url),
       on: (event: "closed", listener: () => void) => window.on(event, listener),
       restore: () => window.restore(),
+      hideBubbleText: () => {
+        meetView.webContents.send(IPC_CHANNELS.meetBubbleHide);
+      },
       sendBubbleText: (message: BubbleTextMessage) => {
         meetView.webContents.send(IPC_CHANNELS.meetBubbleShow, message);
       },
@@ -1041,6 +1194,12 @@ const createMeetWindow = fromThrowable(
       show: () => window.show(),
       updateUpdateStatus: (status: AppUpdateStatus) => {
         window.webContents.send(IPC_CHANNELS.updatesStatusChanged, status);
+      },
+      updatePinnedBubbleText: (text: string | undefined) => {
+        window.webContents.send(
+          IPC_CHANNELS.meetBubbleShellState,
+          cameraBubbleShellStateFor(layoutState.bubbleConfig, text),
+        );
       },
       webContents: meetView.webContents,
     };
@@ -1279,6 +1438,37 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
         : err({ type: "MeetUrlNotFound", eventId: "unknown" }),
     );
   });
+  handleTrustedIpc(IPC_CHANNELS.meetBubblePin, (_event, text) => {
+    const parsed = z.string().safeParse(text);
+    if (!parsed.success) {
+      return serializeResultForRenderer(
+        err({ type: "DatabaseFailed", cause: "Pinned bubble text must be a string." }),
+      );
+    }
+
+    if (!appSettings.cameraBubbleEnabled) {
+      return serializeResultForRenderer(ok(undefined));
+    }
+
+    const acceptedText = sanitizeBubbleMessageText(parsed.data);
+    if (acceptedText.length === 0) {
+      return serializeResultForRenderer(ok(undefined));
+    }
+
+    meetWindowManager.sendBubbleText({
+      pinned: true,
+      text: acceptedText,
+    });
+    pinnedBubbleText = acceptedText;
+    meetWindowManager.updatePinnedBubbleText(acceptedText);
+    return serializeResultForRenderer(ok(acceptedText));
+  });
+  handleTrustedIpc(IPC_CHANNELS.meetBubbleUnpin, () => {
+    meetWindowManager.hideBubbleText();
+    pinnedBubbleText = undefined;
+    meetWindowManager.updatePinnedBubbleText(undefined);
+    return serializeResultForRenderer(ok(undefined));
+  });
   handleTrustedIpc(IPC_CHANNELS.meetBubbleSend, (_event, text) => {
     const parsed = z.string().safeParse(text);
     if (!parsed.success) {
@@ -1305,6 +1495,17 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
       );
 
     return serializeResultForRenderer(ok(acceptedText));
+  });
+  handleTrustedIpc(IPC_CHANNELS.meetBubbleSetSettingsPanelOpen, (event, open) => {
+    const parsed = z.boolean().safeParse(open);
+    if (!parsed.success) {
+      return serializeResultForRenderer(
+        err({ type: "DatabaseFailed", cause: "Settings panel open state must be a boolean." }),
+      );
+    }
+
+    meetShellLayoutControllers.get(event.sender)?.(parsed.data);
+    return serializeResultForRenderer(ok(undefined));
   });
   handleTrustedIpc(IPC_CHANNELS.meetBubbleSetSidebarHidden, (_event, hidden) => {
     const parsed = z.boolean().safeParse(hidden);
