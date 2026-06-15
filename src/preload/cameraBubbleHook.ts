@@ -42,6 +42,13 @@ export const installCameraBubbleHook = (
   };
   const overlayState: OverlayState = { element: undefined, frameId: undefined };
   const chatMirrorRateLimit = { lastAcceptedAt: 0 };
+  const chatToastMirrorState: {
+    observer: MutationObserver | undefined;
+    recentMessages: Array<{ acceptedAt: number; text: string }>;
+  } = {
+    observer: undefined,
+    recentMessages: [],
+  };
   const activePipelines = new Set<Pipeline>();
   const sourceToPipeline = new WeakMap<MediaStreamTrack, Pipeline>();
   const canvasToPipeline = new WeakMap<MediaStreamTrack, Pipeline>();
@@ -52,6 +59,7 @@ export const installCameraBubbleHook = (
   const senderTrackPatchKey = Symbol.for("nextroom.cameraBubble.senderTrack");
   const clonePatchKey = Symbol.for("nextroom.cameraBubble.clone");
   const getDisplayMediaPatchKey = Symbol.for("nextroom.cameraBubble.getDisplayMedia");
+  const chatToastObserverPatchKey = Symbol.for("nextroom.cameraBubble.chatToastObserver");
 
   const readPatchRecord = <T>(target: object, key: symbol): PatchRecord<T> | undefined => {
     const value = Reflect.get(target, key);
@@ -635,6 +643,151 @@ export const installCameraBubbleHook = (
     showOverlay();
   };
 
+  const isEditableElement = (element: Element): boolean => {
+    if (element instanceof HTMLInputElement) return true;
+    if (element instanceof HTMLTextAreaElement) return true;
+    if (element instanceof HTMLSelectElement) return true;
+    if (element instanceof HTMLElement && element.isContentEditable) return true;
+
+    return false;
+  };
+
+  const hasEditableAncestor = (element: Element): boolean => {
+    let current: Element | null = element;
+    while (current !== null) {
+      if (isEditableElement(current)) return true;
+      current = current.parentElement;
+    }
+
+    return false;
+  };
+
+  const isLikelyChatToastRoot = (element: Element): boolean => {
+    const role = element.getAttribute("role")?.toLowerCase();
+    const ariaLive = element.getAttribute("aria-live")?.toLowerCase();
+    return (
+      role === "status" ||
+      role === "alert" ||
+      role === "log" ||
+      ariaLive === "polite" ||
+      ariaLive === "assertive"
+    );
+  };
+
+  const closestChatToastRoot = (element: Element): Element | undefined => {
+    let current: Element | null = element;
+    while (current !== null) {
+      if (isLikelyChatToastRoot(current)) return current;
+      current = current.parentElement;
+    }
+
+    return undefined;
+  };
+
+  const chatToastRootsIn = (element: Element): Element[] => {
+    const roots: Element[] = [];
+    if (isLikelyChatToastRoot(element)) {
+      roots.push(element);
+    }
+    element
+      .querySelectorAll('[role="status"], [role="alert"], [role="log"], [aria-live]')
+      .forEach((candidate) => {
+        if (isLikelyChatToastRoot(candidate)) {
+          roots.push(candidate);
+        }
+      });
+
+    return roots;
+  };
+
+  const textContentForChatToast = (element: Element): string => {
+    const innerText =
+      element instanceof HTMLElement && typeof element.innerText === "string"
+        ? element.innerText
+        : undefined;
+
+    return innerText ?? element.textContent ?? "";
+  };
+
+  const acceptChatToastText = (text: string, now: number): boolean => {
+    chatToastMirrorState.recentMessages = chatToastMirrorState.recentMessages.filter(
+      (message) => now - message.acceptedAt < 10_000,
+    );
+    if (chatToastMirrorState.recentMessages.some((message) => message.text === text)) {
+      return false;
+    }
+
+    chatToastMirrorState.recentMessages.push({ acceptedAt: now, text });
+    return true;
+  };
+
+  const mirrorChatToastElement = (element: Element): void => {
+    try {
+      if (!state.enabled || !state.chatMirrorEnabled) return;
+      if (overlayState.element?.contains(element)) return;
+      if (hasEditableAncestor(element)) return;
+
+      const rawText = textContentForChatToast(element);
+      if (rawText.trim().length < 2 || rawText.length > 280) return;
+
+      const text = deps.sanitizeBubbleText(rawText);
+      if (text.length === 0) return;
+
+      const now = Date.now();
+      if (!acceptChatToastText(text, now)) return;
+
+      showBubble(
+        text,
+        deps.computeBubbleDisplayDurationMs([...text].length, state.displaySpeedLevel),
+        false,
+      );
+    } catch {
+      return;
+    }
+  };
+
+  const scanChatToastNode = (node: Node): void => {
+    try {
+      if (node instanceof CharacterData && node.parentElement !== null) {
+        const root = closestChatToastRoot(node.parentElement);
+        if (root !== undefined) {
+          mirrorChatToastElement(root);
+        }
+        return;
+      }
+      if (!(node instanceof Element)) return;
+      chatToastRootsIn(node).forEach(mirrorChatToastElement);
+    } catch {
+      return;
+    }
+  };
+
+  const installChatToastMirrorObserver = (): void => {
+    try {
+      if (typeof MutationObserver === "undefined") return;
+      if (chatToastMirrorState.observer !== undefined) return;
+      if (readPatchRecord<MutationObserver>(window, chatToastObserverPatchKey)) return;
+
+      const target = document.documentElement ?? document.body;
+      if (target === null) return;
+
+      const observer = new MutationObserver((records) => {
+        try {
+          records.forEach((record) => {
+            record.addedNodes.forEach(scanChatToastNode);
+          });
+        } catch {
+          return;
+        }
+      });
+      observer.observe(target, { characterData: true, childList: true, subtree: true });
+      writePatchRecord(window, chatToastObserverPatchKey, observer);
+      chatToastMirrorState.observer = observer;
+    } catch {
+      return;
+    }
+  };
+
   const installChatMirrorListener = (): void => {
     try {
       document.addEventListener(
@@ -691,6 +844,7 @@ export const installCameraBubbleHook = (
   installReplaceTrackPatch();
   installSenderTrackGetterPatch();
   installChatMirrorListener();
+  installChatToastMirrorObserver();
 
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
