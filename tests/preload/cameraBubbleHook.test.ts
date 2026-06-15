@@ -45,6 +45,7 @@ const cameraBubbleDeps = {
   wrapBubbleLines,
 };
 const expectedNonce = "hook-nonce";
+const chatToastObserverPatchKey = Symbol.for("nextroom.cameraBubble.chatToastObserver");
 const enabledConfig = {
   chatMirrorEnabled: true,
   displaySpeedLevel: 3,
@@ -53,7 +54,14 @@ const enabledConfig = {
 
 const overlayWithText = (text: string): HTMLDivElement | undefined =>
   Array.from(document.querySelectorAll("div")).find(
-    (element): element is HTMLDivElement => element.textContent === text,
+    (element): element is HTMLDivElement =>
+      element.textContent === text && element.style.pointerEvents === "none",
+  );
+
+const overlaysWithText = (text: string): HTMLDivElement[] =>
+  Array.from(document.querySelectorAll("div")).filter(
+    (element): element is HTMLDivElement =>
+      element.textContent === text && element.style.pointerEvents === "none",
   );
 
 const dispatchEnter = (element: Element, init: KeyboardEventInit = {}): void => {
@@ -66,6 +74,10 @@ const dispatchEnter = (element: Element, init: KeyboardEventInit = {}): void => 
       ...init,
     }),
   );
+};
+
+const flushMutationObserver = async (): Promise<void> => {
+  await Promise.resolve();
 };
 
 describe("installCameraBubbleHook", () => {
@@ -391,6 +403,17 @@ describe("installCameraBubbleHook", () => {
   });
 
   afterEach(() => {
+    const chatToastObserverRecord = Reflect.get(window, chatToastObserverPatchKey);
+    const chatToastObserver =
+      typeof chatToastObserverRecord === "object" &&
+      chatToastObserverRecord !== null &&
+      "original" in chatToastObserverRecord
+        ? (chatToastObserverRecord as { original?: unknown }).original
+        : undefined;
+    if (chatToastObserver instanceof MutationObserver) {
+      chatToastObserver.disconnect();
+      Reflect.deleteProperty(window, chatToastObserverPatchKey);
+    }
     Object.defineProperty(globalThis, "MediaStream", {
       configurable: true,
       value: originalMediaStream,
@@ -859,6 +882,106 @@ describe("installCameraBubbleHook", () => {
     dispatchEnter(textArea);
 
     expect(overlayWithText("second")).toBeDefined();
+  });
+
+  it("mirrors Meet chat toast notifications into the overlay", async () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const toast = document.createElement("div");
+    toast.setAttribute("role", "status");
+
+    document.body.append(toast);
+    toast.textContent = "参加者からのコメント";
+    await flushMutationObserver();
+
+    const overlay = overlayWithText("参加者からのコメント");
+    expect(overlay).toBeDefined();
+    expect(overlay?.style.display).toBe("block");
+  });
+
+  it("mirrors updates inside existing Meet chat toast roots", async () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const toast = document.createElement("div");
+    toast.setAttribute("aria-live", "polite");
+    const text = document.createTextNode("");
+    toast.append(text);
+    document.body.append(toast);
+    await flushMutationObserver();
+
+    text.data = "後から入ったコメント";
+    await flushMutationObserver();
+
+    expect(overlayWithText("後から入ったコメント")).toBeDefined();
+  });
+
+  it("mirrors child elements appended inside existing Meet chat toast roots", async () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const toast = document.createElement("div");
+    toast.setAttribute("role", "status");
+    document.body.append(toast);
+    await flushMutationObserver();
+    const child = document.createElement("span");
+    child.textContent = "子要素のコメント";
+
+    toast.append(child);
+    await flushMutationObserver();
+
+    expect(overlayWithText("子要素のコメント")).toBeDefined();
+  });
+
+  it("ignores Meet chat toast notifications when chat mirroring is disabled", async () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(
+      { ...enabledConfig, chatMirrorEnabled: false },
+      cameraBubbleDeps,
+      expectedNonce,
+    );
+    const toast = document.createElement("div");
+    toast.setAttribute("aria-live", "polite");
+    toast.textContent = "ignored toast";
+
+    document.body.append(toast);
+    await flushMutationObserver();
+
+    expect(overlayWithText("ignored toast")).toBeUndefined();
+  });
+
+  it("deduplicates repeated Meet chat toast notifications", async () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const firstToast = document.createElement("div");
+    firstToast.setAttribute("role", "status");
+    firstToast.textContent = "dupe";
+    document.body.append(firstToast);
+    await flushMutationObserver();
+
+    vi.setSystemTime(2_000);
+    const duplicateToast = document.createElement("div");
+    duplicateToast.setAttribute("role", "status");
+    duplicateToast.textContent = "dupe";
+    document.body.append(duplicateToast);
+    await flushMutationObserver();
+
+    vi.setSystemTime(4_101);
+    nextAnimationFrame();
+
+    expect(overlayWithText("dupe")?.style.display).toBe("none");
+  });
+
+  it("does not register duplicate Meet chat toast observers when installed twice", async () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const toast = document.createElement("div");
+    toast.setAttribute("role", "status");
+    toast.textContent = "single observer";
+
+    document.body.append(toast);
+    await flushMutationObserver();
+
+    expect(overlaysWithText("single observer")).toHaveLength(1);
   });
 
   it("ignores chat mirror handler exceptions", () => {
