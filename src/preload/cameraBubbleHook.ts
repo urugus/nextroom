@@ -774,6 +774,13 @@ export const installCameraBubbleHook = (
       const observer = new MutationObserver((records) => {
         try {
           records.forEach((record) => {
+            if (
+              record.type === "characterData" ||
+              (record.target instanceof Element &&
+                closestChatToastRoot(record.target) !== undefined)
+            ) {
+              scanChatToastNode(record.target);
+            }
             record.addedNodes.forEach(scanChatToastNode);
           });
         } catch {

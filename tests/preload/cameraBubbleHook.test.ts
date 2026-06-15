@@ -899,6 +899,38 @@ describe("installCameraBubbleHook", () => {
     expect(overlay?.style.display).toBe("block");
   });
 
+  it("mirrors updates inside existing Meet chat toast roots", async () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const toast = document.createElement("div");
+    toast.setAttribute("aria-live", "polite");
+    const text = document.createTextNode("");
+    toast.append(text);
+    document.body.append(toast);
+    await flushMutationObserver();
+
+    text.data = "後から入ったコメント";
+    await flushMutationObserver();
+
+    expect(overlayWithText("後から入ったコメント")).toBeDefined();
+  });
+
+  it("mirrors child elements appended inside existing Meet chat toast roots", async () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const toast = document.createElement("div");
+    toast.setAttribute("role", "status");
+    document.body.append(toast);
+    await flushMutationObserver();
+    const child = document.createElement("span");
+    child.textContent = "子要素のコメント";
+
+    toast.append(child);
+    await flushMutationObserver();
+
+    expect(overlayWithText("子要素のコメント")).toBeDefined();
+  });
+
   it("ignores Meet chat toast notifications when chat mirroring is disabled", async () => {
     vi.setSystemTime(1_000);
     installCameraBubbleHook(
