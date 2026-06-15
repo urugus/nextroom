@@ -701,12 +701,15 @@ export const installCameraBubbleHook = (
   };
 
   const textContentForChatToast = (element: Element): string => {
+    const textContent = element.textContent ?? "";
+    if (textContent.trim().length > 0) return textContent;
+
     const innerText =
       element instanceof HTMLElement && typeof element.innerText === "string"
         ? element.innerText
         : undefined;
 
-    return innerText ?? element.textContent ?? "";
+    return innerText ?? "";
   };
 
   const acceptChatToastText = (text: string, now: number): boolean => {
@@ -768,7 +771,7 @@ export const installCameraBubbleHook = (
       if (chatToastMirrorState.observer !== undefined) return;
       if (readPatchRecord<MutationObserver>(window, chatToastObserverPatchKey)) return;
 
-      const target = document.documentElement ?? document.body;
+      const target = document.body ?? document.documentElement;
       if (target === null) return;
 
       const observer = new MutationObserver((records) => {
