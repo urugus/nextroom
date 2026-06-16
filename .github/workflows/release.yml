@@ -129,11 +129,11 @@ jobs:
           fi
 
           gh release upload "$tag" --clobber \
-            "dist/latest-mac.yml" \
             "dist/NextRoom-${version}-mac-arm64.zip" \
             "dist/NextRoom-${version}-mac-arm64.zip.blockmap" \
             "dist/NextRoom-${version}-mac-arm64.dmg" \
             "dist/NextRoom-${version}-mac-arm64.dmg.blockmap"
+          gh release upload "$tag" --clobber "dist/latest-mac.yml"
 
       - name: Verify GitHub release assets
         env:
