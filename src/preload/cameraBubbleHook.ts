@@ -986,6 +986,12 @@ export const installCameraBubbleHook = (
           try {
             if (!state.enabled || !state.chatMirrorEnabled) return;
             if (!isLikelyChatSendClickTarget(event.target)) return;
+            if (
+              recentChatInput.text === undefined ||
+              Date.now() - recentChatInput.updatedAt > 1_000
+            ) {
+              rememberChatInput(document.activeElement);
+            }
             if (recentChatInput.text === undefined) return;
             if (Date.now() - recentChatInput.updatedAt > 1_000) return;
 

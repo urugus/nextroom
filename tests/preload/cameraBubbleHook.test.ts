@@ -937,6 +937,24 @@ describe("installCameraBubbleHook", () => {
     expect(overlayWithText("古い入力")).toBeUndefined();
   });
 
+  it("refreshes stale focused chat input on a send-button click without mousedown", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const textArea = document.createElement("textarea");
+    textArea.value = "キーボード送信";
+    const sendButton = document.createElement("button");
+    sendButton.type = "button";
+    sendButton.setAttribute("aria-label", "Send a message");
+    document.body.append(textArea, sendButton);
+    textArea.focus();
+
+    dispatchInput(textArea);
+    vi.setSystemTime(2_001);
+    sendButton.click();
+
+    expect(overlayWithText("キーボード送信")).toBeDefined();
+  });
+
   it("refreshes stale focused chat input before a send-button click", () => {
     vi.setSystemTime(1_000);
     installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
