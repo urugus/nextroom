@@ -775,6 +775,56 @@ describe("installCameraBubbleHook", () => {
     expect(replaceTrackMock).toHaveBeenCalledWith(createdCanvasTracks[0]);
   });
 
+  it("rewraps an active display sender when the master bubble setting is enabled mid-share", async () => {
+    const displayTrack = createFakeTrack(
+      "video",
+      { displaySurface: "window", height: 720, width: 1280 },
+      "Captured source",
+    );
+    getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
+    installCameraBubbleHook(
+      { ...enabledConfig, enabled: false, screenShareDanmakuEnabled: true },
+      cameraBubbleDeps,
+      expectedNonce,
+    );
+
+    const displayStream = await navigator.mediaDevices.getDisplayMedia();
+    new RTCPeerConnection().addTrack(displayStream.getVideoTracks()[0]);
+    postCameraBubbleMessage({
+      ...enabledConfig,
+      enabled: true,
+      kind: "config",
+      screenShareDanmakuEnabled: true,
+    });
+
+    expect(addTrackMock.mock.calls[0][0]).toBe(displayTrack);
+    expect(replaceTrackMock).toHaveBeenCalledWith(createdCanvasTracks[0]);
+  });
+
+  it("restores display senders and stops screen share pipelines when comments are disabled", async () => {
+    const displayTrack = createFakeTrack(
+      "video",
+      { displaySurface: "window", height: 720, width: 1280 },
+      "Captured source",
+    );
+    getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
+    installCameraBubbleHook(
+      { ...enabledConfig, screenShareDanmakuEnabled: true },
+      cameraBubbleDeps,
+      expectedNonce,
+    );
+
+    const displayStream = await navigator.mediaDevices.getDisplayMedia();
+    new RTCPeerConnection().addTrack(displayStream.getVideoTracks()[0]);
+    const canvasTrack = createdCanvasTracks[0];
+    postCameraBubbleMessage({ ...enabledConfig, kind: "config" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(replaceTrackMock).toHaveBeenCalledWith(displayTrack);
+    expect(canvasTrack.stopMock).toHaveBeenCalledTimes(1);
+  });
+
   it("collects Meet chat toasts for screen share comments without camera chat mirroring", async () => {
     vi.setSystemTime(1_000);
     const displayTrack = createFakeTrack(

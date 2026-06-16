@@ -417,13 +417,22 @@ export const installCameraBubbleHook = (
       const sourceTrack = displaySenderSources.get(sender);
       if (sourceTrack === undefined || sourceTrack.readyState !== "live") {
         activeDisplaySenders.delete(sender);
+        displaySenderSources.delete(sender);
         return;
       }
 
       const nextTrack = wrapTrackForSender(sourceTrack);
       if (!isMediaStreamTrack(nextTrack)) return;
 
-      void sender.replaceTrack(nextTrack).catch(() => undefined);
+      const pipelineToStop = sourceToPipeline.get(sourceTrack);
+      void sender
+        .replaceTrack(nextTrack)
+        .then(() => {
+          if (nextTrack === sourceTrack && pipelineToStop?.mode === "screenShare") {
+            pipelineToStop.stop();
+          }
+        })
+        .catch(() => undefined);
     });
   };
 
@@ -1184,6 +1193,7 @@ export const installCameraBubbleHook = (
     }
 
     if (message.kind === "config") {
+      const previousEnabled = state.enabled;
       const previousScreenShareDanmakuEnabled = state.screenShareDanmakuEnabled;
       state.enabled = message.enabled === true;
       state.chatMirrorEnabled = message.chatMirrorEnabled === true;
@@ -1197,7 +1207,10 @@ export const installCameraBubbleHook = (
       if (!state.screenShareDanmakuEnabled) {
         state.danmakuMessages = [];
       }
-      if (previousScreenShareDanmakuEnabled !== state.screenShareDanmakuEnabled) {
+      if (
+        previousEnabled !== state.enabled ||
+        previousScreenShareDanmakuEnabled !== state.screenShareDanmakuEnabled
+      ) {
         syncDisplaySenders();
       }
     }
