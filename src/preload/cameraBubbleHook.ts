@@ -876,9 +876,9 @@ export const installCameraBubbleHook = (
 
     const text = deps.sanitizeBubbleText(editable.text);
     if (text.length === 0) {
-      if (recentChatInput.element === editable.element) {
-        recentChatInput.text = undefined;
-      }
+      recentChatInput.element = editable.element;
+      recentChatInput.text = undefined;
+      recentChatInput.updatedAt = Date.now();
       return;
     }
 

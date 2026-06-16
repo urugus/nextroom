@@ -956,6 +956,26 @@ describe("installCameraBubbleHook", () => {
     expect(overlayWithText("フォーカス中の入力")).toBeDefined();
   });
 
+  it("does not mirror stale chat input when another empty editor sends", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const firstTextArea = document.createElement("textarea");
+    firstTextArea.value = "別入力欄の古い投稿";
+    const secondTextArea = document.createElement("textarea");
+    secondTextArea.value = "";
+    const sendButton = document.createElement("button");
+    sendButton.type = "button";
+    sendButton.setAttribute("aria-label", "Send a message");
+    document.body.append(firstTextArea, secondTextArea, sendButton);
+
+    dispatchInput(firstTextArea);
+    secondTextArea.focus();
+    dispatchMouseDown(sendButton);
+    sendButton.click();
+
+    expect(overlayWithText("別入力欄の古い投稿")).toBeUndefined();
+  });
+
   it("ignores composing, disabled, empty, non-editable, and disabled-feature chat mirror events", () => {
     vi.setSystemTime(1_000);
     installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
