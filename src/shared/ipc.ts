@@ -20,6 +20,7 @@ export type SettingsUpdate = Partial<
     | "autoJoinEnabled"
     | "cameraBubbleChatMirrorEnabled"
     | "cameraBubbleEnabled"
+    | "cameraBubbleScreenShareDanmakuEnabled"
     | "cameraBubbleSidebarHidden"
     | "cameraBubbleDisplaySpeedLevel"
     | "joinOffsetSeconds"

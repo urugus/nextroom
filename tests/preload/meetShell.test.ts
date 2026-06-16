@@ -32,6 +32,7 @@ const settings: AppSettings = {
   autoOpenEnabled: true,
   cameraBubbleChatMirrorEnabled: false,
   cameraBubbleEnabled: true,
+  cameraBubbleScreenShareDanmakuEnabled: false,
   cameraBubbleSidebarHidden: false,
   cameraBubbleDisplaySpeedLevel: 3,
   joinOffsetSeconds: 0,
@@ -48,6 +49,7 @@ const renderMeetShellDom = (): void => {
     <div id="bubble-settings-panel">
       <input type="checkbox" id="bubble-enabled">
       <input type="checkbox" id="bubble-mirror">
+      <input type="checkbox" id="bubble-share-danmaku">
       <input type="range" id="bubble-speed">
       <span id="bubble-speed-value"></span>
     </div>
@@ -186,6 +188,7 @@ describe("meet shell preload", () => {
         chatMirrorEnabled: false,
         displaySpeedLevel: 3,
         enabled: true,
+        screenShareDanmakuEnabled: false,
         sidebarHidden: false,
       },
     );
@@ -213,6 +216,7 @@ describe("meet shell preload", () => {
         chatMirrorEnabled: false,
         displaySpeedLevel: 3,
         enabled: true,
+        screenShareDanmakuEnabled: false,
         sidebarHidden: true,
       },
     );
@@ -238,6 +242,7 @@ describe("meet shell preload", () => {
         chatMirrorEnabled: false,
         displaySpeedLevel: 3,
         enabled: false,
+        screenShareDanmakuEnabled: false,
         sidebarHidden: false,
       },
     );
@@ -258,6 +263,7 @@ describe("meet shell preload", () => {
         chatMirrorEnabled: false,
         displaySpeedLevel: 3,
         enabled: true,
+        screenShareDanmakuEnabled: false,
         sidebarHidden: false,
       },
     );
@@ -272,6 +278,7 @@ describe("meet shell preload", () => {
     await Promise.resolve();
     const bubbleEnabled = document.getElementById("bubble-enabled") as HTMLInputElement;
     const bubbleMirror = document.getElementById("bubble-mirror") as HTMLInputElement;
+    const bubbleShareDanmaku = document.getElementById("bubble-share-danmaku") as HTMLInputElement;
     const bubbleSettingsPanel = document.getElementById("bubble-settings-panel") as HTMLElement;
     const bubbleSettingsToggle = document.getElementById(
       "bubble-settings-toggle",
@@ -288,6 +295,8 @@ describe("meet shell preload", () => {
     bubbleEnabled.dispatchEvent(new Event("change", { bubbles: true }));
     bubbleMirror.checked = true;
     bubbleMirror.dispatchEvent(new Event("change", { bubbles: true }));
+    bubbleShareDanmaku.checked = true;
+    bubbleShareDanmaku.dispatchEvent(new Event("change", { bubbles: true }));
     bubbleSpeed.value = "5";
     bubbleSpeed.dispatchEvent(new Event("input", { bubbles: true }));
     await Promise.resolve();
@@ -298,6 +307,9 @@ describe("meet shell preload", () => {
     });
     expect(electronMocks.invoke).toHaveBeenCalledWith("settings:update", {
       cameraBubbleChatMirrorEnabled: true,
+    });
+    expect(electronMocks.invoke).toHaveBeenCalledWith("settings:update", {
+      cameraBubbleScreenShareDanmakuEnabled: true,
     });
     expect(electronMocks.invoke).toHaveBeenCalledWith("settings:update", {
       cameraBubbleDisplaySpeedLevel: 5,
@@ -312,12 +324,15 @@ describe("meet shell preload", () => {
     electronMocks.invoke.mockClear();
     const bubbleEnabled = document.getElementById("bubble-enabled") as HTMLInputElement;
     const bubbleMirror = document.getElementById("bubble-mirror") as HTMLInputElement;
+    const bubbleShareDanmaku = document.getElementById("bubble-share-danmaku") as HTMLInputElement;
     const bubbleSpeed = document.getElementById("bubble-speed") as HTMLInputElement;
 
     bubbleEnabled.checked = true;
     bubbleEnabled.dispatchEvent(new Event("change", { bubbles: true }));
     bubbleMirror.checked = false;
     bubbleMirror.dispatchEvent(new Event("change", { bubbles: true }));
+    bubbleShareDanmaku.checked = false;
+    bubbleShareDanmaku.dispatchEvent(new Event("change", { bubbles: true }));
     bubbleSpeed.value = "3";
     bubbleSpeed.dispatchEvent(new Event("input", { bubbles: true }));
 
@@ -336,6 +351,7 @@ describe("meet shell preload", () => {
         displaySpeedLevel: 3,
         enabled: true,
         pinnedText: "shared pin",
+        screenShareDanmakuEnabled: false,
         sidebarHidden: false,
       },
     );
@@ -421,6 +437,7 @@ describe("meet shell preload", () => {
         chatMirrorEnabled: false,
         displaySpeedLevel: 3,
         enabled: false,
+        screenShareDanmakuEnabled: false,
         sidebarHidden: false,
       },
     );
@@ -577,6 +594,7 @@ describe("meet shell preload", () => {
       chatMirrorEnabled: true,
       displaySpeedLevel: 4,
       enabled: true,
+      screenShareDanmakuEnabled: true,
       sidebarHidden: true,
     };
 

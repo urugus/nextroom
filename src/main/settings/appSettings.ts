@@ -8,6 +8,7 @@ export const defaultAppSettings: AppSettings = {
   autoOpenEnabled: true,
   cameraBubbleChatMirrorEnabled: false,
   cameraBubbleEnabled: false,
+  cameraBubbleScreenShareDanmakuEnabled: false,
   cameraBubbleSidebarHidden: false,
   cameraBubbleDisplaySpeedLevel: 3,
   joinOffsetSeconds: 0,
@@ -35,6 +36,7 @@ const settingsSchema = z
     autoOpenEnabled: z.boolean().optional(),
     cameraBubbleChatMirrorEnabled: z.boolean().optional(),
     cameraBubbleEnabled: z.boolean().optional(),
+    cameraBubbleScreenShareDanmakuEnabled: z.boolean().optional(),
     cameraBubbleSidebarHidden: z.boolean().optional(),
     cameraBubbleDisplaySpeedLevel: z.number().int().min(1).max(5).optional(),
     joinOffsetSeconds: minuteOffsetSchema("joinOffsetSeconds").optional(),
@@ -52,6 +54,7 @@ const settingsUpdateSchema = settingsSchema
     autoJoinEnabled: true,
     cameraBubbleChatMirrorEnabled: true,
     cameraBubbleEnabled: true,
+    cameraBubbleScreenShareDanmakuEnabled: true,
     cameraBubbleSidebarHidden: true,
     cameraBubbleDisplaySpeedLevel: true,
     joinOffsetSeconds: true,
@@ -66,6 +69,7 @@ type SettingsUpdate = Partial<
     | "autoJoinEnabled"
     | "cameraBubbleChatMirrorEnabled"
     | "cameraBubbleEnabled"
+    | "cameraBubbleScreenShareDanmakuEnabled"
     | "cameraBubbleSidebarHidden"
     | "cameraBubbleDisplaySpeedLevel"
     | "joinOffsetSeconds"

@@ -2,7 +2,12 @@ import type { CameraBubbleDeps } from "./cameraBubblePure";
 
 // oxlint-disable unicorn/consistent-function-scoping -- The hook is injected with toString(), so helpers must stay inside it.
 export const installCameraBubbleHook = (
-  initialConfig: { chatMirrorEnabled: boolean; displaySpeedLevel: number; enabled: boolean },
+  initialConfig: {
+    chatMirrorEnabled: boolean;
+    displaySpeedLevel: number;
+    enabled: boolean;
+    screenShareDanmakuEnabled: boolean;
+  },
   deps: CameraBubbleDeps,
   nonce: string,
 ): void => {
@@ -14,6 +19,7 @@ export const installCameraBubbleHook = (
   type Pipeline = {
     canvas: HTMLCanvasElement;
     canvasTrack: MediaStreamTrack;
+    mode: "camera" | "screenShare";
     sourceTrack: MediaStreamTrack;
     stop: () => void;
     video: HTMLVideoElement;
@@ -28,17 +34,28 @@ export const installCameraBubbleHook = (
       | { expiresAt: number | undefined; pinned: boolean; startedAt: number; text: string }
       | undefined;
     chatMirrorEnabled: boolean;
+    danmakuMessages: Array<{
+      durationMs: number;
+      sequence: number;
+      startedAt: number;
+      text: string;
+    }>;
+    danmakuSequence: number;
     displaySpeedLevel: number;
     enabled: boolean;
+    screenShareDanmakuEnabled: boolean;
   } = {
     bubble: undefined,
     chatMirrorEnabled: initialConfig.chatMirrorEnabled === true,
+    danmakuMessages: [],
+    danmakuSequence: 0,
     displaySpeedLevel:
       typeof initialConfig.displaySpeedLevel === "number" &&
       Number.isFinite(initialConfig.displaySpeedLevel)
         ? Math.max(1, Math.min(5, Math.floor(initialConfig.displaySpeedLevel)))
         : 3,
     enabled: initialConfig.enabled === true,
+    screenShareDanmakuEnabled: initialConfig.screenShareDanmakuEnabled === true,
   };
   const overlayState: OverlayState = { element: undefined, frameId: undefined };
   const chatMirrorRateLimit = { lastAcceptedAt: 0 };
@@ -59,6 +76,9 @@ export const installCameraBubbleHook = (
     recentMessages: [],
   };
   const activePipelines = new Set<Pipeline>();
+  const activeDisplaySenders = new Set<RTCRtpSender>();
+  const displaySenderSources = new WeakMap<RTCRtpSender, MediaStreamTrack>();
+  const displaySenderCleanupSources = new WeakSet<MediaStreamTrack>();
   const sourceToPipeline = new WeakMap<MediaStreamTrack, Pipeline>();
   const canvasToPipeline = new WeakMap<MediaStreamTrack, Pipeline>();
   const displayTracks = new WeakSet<MediaStreamTrack>();
@@ -199,6 +219,45 @@ export const installCameraBubbleHook = (
     context.restore();
   };
 
+  const drawDanmaku = (context: CanvasRenderingContext2D, canvas: HTMLCanvasElement): void => {
+    if (!state.enabled || !state.screenShareDanmakuEnabled) return;
+
+    const now = Date.now();
+    state.danmakuMessages = state.danmakuMessages.filter(
+      (message) => now - message.startedAt < message.durationMs,
+    );
+    if (state.danmakuMessages.length === 0) return;
+
+    const style = deps.computeDanmakuTextStyle({ canvasHeight: canvas.height });
+    const laneCount = Math.max(1, Math.floor(canvas.height / style.lineHeight));
+    context.save();
+    context.font = `700 ${style.fontSize}px sans-serif`;
+    context.textBaseline = "middle";
+    context.fillStyle = "#ffffff";
+    context.strokeStyle = "rgba(0,0,0,0.72)";
+    context.lineWidth = style.strokeWidth;
+    context.shadowColor = "rgba(0,0,0,0.55)";
+    context.shadowBlur = Math.round(style.fontSize * 0.18);
+    context.shadowOffsetX = 0;
+    context.shadowOffsetY = Math.max(1, Math.round(style.fontSize * 0.08));
+
+    state.danmakuMessages.forEach((message) => {
+      const textWidth = context.measureText(message.text).width;
+      const position = deps.computeDanmakuPosition({
+        canvasWidth: canvas.width,
+        durationMs: message.durationMs,
+        elapsedMs: now - message.startedAt,
+        lane: deps.computeDanmakuLane({ laneCount, sequence: message.sequence }),
+        lineHeight: style.lineHeight,
+        textWidth,
+      });
+      context.globalAlpha = position.alpha;
+      context.strokeText(message.text, position.x, position.y);
+      context.fillText(message.text, position.x, position.y);
+    });
+    context.restore();
+  };
+
   const schedulePipelineDraw = (
     video: VideoWithFrameCallback,
     lifecycle: { stopped: boolean },
@@ -214,7 +273,10 @@ export const installCameraBubbleHook = (
     window.requestAnimationFrame(() => draw());
   };
 
-  const buildPipeline = (sourceTrack: MediaStreamTrack): MediaStreamTrack => {
+  const buildPipeline = (
+    sourceTrack: MediaStreamTrack,
+    mode: "camera" | "screenShare",
+  ): MediaStreamTrack => {
     const existing = sourceToPipeline.get(sourceTrack);
     if (existing !== undefined) return existing.canvasTrack;
 
@@ -255,6 +317,7 @@ export const installCameraBubbleHook = (
     const pipeline: Pipeline = {
       canvas,
       canvasTrack,
+      mode,
       sourceTrack,
       stop: stopPipeline,
       video,
@@ -268,7 +331,11 @@ export const installCameraBubbleHook = (
         context.fillRect(0, 0, canvas.width, canvas.height);
       } else if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        drawBubble(context, canvas);
+        if (pipeline.mode === "screenShare") {
+          drawDanmaku(context, canvas);
+        } else {
+          drawBubble(context, canvas);
+        }
       }
 
       schedulePipelineDraw(video, lifecycle, draw);
@@ -314,14 +381,75 @@ export const installCameraBubbleHook = (
   const isDisplayCaptureTrack = (track: MediaStreamTrack): boolean =>
     displayTracks.has(track) || deps.isDisplayCaptureLike(track.getSettings());
 
+  const cleanupDisplaySendersFor = (sourceTrack: MediaStreamTrack): void => {
+    activeDisplaySenders.forEach((sender) => {
+      if (displaySenderSources.get(sender) !== sourceTrack) return;
+
+      activeDisplaySenders.delete(sender);
+      displaySenderSources.delete(sender);
+    });
+  };
+
+  const rememberSenderTrack = (sender: unknown, track: unknown): void => {
+    if (typeof RTCRtpSender === "undefined" || !(sender instanceof RTCRtpSender)) return;
+
+    const sourceTrack = isMediaStreamTrack(track)
+      ? (canvasToPipeline.get(track)?.sourceTrack ?? track)
+      : undefined;
+    if (
+      sourceTrack !== undefined &&
+      sourceTrack.kind === "video" &&
+      isDisplayCaptureTrack(sourceTrack)
+    ) {
+      activeDisplaySenders.add(sender);
+      displaySenderSources.set(sender, sourceTrack);
+      if (!displaySenderCleanupSources.has(sourceTrack)) {
+        displaySenderCleanupSources.add(sourceTrack);
+        sourceTrack.addEventListener("ended", () => cleanupDisplaySendersFor(sourceTrack), {
+          once: true,
+        });
+      }
+      return;
+    }
+
+    activeDisplaySenders.delete(sender);
+    displaySenderSources.delete(sender);
+  };
+
   const wrapTrackForSender = (track: unknown): unknown => {
     if (!isMediaStreamTrack(track)) return track;
     if (track.kind !== "video") return track;
     if (!state.enabled) return track;
     if (canvasToPipeline.has(track)) return track;
-    if (isDisplayCaptureTrack(track)) return track;
+    if (isDisplayCaptureTrack(track)) {
+      return state.screenShareDanmakuEnabled ? buildPipeline(track, "screenShare") : track;
+    }
 
-    return buildPipeline(track);
+    return buildPipeline(track, "camera");
+  };
+
+  const syncDisplaySenders = (): void => {
+    activeDisplaySenders.forEach((sender) => {
+      const sourceTrack = displaySenderSources.get(sender);
+      if (sourceTrack === undefined || sourceTrack.readyState !== "live") {
+        activeDisplaySenders.delete(sender);
+        displaySenderSources.delete(sender);
+        return;
+      }
+
+      const nextTrack = wrapTrackForSender(sourceTrack);
+      if (!isMediaStreamTrack(nextTrack)) return;
+
+      const pipelineToStop = sourceToPipeline.get(sourceTrack);
+      void sender
+        .replaceTrack(nextTrack)
+        .then(() => {
+          if (nextTrack === sourceTrack && pipelineToStop?.mode === "screenShare") {
+            pipelineToStop.stop();
+          }
+        })
+        .catch(() => undefined);
+    });
   };
 
   const tagDisplayStream = (stream: MediaStream): void => {
@@ -384,7 +512,10 @@ export const installCameraBubbleHook = (
     const wrappedAddTrack = new Proxy(originalAddTrack, {
       apply: (target, thisArgument, argumentList) => {
         const [track, ...streams] = argumentList;
-        return Reflect.apply(target, thisArgument, [wrapTrackForSender(track), ...streams]);
+        const wrappedTrack = wrapTrackForSender(track);
+        const sender = Reflect.apply(target, thisArgument, [wrappedTrack, ...streams]);
+        rememberSenderTrack(sender, track);
+        return sender;
       },
     }) as RTCPeerConnection["addTrack"];
 
@@ -408,7 +539,11 @@ export const installCameraBubbleHook = (
         const [trackOrKind, ...rest] = argumentList;
         const wrappedTrackOrKind =
           typeof trackOrKind === "string" ? trackOrKind : wrapTrackForSender(trackOrKind);
-        return Reflect.apply(target, thisArgument, [wrappedTrackOrKind, ...rest]);
+        const transceiver = Reflect.apply(target, thisArgument, [wrappedTrackOrKind, ...rest]);
+        if (typeof trackOrKind !== "string") {
+          rememberSenderTrack(transceiver.sender, trackOrKind);
+        }
+        return transceiver;
       },
     }) as RTCPeerConnection["addTransceiver"];
 
@@ -426,8 +561,12 @@ export const installCameraBubbleHook = (
 
     const originalReplaceTrack = prototype.replaceTrack;
     const wrappedReplaceTrack = new Proxy(originalReplaceTrack, {
-      apply: (target, thisArgument, argumentList) =>
-        Reflect.apply(target, thisArgument, [wrapTrackForSender(argumentList[0])]),
+      apply: (target, thisArgument, argumentList) => {
+        const wrappedTrack = wrapTrackForSender(argumentList[0]);
+        const result = Reflect.apply(target, thisArgument, [wrappedTrack]);
+        rememberSenderTrack(thisArgument, argumentList[0]);
+        return result;
+      },
     }) as RTCRtpSender["replaceTrack"];
 
     writePatchRecord(prototype, replaceTrackPatchKey, originalReplaceTrack);
@@ -637,7 +776,33 @@ export const installCameraBubbleHook = (
     runOverlayLoop();
   };
 
-  const showBubble = (text: string, durationMs: number | undefined, pinned: boolean): void => {
+  const shouldCollectChatText = (): boolean =>
+    state.enabled && (state.chatMirrorEnabled || state.screenShareDanmakuEnabled);
+
+  const addDanmakuMessage = (text: string, durationMs: number | undefined): void => {
+    if (!state.enabled || !state.screenShareDanmakuEnabled) return;
+
+    const now = Date.now();
+    state.danmakuMessages = state.danmakuMessages.filter(
+      (message) => now - message.startedAt < message.durationMs,
+    );
+    const sequence = state.danmakuSequence;
+    state.danmakuSequence += 1;
+    state.danmakuMessages.push({
+      durationMs:
+        durationMs ??
+        deps.computeBubbleDisplayDurationMs([...text].length, state.displaySpeedLevel),
+      sequence,
+      startedAt: now,
+      text,
+    });
+  };
+
+  const showCameraBubble = (
+    text: string,
+    durationMs: number | undefined,
+    pinned: boolean,
+  ): void => {
     if (state.bubble?.pinned === true && !pinned) {
       return;
     }
@@ -650,6 +815,19 @@ export const installCameraBubbleHook = (
       text,
     };
     showOverlay();
+  };
+
+  const showBubble = (text: string, durationMs: number | undefined, pinned: boolean): void => {
+    // Pinned camera bubbles should not hide transient screen-share comments.
+    addDanmakuMessage(text, durationMs);
+    showCameraBubble(text, durationMs, pinned);
+  };
+
+  const showMirroredChatText = (text: string, durationMs: number): void => {
+    addDanmakuMessage(text, durationMs);
+    if (state.chatMirrorEnabled) {
+      showCameraBubble(text, durationMs, false);
+    }
   };
 
   const isEditableElement = (element: Element): boolean => {
@@ -735,7 +913,7 @@ export const installCameraBubbleHook = (
 
   const mirrorChatToastElement = (element: Element): void => {
     try {
-      if (!state.enabled || !state.chatMirrorEnabled) return;
+      if (!shouldCollectChatText()) return;
       if (overlayState.element?.contains(element)) return;
       if (hasEditableAncestor(element)) return;
 
@@ -748,10 +926,9 @@ export const installCameraBubbleHook = (
       const now = Date.now();
       if (!acceptChatToastText(text, now)) return;
 
-      showBubble(
+      showMirroredChatText(
         text,
         deps.computeBubbleDisplayDurationMs([...text].length, state.displaySpeedLevel),
-        false,
       );
     } catch {
       return;
@@ -896,10 +1073,9 @@ export const installCameraBubbleHook = (
     if (now - chatMirrorRateLimit.lastAcceptedAt < 300) return false;
 
     chatMirrorRateLimit.lastAcceptedAt = now;
-    showBubble(
+    showMirroredChatText(
       sanitizedText,
       deps.computeBubbleDisplayDurationMs([...sanitizedText].length, state.displaySpeedLevel),
-      false,
     );
     return true;
   };
@@ -926,7 +1102,7 @@ export const installCameraBubbleHook = (
         "input",
         (event) => {
           try {
-            if (!state.enabled || !state.chatMirrorEnabled) return;
+            if (!shouldCollectChatText()) return;
 
             rememberChatInput(event.target);
           } catch {
@@ -939,7 +1115,7 @@ export const installCameraBubbleHook = (
         "keydown",
         (event) => {
           try {
-            if (!state.enabled || !state.chatMirrorEnabled) return;
+            if (!shouldCollectChatText()) return;
 
             const editable = chatEditableFor(event.target);
             if (editable !== undefined) {
@@ -970,7 +1146,7 @@ export const installCameraBubbleHook = (
         "mousedown",
         (event) => {
           try {
-            if (!state.enabled || !state.chatMirrorEnabled) return;
+            if (!shouldCollectChatText()) return;
             if (!isLikelyChatSendClickTarget(event.target)) return;
 
             rememberChatInput(document.activeElement);
@@ -984,7 +1160,7 @@ export const installCameraBubbleHook = (
         "click",
         (event) => {
           try {
-            if (!state.enabled || !state.chatMirrorEnabled) return;
+            if (!shouldCollectChatText()) return;
             if (!isLikelyChatSendClickTarget(event.target)) return;
             if (
               recentChatInput.text === undefined ||
@@ -1037,12 +1213,25 @@ export const installCameraBubbleHook = (
     }
 
     if (message.kind === "config") {
+      const previousEnabled = state.enabled;
+      const previousScreenShareDanmakuEnabled = state.screenShareDanmakuEnabled;
       state.enabled = message.enabled === true;
       state.chatMirrorEnabled = message.chatMirrorEnabled === true;
       state.displaySpeedLevel = message.displaySpeedLevel;
+      state.screenShareDanmakuEnabled = message.screenShareDanmakuEnabled === true;
       if (!state.enabled) {
         state.bubble = undefined;
+        state.danmakuMessages = [];
         hideOverlay();
+      }
+      if (!state.screenShareDanmakuEnabled) {
+        state.danmakuMessages = [];
+      }
+      if (
+        previousEnabled !== state.enabled ||
+        previousScreenShareDanmakuEnabled !== state.screenShareDanmakuEnabled
+      ) {
+        syncDisplaySenders();
       }
     }
   });

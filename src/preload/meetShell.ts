@@ -109,6 +109,7 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
     const bubbleSend = document.getElementById("bubble-send");
     const bubbleSettingsPanel = document.getElementById("bubble-settings-panel");
     const bubbleSettingsToggle = document.getElementById("bubble-settings-toggle");
+    const bubbleShareDanmaku = document.getElementById("bubble-share-danmaku");
     const bubbleSidebar = document.getElementById("bubble-sidebar");
     const bubbleSpeed = document.getElementById("bubble-speed");
     const bubbleSpeedValue = document.getElementById("bubble-speed-value");
@@ -126,6 +127,7 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
       !(bubbleSend instanceof HTMLButtonElement) ||
       !(bubbleSettingsPanel instanceof HTMLElement) ||
       !(bubbleSettingsToggle instanceof HTMLButtonElement) ||
+      !(bubbleShareDanmaku instanceof HTMLInputElement) ||
       !(bubbleSidebar instanceof HTMLElement) ||
       !(bubbleSpeed instanceof HTMLInputElement) ||
       !(bubbleSpeedValue instanceof HTMLElement) ||
@@ -146,6 +148,7 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
         displaySpeedLevel: 3,
         enabled: false,
         pinnedText: undefined as string | undefined,
+        screenShareDanmakuEnabled: false,
         sidebarHidden: false,
       },
       settingsPanelOpen: false,
@@ -204,6 +207,7 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
           typeof state.displaySpeedLevel === "number" ? state.displaySpeedLevel : 3,
         enabled: state.enabled === true,
         pinnedText: typeof state.pinnedText === "string" ? state.pinnedText : undefined,
+        screenShareDanmakuEnabled: state.screenShareDanmakuEnabled === true,
         sidebarHidden: state.sidebarHidden === true,
       };
       const current = shellState.current;
@@ -213,6 +217,8 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
       bubbleEnabled.checked = current.enabled;
       bubbleMirror.checked = current.chatMirrorEnabled;
       bubbleMirror.disabled = !current.enabled;
+      bubbleShareDanmaku.checked = current.screenShareDanmakuEnabled;
+      bubbleShareDanmaku.disabled = !current.enabled;
       bubbleSpeed.value = String(current.displaySpeedLevel);
       bubbleSpeedValue.textContent = `${current.displaySpeedLevel} / 5`;
       bubbleToggle.style.display = current.enabled ? "inline-flex" : "none";
@@ -236,6 +242,7 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
         chatMirrorEnabled: settings.cameraBubbleChatMirrorEnabled,
         displaySpeedLevel: settings.cameraBubbleDisplaySpeedLevel,
         enabled: settings.cameraBubbleEnabled,
+        screenShareDanmakuEnabled: settings.cameraBubbleScreenShareDanmakuEnabled,
         sidebarHidden: settings.cameraBubbleSidebarHidden,
       });
     };
@@ -321,6 +328,12 @@ export const setupMeetShellDom = (api: MeetShellUpdateApi): void => {
       if (bubbleMirror.checked === shellState.current.chatMirrorEnabled) return;
 
       updateBubbleSettings({ cameraBubbleChatMirrorEnabled: bubbleMirror.checked });
+    });
+
+    bubbleShareDanmaku.addEventListener("change", () => {
+      if (bubbleShareDanmaku.checked === shellState.current.screenShareDanmakuEnabled) return;
+
+      updateBubbleSettings({ cameraBubbleScreenShareDanmakuEnabled: bubbleShareDanmaku.checked });
     });
 
     bubbleSpeed.addEventListener("input", () => {

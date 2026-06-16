@@ -19,6 +19,7 @@ type DashboardProps = {
   onAutoJoinEnabledChange: (enabled: boolean) => Promise<unknown>;
   onCameraBubbleChatMirrorEnabledChange: (enabled: boolean) => Promise<unknown>;
   onCameraBubbleEnabledChange: (enabled: boolean) => Promise<unknown>;
+  onCameraBubbleScreenShareDanmakuEnabledChange: (enabled: boolean) => Promise<unknown>;
   onCameraBubbleDisplaySpeedLevelChange: (level: number) => Promise<unknown>;
   onCheckForUpdates?: () => Promise<unknown>;
   onConnectAccount: () => Promise<unknown>;
@@ -241,6 +242,7 @@ export const Dashboard = ({
   onAutoJoinEnabledChange,
   onCameraBubbleChatMirrorEnabledChange,
   onCameraBubbleEnabledChange,
+  onCameraBubbleScreenShareDanmakuEnabledChange,
   onCameraBubbleDisplaySpeedLevelChange,
   onCheckForUpdates,
   onConnectAccount,
@@ -478,6 +480,23 @@ export const Dashboard = ({
                 aria-label="Mirror Meet chat"
                 onChange={(event) =>
                   void onCameraBubbleChatMirrorEnabledChange(event.currentTarget.checked)
+                }
+              />
+            </label>
+          </div>
+          <div className="preference-row preference-sub-row">
+            <div className="preference-copy">
+              <strong>Screen share comments</strong>
+              <span>Flow bubble comments across your shared screen</span>
+            </div>
+            <label className="toggle-control">
+              <input
+                type="checkbox"
+                checked={settings.cameraBubbleScreenShareDanmakuEnabled}
+                disabled={!settings.cameraBubbleEnabled}
+                aria-label="Screen share comments"
+                onChange={(event) =>
+                  void onCameraBubbleScreenShareDanmakuEnabledChange(event.currentTarget.checked)
                 }
               />
             </label>

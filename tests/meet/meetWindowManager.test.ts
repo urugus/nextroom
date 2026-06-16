@@ -591,6 +591,7 @@ describe("createMeetWindowManager", () => {
       chatMirrorEnabled: true,
       displaySpeedLevel: 4,
       enabled: true,
+      screenShareDanmakuEnabled: true,
       sidebarHidden: true,
     };
     const createWindow = vi
@@ -625,6 +626,7 @@ describe("createMeetWindowManager", () => {
       chatMirrorEnabled: true,
       displaySpeedLevel: 3,
       enabled: true,
+      screenShareDanmakuEnabled: true,
       sidebarHidden: false,
     });
     manager.updateUpdateStatus({

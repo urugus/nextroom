@@ -5,6 +5,9 @@ import {
   computeBubbleDisplayDurationMs,
   computeBubbleLayout,
   computeCanvasSize,
+  computeDanmakuLane,
+  computeDanmakuPosition,
+  computeDanmakuTextStyle,
   computeOverlayBox,
   hasVideoConstraints,
   isDisplayCaptureLike,
@@ -37,6 +40,7 @@ const initialConfig = {
   chatMirrorEnabled: parseBooleanFlag("--nextroom-camera-bubble-chat"),
   displaySpeedLevel: parseSpeedLevelFlag("--nextroom-camera-bubble-speed"),
   enabled: parseBooleanFlag("--nextroom-camera-bubble"),
+  screenShareDanmakuEnabled: parseBooleanFlag("--nextroom-camera-bubble-share-danmaku"),
 };
 
 const createCameraBubbleNonce = (): string => {
@@ -52,7 +56,13 @@ const createCameraBubbleNonce = (): string => {
 const cameraBubbleNonce = createCameraBubbleNonce();
 
 type CameraBubbleMessage =
-  | { chatMirrorEnabled: boolean; displaySpeedLevel: number; enabled: boolean; kind: "config" }
+  | {
+      chatMirrorEnabled: boolean;
+      displaySpeedLevel: number;
+      enabled: boolean;
+      kind: "config";
+      screenShareDanmakuEnabled: boolean;
+    }
   | { durationMs: number | undefined; kind: "show"; pinned: boolean; text: string }
   | { kind: "hide" };
 
@@ -65,6 +75,9 @@ if (typeof webFrame?.executeJavaScript === "function") {
     computeBubbleAnimation: ${computeBubbleAnimation.toString()},
     computeBubbleDisplayDurationMs: ${computeBubbleDisplayDurationMs.toString()},
     computeBubbleLayout: ${computeBubbleLayout.toString()},
+    computeDanmakuLane: ${computeDanmakuLane.toString()},
+    computeDanmakuPosition: ${computeDanmakuPosition.toString()},
+    computeDanmakuTextStyle: ${computeDanmakuTextStyle.toString()},
     computeOverlayBox: ${computeOverlayBox.toString()},
     computeCanvasSize: ${computeCanvasSize.toString()},
     hasVideoConstraints: ${hasVideoConstraints.toString()},
@@ -113,16 +126,19 @@ ipcRenderer.on(IPC_CHANNELS.meetBubbleConfig, (_event, payload: unknown) => {
           chatMirrorEnabled?: unknown;
           displaySpeedLevel?: unknown;
           enabled?: unknown;
+          screenShareDanmakuEnabled?: unknown;
         })
       : {
           chatMirrorEnabled: undefined,
           displaySpeedLevel: undefined,
           enabled: undefined,
+          screenShareDanmakuEnabled: undefined,
         };
   postToMainWorld({
     chatMirrorEnabled: config.chatMirrorEnabled === true,
     displaySpeedLevel: Number(config.displaySpeedLevel),
     enabled: config.enabled === true,
     kind: "config",
+    screenShareDanmakuEnabled: config.screenShareDanmakuEnabled === true,
   });
 });

@@ -184,6 +184,7 @@ const cameraBubbleConfigFor = (settings: AppSettings): CameraBubbleConfig => ({
   chatMirrorEnabled: settings.cameraBubbleChatMirrorEnabled,
   displaySpeedLevel: settings.cameraBubbleDisplaySpeedLevel,
   enabled: settings.cameraBubbleEnabled,
+  screenShareDanmakuEnabled: settings.cameraBubbleScreenShareDanmakuEnabled,
   sidebarHidden: settings.cameraBubbleSidebarHidden,
 });
 
@@ -194,6 +195,7 @@ const cameraBubbleShellStateFor = (
   chatMirrorEnabled: config.chatMirrorEnabled,
   displaySpeedLevel: config.displaySpeedLevel,
   enabled: config.enabled,
+  screenShareDanmakuEnabled: config.screenShareDanmakuEnabled,
   ...(!config.enabled || pinnedText === undefined ? {} : { pinnedText }),
   sidebarHidden: config.sidebarHidden,
 });
@@ -202,10 +204,12 @@ const cameraBubbleMeetViewConfigFor = ({
   chatMirrorEnabled,
   displaySpeedLevel,
   enabled,
+  screenShareDanmakuEnabled,
 }: CameraBubbleConfig): CameraBubbleMeetViewConfig => ({
   chatMirrorEnabled,
   displaySpeedLevel,
   enabled,
+  screenShareDanmakuEnabled,
 });
 
 const menuShortcutStatusFor = (
@@ -240,6 +244,8 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
   const previousShortcutStatus = menuShortcutStatus;
   const previousCameraBubbleChatMirrorEnabled = appSettings.cameraBubbleChatMirrorEnabled;
   const previousCameraBubbleEnabled = appSettings.cameraBubbleEnabled;
+  const previousCameraBubbleScreenShareDanmakuEnabled =
+    appSettings.cameraBubbleScreenShareDanmakuEnabled;
   const previousCameraBubbleSidebarHidden = appSettings.cameraBubbleSidebarHidden;
   const previousCameraBubbleDisplaySpeedLevel = appSettings.cameraBubbleDisplaySpeedLevel;
   const shortcutChanged =
@@ -250,6 +256,9 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
       nextSettings.cameraBubbleEnabled !== previousCameraBubbleEnabled) ||
     ("cameraBubbleChatMirrorEnabled" in parsed.value &&
       nextSettings.cameraBubbleChatMirrorEnabled !== previousCameraBubbleChatMirrorEnabled) ||
+    ("cameraBubbleScreenShareDanmakuEnabled" in parsed.value &&
+      nextSettings.cameraBubbleScreenShareDanmakuEnabled !==
+        previousCameraBubbleScreenShareDanmakuEnabled) ||
     ("cameraBubbleSidebarHidden" in parsed.value &&
       nextSettings.cameraBubbleSidebarHidden !== previousCameraBubbleSidebarHidden) ||
     ("cameraBubbleDisplaySpeedLevel" in parsed.value &&
@@ -711,6 +720,10 @@ const meetShellHtml = (): string => `<!doctype html>
         <input type="checkbox" id="bubble-mirror">
       </label>
       <label class="bubble-setting-row">
+        <span>Screen share comments</span>
+        <input type="checkbox" id="bubble-share-danmaku">
+      </label>
+      <label class="bubble-setting-row">
         <span>Speed</span>
         <input type="range" id="bubble-speed" min="1" max="5" step="1">
         <span id="bubble-speed-value">3 / 5</span>
@@ -1092,6 +1105,7 @@ const createMeetWindow = fromThrowable(
         additionalArguments: [
           `--nextroom-camera-bubble=${appSettings.cameraBubbleEnabled ? "1" : "0"}`,
           `--nextroom-camera-bubble-chat=${appSettings.cameraBubbleChatMirrorEnabled ? "1" : "0"}`,
+          `--nextroom-camera-bubble-share-danmaku=${appSettings.cameraBubbleScreenShareDanmakuEnabled ? "1" : "0"}`,
           `--nextroom-camera-bubble-speed=${appSettings.cameraBubbleDisplaySpeedLevel}`,
         ],
         backgroundThrottling: false,

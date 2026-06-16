@@ -12,6 +12,7 @@ describe("app settings", () => {
       autoJoinEnabled: false,
       cameraBubbleChatMirrorEnabled: false,
       cameraBubbleEnabled: false,
+      cameraBubbleScreenShareDanmakuEnabled: false,
       cameraBubbleSidebarHidden: false,
       cameraBubbleDisplaySpeedLevel: 3,
       joinOffsetSeconds: 0,
@@ -46,9 +47,19 @@ describe("app settings", () => {
     expect(parseSettingsUpdate({ cameraBubbleChatMirrorEnabled: true })._unsafeUnwrap()).toEqual({
       cameraBubbleChatMirrorEnabled: true,
     });
+    expect(
+      parseSettingsUpdate({ cameraBubbleScreenShareDanmakuEnabled: true })._unsafeUnwrap(),
+    ).toEqual({
+      cameraBubbleScreenShareDanmakuEnabled: true,
+    });
     expect(parseSettingsUpdate({ cameraBubbleSidebarHidden: true })._unsafeUnwrap()).toEqual({
       cameraBubbleSidebarHidden: true,
     });
+  });
+
+  it("defaults screen share danmaku comments to false", () => {
+    expect(defaultAppSettings.cameraBubbleScreenShareDanmakuEnabled).toBe(false);
+    expect(parseStoredAppSettings({}).cameraBubbleScreenShareDanmakuEnabled).toBe(false);
   });
 
   it("defaults the camera bubble sidebar hidden state to false", () => {

@@ -24,6 +24,7 @@ const settings: AppSettings = {
   autoOpenEnabled: true,
   cameraBubbleChatMirrorEnabled: false,
   cameraBubbleEnabled: false,
+  cameraBubbleScreenShareDanmakuEnabled: false,
   cameraBubbleSidebarHidden: false,
   cameraBubbleDisplaySpeedLevel: 3,
   joinOffsetSeconds: 0,
@@ -318,6 +319,27 @@ describe("App", () => {
 
     await waitFor(() =>
       expect(updateSettings).toHaveBeenCalledWith({ cameraBubbleChatMirrorEnabled: true }),
+    );
+  });
+
+  it("saves the screen share comments setting", async () => {
+    const openMeetUrl = vi.fn<() => Promise<ApiResult<void>>>(() => Promise.resolve(okResult));
+    installMeetLauncher(openMeetUrl);
+    const updateSettings = vi.mocked(window.meetLauncher.updateSettings);
+
+    vi.mocked(window.meetLauncher.getSettings).mockResolvedValue({
+      ok: true,
+      value: { ...settings, cameraBubbleEnabled: true },
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Screen share comments" }));
+
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith({
+        cameraBubbleScreenShareDanmakuEnabled: true,
+      }),
     );
   });
 

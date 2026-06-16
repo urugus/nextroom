@@ -1,5 +1,11 @@
 export type CameraBubbleEnvelope =
-  | { kind: "config"; chatMirrorEnabled: boolean; displaySpeedLevel: number; enabled: boolean }
+  | {
+      kind: "config";
+      chatMirrorEnabled: boolean;
+      displaySpeedLevel: number;
+      enabled: boolean;
+      screenShareDanmakuEnabled: boolean;
+    }
   | { durationMs: number | undefined; kind: "show"; pinned: boolean; text: string }
   | { kind: "hide" };
 
@@ -28,6 +34,9 @@ export type CameraBubbleLayout = {
 export type CameraBubbleDeps = {
   computeBubbleAnimation: typeof computeBubbleAnimation;
   computeBubbleLayout: typeof computeBubbleLayout;
+  computeDanmakuLane: typeof computeDanmakuLane;
+  computeDanmakuPosition: typeof computeDanmakuPosition;
+  computeDanmakuTextStyle: typeof computeDanmakuTextStyle;
   computeOverlayBox: typeof computeOverlayBox;
   computeCanvasSize: typeof computeCanvasSize;
   hasVideoConstraints: typeof hasVideoConstraints;
@@ -98,6 +107,61 @@ export const computeBubbleDisplayDurationMs = (textLength: number, speedLevel: n
   const rawDuration = (2_500 + 150 * boundedTextLength) * factor;
 
   return Math.round(Math.max(2_000, Math.min(20_000, rawDuration)));
+};
+
+export const computeDanmakuTextStyle = ({
+  canvasHeight,
+}: {
+  canvasHeight: number;
+}): {
+  fontSize: number;
+  lineHeight: number;
+  strokeWidth: number;
+} => {
+  const fontSize = Math.max(24, Math.round(canvasHeight * 0.052));
+  return {
+    fontSize,
+    lineHeight: Math.round(fontSize * 1.35),
+    strokeWidth: Math.max(3, Math.round(fontSize * 0.12)),
+  };
+};
+
+export const computeDanmakuLane = ({
+  laneCount,
+  sequence,
+}: {
+  laneCount: number;
+  sequence: number;
+}): number => {
+  const normalizedLaneCount = Math.max(1, Math.floor(laneCount));
+  const normalizedSequence = Math.max(0, Math.floor(sequence));
+  return normalizedSequence % normalizedLaneCount;
+};
+
+export const computeDanmakuPosition = ({
+  canvasWidth,
+  durationMs,
+  elapsedMs,
+  lane,
+  lineHeight,
+  textWidth,
+}: {
+  canvasWidth: number;
+  durationMs: number;
+  elapsedMs: number;
+  lane: number;
+  lineHeight: number;
+  textWidth: number;
+}): { alpha: number; x: number; y: number } => {
+  const boundedDurationMs = Math.max(1, durationMs);
+  const progress = Math.max(0, Math.min(1, elapsedMs / boundedDurationMs));
+  const travelDistance = canvasWidth + textWidth;
+  const x = Math.round(canvasWidth - travelDistance * progress);
+  const y = Math.round(lineHeight * (Math.max(0, Math.floor(lane)) + 1));
+  const edgeFadeProgress = Math.min(progress, 1 - progress);
+  const alpha = Math.max(0, Math.min(1, edgeFadeProgress / 0.08));
+
+  return { alpha, x, y };
 };
 
 export const shouldMirrorChatKey = (input: {
@@ -336,6 +400,7 @@ export const parseCameraBubbleEnvelope = (
     kind?: unknown;
     nonce?: unknown;
     pinned?: unknown;
+    screenShareDanmakuEnabled?: unknown;
     text?: unknown;
   };
   if (message.nonce !== expectedNonce) {
@@ -374,6 +439,7 @@ export const parseCameraBubbleEnvelope = (
       displaySpeedLevel: speedLevel,
       enabled: message.enabled === true,
       kind: "config",
+      screenShareDanmakuEnabled: message.screenShareDanmakuEnabled === true,
     };
   }
 
