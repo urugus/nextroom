@@ -5,12 +5,17 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to rebuild and publish"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -18,10 +23,15 @@ jobs:
     name: Build macOS release
     runs-on: macos-latest
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
@@ -37,15 +47,25 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Verify release tag
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
-            echo "Release workflow must run from a Git tag."
+          case "$RELEASE_TAG" in
+            v*) ;;
+            *)
+              echo "Release workflow must run from a release tag."
+              exit 1
+              ;;
+          esac
+
+          if ! git rev-parse --verify "$RELEASE_TAG^{commit}" >/dev/null 2>&1; then
+            echo "Release tag does not exist: ${RELEASE_TAG}."
             exit 1
           fi
 
           expected_tag="v$(node -p "require('./package.json').version")"
-          if [ "$GITHUB_REF_NAME" != "$expected_tag" ]; then
-            echo "Release tag mismatch: expected ${expected_tag}, got ${GITHUB_REF_NAME}."
+          if [ "$RELEASE_TAG" != "$expected_tag" ]; then
+            echo "Release tag mismatch: expected ${expected_tag}, got ${RELEASE_TAG}."
             exit 1
           fi
 
@@ -70,11 +90,75 @@ jobs:
       - name: Run checks
         run: pnpm run check
 
-      - name: Build and publish macOS artifacts
+      - name: Build macOS artifacts
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: pnpm run dist:mac
+
+      - name: Verify local release artifacts
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          artifacts=(
+            "dist/latest-mac.yml"
+            "dist/NextRoom-${version}-mac-arm64.zip"
+            "dist/NextRoom-${version}-mac-arm64.zip.blockmap"
+            "dist/NextRoom-${version}-mac-arm64.dmg"
+            "dist/NextRoom-${version}-mac-arm64.dmg.blockmap"
+          )
+
+          missing=0
+          for artifact in "${artifacts[@]}"; do
+            if [ ! -f "$artifact" ] || [ ! -s "$artifact" ]; then
+              echo "::error title=Missing or empty release artifact::$artifact"
+              missing=1
+            fi
+          done
+
+          exit "$missing"
+
+      - name: Publish GitHub release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: pnpm run release:mac
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          tag="$RELEASE_TAG"
+
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title "$tag" --notes "NextRoom ${version}"
+          fi
+
+          gh release upload "$tag" --clobber \
+            "dist/latest-mac.yml" \
+            "dist/NextRoom-${version}-mac-arm64.zip" \
+            "dist/NextRoom-${version}-mac-arm64.zip.blockmap" \
+            "dist/NextRoom-${version}-mac-arm64.dmg" \
+            "dist/NextRoom-${version}-mac-arm64.dmg.blockmap"
+
+      - name: Verify GitHub release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          required_assets=(
+            "latest-mac.yml"
+            "NextRoom-${version}-mac-arm64.zip"
+            "NextRoom-${version}-mac-arm64.zip.blockmap"
+            "NextRoom-${version}-mac-arm64.dmg"
+            "NextRoom-${version}-mac-arm64.dmg.blockmap"
+          )
+          uploaded_assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+
+          missing=0
+          for asset in "${required_assets[@]}"; do
+            if ! printf '%s\n' "$uploaded_assets" | grep -Fxq "$asset"; then
+              echo "::error title=Missing GitHub release asset::$asset"
+              missing=1
+            fi
+          done
+
+          exit "$missing"
 
       - name: Create Homebrew tap token
         id: homebrew-tap-token
@@ -105,7 +189,7 @@ jobs:
           sha256="$(shasum -a 256 "$artifact" | awk '{print $1}')"
           cask_path="homebrew-tap/Casks/nextroom.rb"
 
-          ruby -0pi -e "gsub(/version \".*\"/, \"version \\\"${version}\\\"\"); gsub(/sha256 \".*\"/, \"sha256 \\\"${sha256}\\\"\")" "$cask_path"
+          VERSION="$version" SHA256="$sha256" ruby -0pi -e 'gsub(/version ".*"/, "version \"#{ENV.fetch("VERSION")}\""); gsub(/sha256 ".*"/, "sha256 \"#{ENV.fetch("SHA256")}\"")' "$cask_path"
 
           cd homebrew-tap
           if git diff --quiet -- Casks/nextroom.rb; then
