@@ -76,6 +76,14 @@ const dispatchEnter = (element: Element, init: KeyboardEventInit = {}): void => 
   );
 };
 
+const dispatchInput = (element: Element): void => {
+  element.dispatchEvent(new Event("input", { bubbles: true, cancelable: true }));
+};
+
+const dispatchMouseDown = (element: Element): void => {
+  element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+};
+
 const flushMutationObserver = async (): Promise<void> => {
   await Promise.resolve();
 };
@@ -827,7 +835,166 @@ describe("installCameraBubbleHook", () => {
     expect(overlay?.style.boxShadow).toContain("10px");
   });
 
-  it("ignores composing, disabled, empty, non-textarea, and disabled-feature chat mirror events", () => {
+  it("mirrors own contenteditable chat messages into the overlay without IPC", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const editable = document.createElement("div");
+    Object.defineProperty(editable, "isContentEditable", { configurable: true, value: true });
+    const child = document.createElement("span");
+    child.textContent = "contenteditable 送信";
+    editable.append(child);
+    document.body.append(editable);
+
+    dispatchEnter(child);
+
+    expect(overlayWithText("contenteditable 送信")).toBeDefined();
+  });
+
+  it("ignores hidden contenteditable descendants when mirroring own chat messages", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const editable = document.createElement("div");
+    Object.defineProperty(editable, "isContentEditable", { configurable: true, value: true });
+    const hidden = document.createElement("span");
+    hidden.hidden = true;
+    hidden.textContent = "hidden";
+    const ariaHidden = document.createElement("span");
+    ariaHidden.setAttribute("aria-hidden", "true");
+    ariaHidden.textContent = "aria";
+    editable.append("visible", hidden, ariaHidden);
+    document.body.append(editable);
+
+    dispatchEnter(editable);
+
+    expect(overlayWithText("visible")).toBeDefined();
+    expect(overlayWithText("visiblehiddenaria")).toBeUndefined();
+  });
+
+  it("mirrors own send-button chat clicks into the overlay", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const textArea = document.createElement("textarea");
+    textArea.value = "クリックで送信";
+    const sendButton = document.createElement("button");
+    sendButton.type = "button";
+    sendButton.setAttribute("aria-label", "Send a message");
+    document.body.append(textArea, sendButton);
+
+    dispatchInput(textArea);
+    sendButton.click();
+
+    expect(overlayWithText("クリックで送信")).toBeDefined();
+  });
+
+  it("mirrors own role-button chat clicks into the overlay", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const textArea = document.createElement("textarea");
+    textArea.value = "role button 送信";
+    const sendButton = document.createElement("div");
+    sendButton.setAttribute("role", "button");
+    sendButton.setAttribute("aria-label", "Send a message");
+    document.body.append(textArea, sendButton);
+
+    dispatchInput(textArea);
+    sendButton.click();
+
+    expect(overlayWithText("role button 送信")).toBeDefined();
+  });
+
+  it("falls back to send-button text when explicit labels are empty", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const textArea = document.createElement("textarea");
+    textArea.value = "空ラベルの送信";
+    const sendButton = document.createElement("button");
+    sendButton.type = "button";
+    sendButton.setAttribute("aria-label", "");
+    sendButton.setAttribute("title", "");
+    sendButton.textContent = "Send";
+    document.body.append(textArea, sendButton);
+
+    dispatchInput(textArea);
+    sendButton.click();
+
+    expect(overlayWithText("空ラベルの送信")).toBeDefined();
+  });
+
+  it("ignores stale send-button click chat input", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const textArea = document.createElement("textarea");
+    textArea.value = "古い入力";
+    const sendButton = document.createElement("button");
+    sendButton.type = "button";
+    sendButton.setAttribute("aria-label", "Send a message");
+    document.body.append(textArea, sendButton);
+
+    dispatchInput(textArea);
+    vi.setSystemTime(2_001);
+    sendButton.click();
+
+    expect(overlayWithText("古い入力")).toBeUndefined();
+  });
+
+  it("refreshes stale focused chat input on a send-button click without mousedown", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const textArea = document.createElement("textarea");
+    textArea.value = "キーボード送信";
+    const sendButton = document.createElement("button");
+    sendButton.type = "button";
+    sendButton.setAttribute("aria-label", "Send a message");
+    document.body.append(textArea, sendButton);
+    textArea.focus();
+
+    dispatchInput(textArea);
+    vi.setSystemTime(2_001);
+    sendButton.click();
+
+    expect(overlayWithText("キーボード送信")).toBeDefined();
+  });
+
+  it("refreshes stale focused chat input before a send-button click", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const textArea = document.createElement("textarea");
+    textArea.value = "フォーカス中の入力";
+    const sendButton = document.createElement("button");
+    sendButton.type = "button";
+    sendButton.setAttribute("aria-label", "Send a message");
+    document.body.append(textArea, sendButton);
+    textArea.focus();
+
+    dispatchInput(textArea);
+    vi.setSystemTime(2_001);
+    dispatchMouseDown(sendButton);
+    sendButton.click();
+
+    expect(overlayWithText("フォーカス中の入力")).toBeDefined();
+  });
+
+  it("does not mirror stale chat input when another empty editor sends", () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const firstTextArea = document.createElement("textarea");
+    firstTextArea.value = "別入力欄の古い投稿";
+    const secondTextArea = document.createElement("textarea");
+    secondTextArea.value = "";
+    const sendButton = document.createElement("button");
+    sendButton.type = "button";
+    sendButton.setAttribute("aria-label", "Send a message");
+    document.body.append(firstTextArea, secondTextArea, sendButton);
+
+    dispatchInput(firstTextArea);
+    secondTextArea.focus();
+    dispatchMouseDown(sendButton);
+    sendButton.click();
+
+    expect(overlayWithText("別入力欄の古い投稿")).toBeUndefined();
+  });
+
+  it("ignores composing, disabled, empty, non-editable, and disabled-feature chat mirror events", () => {
     vi.setSystemTime(1_000);
     installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
     const textArea = document.createElement("textarea");
@@ -880,6 +1047,7 @@ describe("installCameraBubbleHook", () => {
 
     vi.setSystemTime(1_300);
     dispatchEnter(textArea);
+    nextAnimationFrame();
 
     expect(overlayWithText("second")).toBeDefined();
   });
@@ -968,6 +1136,58 @@ describe("installCameraBubbleHook", () => {
     nextAnimationFrame();
 
     expect(overlayWithText("dupe")?.style.display).toBe("none");
+  });
+
+  it("deduplicates own mirrored chat messages from Meet chat toast notifications", async () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const textArea = document.createElement("textarea");
+    textArea.value = "dupe";
+    const sendButton = document.createElement("button");
+    sendButton.type = "button";
+    sendButton.setAttribute("aria-label", "Send a message");
+    document.body.append(textArea, sendButton);
+    dispatchInput(textArea);
+    sendButton.click();
+
+    vi.setSystemTime(2_000);
+    const duplicateToast = document.createElement("div");
+    duplicateToast.setAttribute("role", "status");
+    duplicateToast.textContent = "dupe";
+    document.body.append(duplicateToast);
+    await flushMutationObserver();
+
+    vi.setSystemTime(4_101);
+    nextAnimationFrame();
+
+    expect(overlayWithText("dupe")?.style.display).toBe("none");
+  });
+
+  it("deduplicates rate-limited own chat messages from later Meet chat toast notifications", async () => {
+    vi.setSystemTime(1_000);
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    const textArea = document.createElement("textarea");
+    const sendButton = document.createElement("button");
+    sendButton.type = "button";
+    sendButton.setAttribute("aria-label", "Send a message");
+    document.body.append(textArea, sendButton);
+
+    textArea.value = "rate-limited first";
+    dispatchInput(textArea);
+    sendButton.click();
+    textArea.value = "rate-limited second";
+    dispatchInput(textArea);
+    vi.setSystemTime(1_100);
+    sendButton.click();
+
+    vi.setSystemTime(2_000);
+    const duplicateToast = document.createElement("div");
+    duplicateToast.setAttribute("role", "status");
+    duplicateToast.textContent = "rate-limited second";
+    document.body.append(duplicateToast);
+    await flushMutationObserver();
+
+    expect(overlayWithText("rate-limited second")).toBeUndefined();
   });
 
   it("does not register duplicate Meet chat toast observers when installed twice", async () => {
