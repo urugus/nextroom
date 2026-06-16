@@ -734,6 +734,39 @@ describe("installCameraBubbleHook", () => {
     );
   });
 
+  it("prunes expired danmaku messages while no display pipeline is active", async () => {
+    vi.setSystemTime(1_000);
+    const displayTrack = createFakeTrack(
+      "video",
+      { displaySurface: "monitor", height: 720, width: 1280 },
+      "Captured source",
+    );
+    getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
+    installCameraBubbleHook(
+      { ...enabledConfig, screenShareDanmakuEnabled: true },
+      cameraBubbleDeps,
+      expectedNonce,
+    );
+
+    postCameraBubbleMessage({ durationMs: 2_000, kind: "show", text: "古い横流し" });
+    vi.advanceTimersByTime(2_001);
+    postCameraBubbleMessage({ durationMs: 2_000, kind: "show", text: "新しい横流し" });
+    const displayStream = await navigator.mediaDevices.getDisplayMedia();
+    new RTCPeerConnection().addTrack(displayStream.getVideoTracks()[0]);
+    nextAnimationFrame();
+
+    expect(canvasContexts[0].strokeText).not.toHaveBeenCalledWith(
+      "古い横流し",
+      expect.any(Number),
+      expect.any(Number),
+    );
+    expect(canvasContexts[0].strokeText).toHaveBeenCalledWith(
+      "新しい横流し",
+      expect.any(Number),
+      expect.any(Number),
+    );
+  });
+
   it("applies screen share comments config to display tracks added after the setting changes", async () => {
     const displayTrack = createFakeTrack(
       "video",
@@ -773,6 +806,24 @@ describe("installCameraBubbleHook", () => {
 
     expect(addTrackMock.mock.calls[0][0]).toBe(displayTrack);
     expect(replaceTrackMock).toHaveBeenCalledWith(createdCanvasTracks[0]);
+  });
+
+  it("registers ended cleanup for tracked display senders", async () => {
+    const displayTrack = createFakeTrack(
+      "video",
+      { displaySurface: "window", height: 720, width: 1280 },
+      "Captured source",
+    );
+    displayTrack.addEventListener = vi.fn(displayTrack.addEventListener.bind(displayTrack));
+    getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+
+    const displayStream = await navigator.mediaDevices.getDisplayMedia();
+    new RTCPeerConnection().addTrack(displayStream.getVideoTracks()[0]);
+
+    expect(displayTrack.addEventListener).toHaveBeenCalledWith("ended", expect.any(Function), {
+      once: true,
+    });
   });
 
   it("rewraps an active display sender when the master bubble setting is enabled mid-share", async () => {

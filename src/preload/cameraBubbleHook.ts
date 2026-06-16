@@ -78,6 +78,7 @@ export const installCameraBubbleHook = (
   const activePipelines = new Set<Pipeline>();
   const activeDisplaySenders = new Set<RTCRtpSender>();
   const displaySenderSources = new WeakMap<RTCRtpSender, MediaStreamTrack>();
+  const displaySenderCleanupSources = new WeakSet<MediaStreamTrack>();
   const sourceToPipeline = new WeakMap<MediaStreamTrack, Pipeline>();
   const canvasToPipeline = new WeakMap<MediaStreamTrack, Pipeline>();
   const displayTracks = new WeakSet<MediaStreamTrack>();
@@ -380,6 +381,15 @@ export const installCameraBubbleHook = (
   const isDisplayCaptureTrack = (track: MediaStreamTrack): boolean =>
     displayTracks.has(track) || deps.isDisplayCaptureLike(track.getSettings());
 
+  const cleanupDisplaySendersFor = (sourceTrack: MediaStreamTrack): void => {
+    activeDisplaySenders.forEach((sender) => {
+      if (displaySenderSources.get(sender) !== sourceTrack) return;
+
+      activeDisplaySenders.delete(sender);
+      displaySenderSources.delete(sender);
+    });
+  };
+
   const rememberSenderTrack = (sender: unknown, track: unknown): void => {
     if (typeof RTCRtpSender === "undefined" || !(sender instanceof RTCRtpSender)) return;
 
@@ -393,6 +403,12 @@ export const installCameraBubbleHook = (
     ) {
       activeDisplaySenders.add(sender);
       displaySenderSources.set(sender, sourceTrack);
+      if (!displaySenderCleanupSources.has(sourceTrack)) {
+        displaySenderCleanupSources.add(sourceTrack);
+        sourceTrack.addEventListener("ended", () => cleanupDisplaySendersFor(sourceTrack), {
+          once: true,
+        });
+      }
       return;
     }
 
@@ -766,6 +782,10 @@ export const installCameraBubbleHook = (
   const addDanmakuMessage = (text: string, durationMs: number | undefined): void => {
     if (!state.enabled || !state.screenShareDanmakuEnabled) return;
 
+    const now = Date.now();
+    state.danmakuMessages = state.danmakuMessages.filter(
+      (message) => now - message.startedAt < message.durationMs,
+    );
     const sequence = state.danmakuSequence;
     state.danmakuSequence += 1;
     state.danmakuMessages.push({
@@ -773,7 +793,7 @@ export const installCameraBubbleHook = (
         durationMs ??
         deps.computeBubbleDisplayDurationMs([...text].length, state.displaySpeedLevel),
       sequence,
-      startedAt: Date.now(),
+      startedAt: now,
       text,
     });
   };
