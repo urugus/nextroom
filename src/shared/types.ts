@@ -68,6 +68,7 @@ export type AppSettings = {
   autoOpenEnabled: boolean;
   cameraBubbleChatMirrorEnabled: boolean;
   cameraBubbleEnabled: boolean;
+  cameraBubbleScreenShareDanmakuEnabled: boolean;
   cameraBubbleSidebarHidden: boolean;
   cameraBubbleDisplaySpeedLevel: number;
   joinOffsetSeconds: number;
@@ -83,6 +84,7 @@ export type CameraBubbleMeetViewConfig = {
   chatMirrorEnabled: boolean;
   displaySpeedLevel: number;
   enabled: boolean;
+  screenShareDanmakuEnabled: boolean;
 };
 
 export type CameraBubbleConfig = CameraBubbleMeetViewConfig & {
@@ -93,6 +95,7 @@ export type CameraBubbleShellState = {
   chatMirrorEnabled: boolean;
   displaySpeedLevel: number;
   enabled: boolean;
+  screenShareDanmakuEnabled: boolean;
   pinnedText?: string;
   sidebarHidden: boolean;
 };

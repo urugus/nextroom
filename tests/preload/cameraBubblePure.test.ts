@@ -5,6 +5,9 @@ import {
   computeBubbleDisplayDurationMs,
   computeBubbleLayout,
   computeCanvasSize,
+  computeDanmakuLane,
+  computeDanmakuPosition,
+  computeDanmakuTextStyle,
   computeOverlayBox,
   hasVideoConstraints,
   isDisplayCaptureLike,
@@ -280,6 +283,56 @@ describe("camera bubble pure functions", () => {
     });
   });
 
+  describe("danmaku helpers", () => {
+    it("computes screen share comment text style from canvas height", () => {
+      expect(computeDanmakuTextStyle({ canvasHeight: 720 })).toEqual({
+        fontSize: 37,
+        lineHeight: 50,
+        strokeWidth: 4,
+      });
+      expect(computeDanmakuTextStyle({ canvasHeight: 1 }).fontSize).toBe(24);
+    });
+
+    it("assigns comments to bounded lanes", () => {
+      expect(computeDanmakuLane({ laneCount: 3, sequence: 0 })).toBe(0);
+      expect(computeDanmakuLane({ laneCount: 3, sequence: 4 })).toBe(1);
+      expect(computeDanmakuLane({ laneCount: 0, sequence: 4 })).toBe(0);
+    });
+
+    it("moves danmaku text from right to left and fades at the edges", () => {
+      expect(
+        computeDanmakuPosition({
+          canvasWidth: 1_280,
+          durationMs: 4_000,
+          elapsedMs: 0,
+          lane: 2,
+          lineHeight: 50,
+          textWidth: 200,
+        }),
+      ).toEqual({ alpha: 0, x: 1_280, y: 150 });
+      expect(
+        computeDanmakuPosition({
+          canvasWidth: 1_280,
+          durationMs: 4_000,
+          elapsedMs: 2_000,
+          lane: 2,
+          lineHeight: 50,
+          textWidth: 200,
+        }),
+      ).toEqual({ alpha: 1, x: 540, y: 150 });
+      expect(
+        computeDanmakuPosition({
+          canvasWidth: 1_280,
+          durationMs: 4_000,
+          elapsedMs: 4_000,
+          lane: 2,
+          lineHeight: 50,
+          textWidth: 200,
+        }),
+      ).toEqual({ alpha: 0, x: -200, y: 150 });
+    });
+  });
+
   describe("parseCameraBubbleEnvelope", () => {
     it("accepts show messages with trimmed string text", () => {
       expect(
@@ -409,6 +462,7 @@ describe("camera bubble pure functions", () => {
               enabled: true,
               kind: "config",
               nonce: expectedNonce,
+              screenShareDanmakuEnabled: true,
             },
           },
           expectedNonce,
@@ -418,6 +472,7 @@ describe("camera bubble pure functions", () => {
         displaySpeedLevel: 5,
         enabled: true,
         kind: "config",
+        screenShareDanmakuEnabled: true,
       });
       expect(
         parseCameraBubbleEnvelope(
@@ -428,6 +483,7 @@ describe("camera bubble pure functions", () => {
               enabled: "true",
               kind: "config",
               nonce: expectedNonce,
+              screenShareDanmakuEnabled: "true",
             },
           },
           expectedNonce,
@@ -437,6 +493,7 @@ describe("camera bubble pure functions", () => {
         displaySpeedLevel: 5,
         enabled: false,
         kind: "config",
+        screenShareDanmakuEnabled: false,
       });
       expect(
         parseCameraBubbleEnvelope(
@@ -447,6 +504,7 @@ describe("camera bubble pure functions", () => {
               enabled: true,
               kind: "config",
               nonce: expectedNonce,
+              screenShareDanmakuEnabled: true,
             },
           },
           expectedNonce,
@@ -456,6 +514,7 @@ describe("camera bubble pure functions", () => {
         displaySpeedLevel: 3,
         enabled: true,
         kind: "config",
+        screenShareDanmakuEnabled: true,
       });
     });
 

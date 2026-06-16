@@ -5,6 +5,9 @@ import {
   computeBubbleDisplayDurationMs,
   computeBubbleLayout,
   computeCanvasSize,
+  computeDanmakuLane,
+  computeDanmakuPosition,
+  computeDanmakuTextStyle,
   computeOverlayBox,
   hasVideoConstraints,
   isDisplayCaptureLike,
@@ -34,6 +37,9 @@ const cameraBubbleDeps = {
   computeBubbleAnimation,
   computeBubbleDisplayDurationMs,
   computeBubbleLayout,
+  computeDanmakuLane,
+  computeDanmakuPosition,
+  computeDanmakuTextStyle,
   computeOverlayBox,
   computeCanvasSize,
   hasVideoConstraints,
@@ -50,6 +56,7 @@ const enabledConfig = {
   chatMirrorEnabled: true,
   displaySpeedLevel: 3,
   enabled: true,
+  screenShareDanmakuEnabled: false,
 };
 
 const overlayWithText = (text: string): HTMLDivElement | undefined =>
@@ -124,6 +131,7 @@ describe("installCameraBubbleHook", () => {
           displaySpeedLevel: number;
           enabled: boolean;
           kind: "config";
+          screenShareDanmakuEnabled: boolean;
         }
       | { kind: "hide" },
   ): void => {
@@ -177,6 +185,7 @@ describe("installCameraBubbleHook", () => {
     fill: ReturnType<typeof vi.fn>;
     fillRect: ReturnType<typeof vi.fn>;
     fillText: ReturnType<typeof vi.fn>;
+    strokeText: ReturnType<typeof vi.fn>;
     lineTo: ReturnType<typeof vi.fn>;
     measureText: ReturnType<typeof vi.fn>;
     moveTo: ReturnType<typeof vi.fn>;
@@ -367,6 +376,7 @@ describe("installCameraBubbleHook", () => {
           restore: vi.fn(),
           save: vi.fn(),
           scale: vi.fn(),
+          strokeText: vi.fn(),
           translate: vi.fn(),
         };
         canvasContexts.push(context);
@@ -664,6 +674,138 @@ describe("installCameraBubbleHook", () => {
     expect(createdCanvasTracks).toHaveLength(0);
   });
 
+  it("wraps display tracks and draws danmaku text when screen share comments are enabled", async () => {
+    vi.setSystemTime(1_000);
+    const displayTrack = createFakeTrack(
+      "video",
+      { displaySurface: "monitor", height: 720, width: 1280 },
+      "Captured source",
+    );
+    getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
+    installCameraBubbleHook(
+      { ...enabledConfig, screenShareDanmakuEnabled: true },
+      cameraBubbleDeps,
+      expectedNonce,
+    );
+
+    const displayStream = await navigator.mediaDevices.getDisplayMedia();
+    new RTCPeerConnection().addTrack(displayStream.getVideoTracks()[0]);
+    postCameraBubbleMessage({ durationMs: 4_000, kind: "show", text: "画面に流します" });
+    nextAnimationFrame();
+
+    expect(addTrackMock.mock.calls[0][0]).toBe(createdCanvasTracks[0]);
+    expect(canvasContexts[0].drawImage).toHaveBeenCalled();
+    expect(canvasContexts[0].strokeText).toHaveBeenCalledWith(
+      "画面に流します",
+      expect.any(Number),
+      expect.any(Number),
+    );
+    expect(canvasContexts[0].fillText).toHaveBeenCalledWith(
+      "画面に流します",
+      expect.any(Number),
+      expect.any(Number),
+    );
+  });
+
+  it("prunes expired danmaku messages from wrapped display tracks", async () => {
+    vi.setSystemTime(1_000);
+    const displayTrack = createFakeTrack(
+      "video",
+      { displaySurface: "monitor", height: 720, width: 1280 },
+      "Captured source",
+    );
+    getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
+    installCameraBubbleHook(
+      { ...enabledConfig, screenShareDanmakuEnabled: true },
+      cameraBubbleDeps,
+      expectedNonce,
+    );
+
+    const displayStream = await navigator.mediaDevices.getDisplayMedia();
+    new RTCPeerConnection().addTrack(displayStream.getVideoTracks()[0]);
+    postCameraBubbleMessage({ durationMs: 2_000, kind: "show", text: "期限切れ" });
+    vi.advanceTimersByTime(2_001);
+    nextAnimationFrame();
+
+    expect(canvasContexts[0].strokeText).not.toHaveBeenCalledWith(
+      "期限切れ",
+      expect.any(Number),
+      expect.any(Number),
+    );
+  });
+
+  it("applies screen share comments config to display tracks added after the setting changes", async () => {
+    const displayTrack = createFakeTrack(
+      "video",
+      { displaySurface: "window", height: 720, width: 1280 },
+      "Captured source",
+    );
+    getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    postCameraBubbleMessage({
+      ...enabledConfig,
+      kind: "config",
+      screenShareDanmakuEnabled: true,
+    });
+
+    const displayStream = await navigator.mediaDevices.getDisplayMedia();
+    new RTCPeerConnection().addTrack(displayStream.getVideoTracks()[0]);
+
+    expect(addTrackMock.mock.calls[0][0]).toBe(createdCanvasTracks[0]);
+  });
+
+  it("rewraps an active display sender when screen share comments are enabled mid-share", async () => {
+    const displayTrack = createFakeTrack(
+      "video",
+      { displaySurface: "window", height: 720, width: 1280 },
+      "Captured source",
+    );
+    getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
+    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+
+    const displayStream = await navigator.mediaDevices.getDisplayMedia();
+    new RTCPeerConnection().addTrack(displayStream.getVideoTracks()[0]);
+    postCameraBubbleMessage({
+      ...enabledConfig,
+      kind: "config",
+      screenShareDanmakuEnabled: true,
+    });
+
+    expect(addTrackMock.mock.calls[0][0]).toBe(displayTrack);
+    expect(replaceTrackMock).toHaveBeenCalledWith(createdCanvasTracks[0]);
+  });
+
+  it("collects Meet chat toasts for screen share comments without camera chat mirroring", async () => {
+    vi.setSystemTime(1_000);
+    const displayTrack = createFakeTrack(
+      "video",
+      { displaySurface: "monitor", height: 720, width: 1280 },
+      "Captured source",
+    );
+    getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
+    installCameraBubbleHook(
+      { ...enabledConfig, chatMirrorEnabled: false, screenShareDanmakuEnabled: true },
+      cameraBubbleDeps,
+      expectedNonce,
+    );
+    const displayStream = await navigator.mediaDevices.getDisplayMedia();
+    new RTCPeerConnection().addTrack(displayStream.getVideoTracks()[0]);
+    const toast = document.createElement("div");
+    toast.setAttribute("role", "status");
+
+    document.body.append(toast);
+    toast.textContent = "共有画面だけに流す";
+    await flushMutationObserver();
+    nextAnimationFrame();
+
+    expect(overlayWithText("共有画面だけに流す")).toBeUndefined();
+    expect(canvasContexts[0].strokeText).toHaveBeenCalledWith(
+      "共有画面だけに流す",
+      expect.any(Number),
+      expect.any(Number),
+    );
+  });
+
   it("does not patch getUserMedia", () => {
     installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
 
@@ -732,10 +874,14 @@ describe("installCameraBubbleHook", () => {
     expect(overlayWithText("temporary comment")).toBeUndefined();
   });
 
-  it("draws active bubble text into the canvas pipeline", () => {
+  it("draws active bubble text into the camera canvas pipeline", () => {
     vi.setSystemTime(1_000);
     const sourceTrack = createFakeTrack("video", { height: 360, width: 640 }, "Camera");
-    installCameraBubbleHook(enabledConfig, cameraBubbleDeps, expectedNonce);
+    installCameraBubbleHook(
+      { ...enabledConfig, screenShareDanmakuEnabled: true },
+      cameraBubbleDeps,
+      expectedNonce,
+    );
     new RTCPeerConnection().addTrack(sourceTrack);
 
     postCameraBubbleMessage({ durationMs: 2_000, kind: "show", text: "canvas bubble" });
@@ -749,6 +895,7 @@ describe("installCameraBubbleHook", () => {
       expect.any(Number),
       expect.any(Number),
     );
+    expect(canvasContexts[0].strokeText).not.toHaveBeenCalled();
     expect(canvasContexts[0].restore).toHaveBeenCalled();
   });
 
@@ -1282,6 +1429,31 @@ describe("installCameraBubbleHook", () => {
 
     const overlay = Array.from(document.querySelectorAll("div")).find(
       (element) => element.textContent === "tagged display",
+    );
+    expect(overlay?.style.right).toBe("16px");
+    expect(overlay?.style.transform).toContain("scale(");
+  });
+
+  it("does not anchor the camera overlay to a wrapped display canvas track", async () => {
+    const displayTrack = createFakeTrack(
+      "video",
+      { displaySurface: "monitor", height: 360, width: 640 },
+      "Captured source",
+    );
+    getDisplayMedia.mockResolvedValue(createFakeStream([displayTrack]));
+    installCameraBubbleHook(
+      { ...enabledConfig, screenShareDanmakuEnabled: true },
+      cameraBubbleDeps,
+      expectedNonce,
+    );
+    const displayStream = await navigator.mediaDevices.getDisplayMedia();
+    new RTCPeerConnection().addTrack(displayStream.getVideoTracks()[0]);
+    createVisibleSelfView(createdCanvasTracks[0]);
+
+    postCameraBubbleMessage({ durationMs: 2_000, kind: "show", text: "display canvas" });
+
+    const overlay = Array.from(document.querySelectorAll("div")).find(
+      (element) => element.textContent === "display canvas",
     );
     expect(overlay?.style.right).toBe("16px");
     expect(overlay?.style.transform).toContain("scale(");

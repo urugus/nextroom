@@ -19,6 +19,7 @@ const defaultSettings: AppSettings = {
   autoOpenEnabled: true,
   cameraBubbleChatMirrorEnabled: false,
   cameraBubbleEnabled: false,
+  cameraBubbleScreenShareDanmakuEnabled: false,
   cameraBubbleSidebarHidden: false,
   cameraBubbleDisplaySpeedLevel: 3,
   joinOffsetSeconds: 0,
@@ -271,6 +272,10 @@ export const App = () => {
   const updateCameraBubbleChatMirrorEnabled = (cameraBubbleChatMirrorEnabled: boolean) =>
     updateSettings({ cameraBubbleChatMirrorEnabled });
 
+  const updateCameraBubbleScreenShareDanmakuEnabled = (
+    cameraBubbleScreenShareDanmakuEnabled: boolean,
+  ) => updateSettings({ cameraBubbleScreenShareDanmakuEnabled });
+
   const updateCameraBubbleDisplaySpeedLevel = (cameraBubbleDisplaySpeedLevel: number) =>
     updateSettings({ cameraBubbleDisplaySpeedLevel });
 
@@ -343,6 +348,7 @@ export const App = () => {
       onAutoJoinEnabledChange={updateAutoJoinEnabled}
       onCameraBubbleChatMirrorEnabledChange={updateCameraBubbleChatMirrorEnabled}
       onCameraBubbleEnabledChange={updateCameraBubbleEnabled}
+      onCameraBubbleScreenShareDanmakuEnabledChange={updateCameraBubbleScreenShareDanmakuEnabled}
       onCameraBubbleDisplaySpeedLevelChange={updateCameraBubbleDisplaySpeedLevel}
       onJoinOffsetMinutesChange={updateJoinOffsetMinutes}
       onMenuShortcutAcceleratorChange={updateMenuShortcutAccelerator}
