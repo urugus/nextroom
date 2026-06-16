@@ -105,7 +105,7 @@ export const shouldMirrorChatKey = (input: {
   ctrlKey: boolean;
   disabled: boolean;
   isComposing: boolean;
-  isTextArea: boolean;
+  isEditable: boolean;
   key: string;
   keyCode: number;
   metaKey: boolean;
@@ -119,7 +119,7 @@ export const shouldMirrorChatKey = (input: {
   !input.shiftKey &&
   !input.isComposing &&
   input.keyCode !== 229 &&
-  input.isTextArea &&
+  input.isEditable &&
   !input.disabled &&
   !input.readOnly;
 

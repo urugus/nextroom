@@ -42,6 +42,15 @@ export const installCameraBubbleHook = (
   };
   const overlayState: OverlayState = { element: undefined, frameId: undefined };
   const chatMirrorRateLimit = { lastAcceptedAt: 0 };
+  const recentChatInput: {
+    element: Element | undefined;
+    text: string | undefined;
+    updatedAt: number;
+  } = {
+    element: undefined,
+    text: undefined,
+    updatedAt: 0,
+  };
   const chatToastMirrorState: {
     observer: MutationObserver | undefined;
     recentMessages: Array<{ acceptedAt: number; text: string }>;
@@ -798,44 +807,191 @@ export const installCameraBubbleHook = (
     }
   };
 
+  const editableChatElementFor = (target: EventTarget | null): Element | undefined => {
+    if (!(target instanceof Element)) return undefined;
+    if (target instanceof HTMLTextAreaElement) return target;
+
+    let current: Element | null = target;
+    while (current !== null && current !== document.body && current !== document.documentElement) {
+      if (current instanceof HTMLElement && current.isContentEditable) return current;
+      current = current.parentElement;
+    }
+
+    return undefined;
+  };
+
+  const isHiddenFromEditableText = (element: Element): boolean => {
+    if (!(element instanceof HTMLElement)) return false;
+    if (element.hidden) return true;
+    if (element.getAttribute("aria-hidden") === "true") return true;
+
+    const style = window.getComputedStyle(element);
+    return style.display === "none" || style.visibility === "hidden";
+  };
+
+  const visibleTextForContentEditable = (element: HTMLElement): string => {
+    let text = "";
+    const appendText = (node: Node): void => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        text += node.textContent ?? "";
+        return;
+      }
+      if (!(node instanceof Element)) return;
+      if (node !== element && isHiddenFromEditableText(node)) return;
+
+      node.childNodes.forEach(appendText);
+    };
+
+    appendText(element);
+    return text;
+  };
+
+  const textForEditableChatElement = (element: Element): string | undefined => {
+    if (element instanceof HTMLTextAreaElement) return element.value;
+    if (!(element instanceof HTMLElement) || !element.isContentEditable) return undefined;
+
+    return visibleTextForContentEditable(element);
+  };
+
+  const chatEditableFor = (
+    target: EventTarget | null,
+  ): { disabled: boolean; element: Element; readOnly: boolean; text: string } | undefined => {
+    const element = editableChatElementFor(target);
+    if (element === undefined) return undefined;
+
+    const text = textForEditableChatElement(element);
+    if (text === undefined) return undefined;
+
+    return {
+      disabled: element instanceof HTMLTextAreaElement && element.disabled,
+      element,
+      readOnly: element instanceof HTMLTextAreaElement && element.readOnly,
+      text,
+    };
+  };
+
+  const rememberChatInput = (target: EventTarget | null): void => {
+    const editable = chatEditableFor(target);
+    if (editable === undefined) return;
+
+    const text = deps.sanitizeBubbleText(editable.text);
+    if (text.length === 0) {
+      if (recentChatInput.element === editable.element) {
+        recentChatInput.text = undefined;
+      }
+      return;
+    }
+
+    recentChatInput.element = editable.element;
+    recentChatInput.text = text;
+    recentChatInput.updatedAt = Date.now();
+  };
+
+  const mirrorOwnChatText = (text: string): boolean => {
+    const sanitizedText = deps.sanitizeBubbleText(text);
+    if (sanitizedText.length === 0) return false;
+
+    const now = Date.now();
+    acceptChatToastText(sanitizedText, now);
+    if (now - chatMirrorRateLimit.lastAcceptedAt < 300) return false;
+
+    chatMirrorRateLimit.lastAcceptedAt = now;
+    showBubble(
+      sanitizedText,
+      deps.computeBubbleDisplayDurationMs([...sanitizedText].length, state.displaySpeedLevel),
+      false,
+    );
+    return true;
+  };
+
+  const isLikelyChatSendClickTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof Element)) return false;
+
+    const button = target.closest('button, [role="button"]');
+    if (button === null) return false;
+
+    const explicitLabel = [button.getAttribute("aria-label"), button.getAttribute("title")]
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .join(" ");
+    const label = (
+      explicitLabel.length > 0 ? explicitLabel : (button.textContent ?? "")
+    ).toLowerCase();
+
+    return /\b(send|post)\b|送信|投稿/.test(label);
+  };
+
   const installChatMirrorListener = (): void => {
     try {
+      document.addEventListener(
+        "input",
+        (event) => {
+          try {
+            if (!state.enabled || !state.chatMirrorEnabled) return;
+
+            rememberChatInput(event.target);
+          } catch {
+            return;
+          }
+        },
+        { capture: true },
+      );
       document.addEventListener(
         "keydown",
         (event) => {
           try {
             if (!state.enabled || !state.chatMirrorEnabled) return;
 
-            const target = event.target;
-            const isTextArea =
-              typeof HTMLTextAreaElement !== "undefined" && target instanceof HTMLTextAreaElement;
-            const textArea = isTextArea ? target : undefined;
+            const editable = chatEditableFor(event.target);
+            if (editable !== undefined) {
+              rememberChatInput(editable.element);
+            }
             const acceptedKey = deps.shouldMirrorChatKey({
               altKey: event.altKey,
               ctrlKey: event.ctrlKey,
-              disabled: textArea?.disabled === true,
+              disabled: editable?.disabled === true,
               isComposing: event.isComposing,
-              isTextArea,
+              isEditable: editable !== undefined,
               key: event.key,
               keyCode: event.keyCode,
               metaKey: event.metaKey,
-              readOnly: textArea?.readOnly === true,
+              readOnly: editable?.readOnly === true,
               shiftKey: event.shiftKey,
             });
-            if (!acceptedKey || textArea === undefined) return;
+            if (!acceptedKey || editable === undefined) return;
 
-            const text = deps.sanitizeBubbleText(textArea.value);
-            if (text.length === 0) return;
+            mirrorOwnChatText(editable.text);
+          } catch {
+            return;
+          }
+        },
+        { capture: true },
+      );
+      document.addEventListener(
+        "mousedown",
+        (event) => {
+          try {
+            if (!state.enabled || !state.chatMirrorEnabled) return;
+            if (!isLikelyChatSendClickTarget(event.target)) return;
 
-            const now = Date.now();
-            if (now - chatMirrorRateLimit.lastAcceptedAt < 300) return;
+            rememberChatInput(document.activeElement);
+          } catch {
+            return;
+          }
+        },
+        { capture: true },
+      );
+      document.addEventListener(
+        "click",
+        (event) => {
+          try {
+            if (!state.enabled || !state.chatMirrorEnabled) return;
+            if (!isLikelyChatSendClickTarget(event.target)) return;
+            if (recentChatInput.text === undefined) return;
+            if (Date.now() - recentChatInput.updatedAt > 1_000) return;
 
-            chatMirrorRateLimit.lastAcceptedAt = now;
-            showBubble(
-              text,
-              deps.computeBubbleDisplayDurationMs([...text].length, state.displaySpeedLevel),
-              false,
-            );
+            const text = recentChatInput.text;
+            recentChatInput.text = undefined;
+            mirrorOwnChatText(text);
           } catch {
             return;
           }
