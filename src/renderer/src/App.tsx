@@ -60,6 +60,7 @@ export const App = () => {
   );
   const [updateErrorMessage, setUpdateErrorMessage] = useState<string | undefined>(undefined);
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | undefined>(undefined);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const openingMeetingRef = useRef(false);
   const latestSettingsRef = useRef(defaultSettings);
   const latestSettingsSaveRef = useRef(0);
@@ -152,6 +153,7 @@ export const App = () => {
       await refreshMeetings();
       await refreshSettings();
       await refreshMenuShortcutStatus();
+      setInitialLoadComplete(true);
     })();
 
     return window.meetLauncher.onCalendarUpdated((result) => {
@@ -266,6 +268,13 @@ export const App = () => {
 
   const updateAutoJoinEnabled = (autoJoinEnabled: boolean) => updateSettings({ autoJoinEnabled });
 
+  const updateAutoOpenEnabled = (autoOpenEnabled: boolean) => updateSettings({ autoOpenEnabled });
+
+  const updateLaunchAtLogin = (launchAtLogin: boolean) => updateSettings({ launchAtLogin });
+
+  const updateNotifyBeforeMinutes = (notifyBeforeMinutes: number) =>
+    updateSettings({ notifyBeforeMinutes });
+
   const updateCameraBubbleEnabled = (cameraBubbleEnabled: boolean) =>
     updateSettings({ cameraBubbleEnabled });
 
@@ -334,7 +343,10 @@ export const App = () => {
   return (
     <Dashboard
       accountStatus={accountStatus}
+      currentTime={currentTime}
       errorMessage={errorMessage}
+      loading={!initialLoadComplete}
+      meetings={meetingsSnapshot.meetings}
       pendingAction={pendingAction}
       settings={settings}
       menuShortcutStatus={menuShortcutStatus}
@@ -344,8 +356,12 @@ export const App = () => {
       onCheckForUpdates={checkForUpdates}
       onConnectAccount={connectAccount}
       onDisconnectAccount={disconnectAccount}
+      onDismissError={() => setErrorMessage(undefined)}
       onRunHomebrewUpdate={runHomebrewUpdate}
       onAutoJoinEnabledChange={updateAutoJoinEnabled}
+      onAutoOpenEnabledChange={updateAutoOpenEnabled}
+      onLaunchAtLoginChange={updateLaunchAtLogin}
+      onNotifyBeforeMinutesChange={updateNotifyBeforeMinutes}
       onCameraBubbleChatMirrorEnabledChange={updateCameraBubbleChatMirrorEnabled}
       onCameraBubbleEnabledChange={updateCameraBubbleEnabled}
       onCameraBubbleScreenShareDanmakuEnabledChange={updateCameraBubbleScreenShareDanmakuEnabled}

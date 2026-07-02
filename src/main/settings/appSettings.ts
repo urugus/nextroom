@@ -40,7 +40,7 @@ const settingsSchema = z
     cameraBubbleSidebarHidden: z.boolean().optional(),
     cameraBubbleDisplaySpeedLevel: z.number().int().min(1).max(5).optional(),
     joinOffsetSeconds: minuteOffsetSchema("joinOffsetSeconds").optional(),
-    notifyBeforeMinutes: z.number().int().min(0).optional(),
+    notifyBeforeMinutes: z.number().int().min(0).max(60).optional(),
     openOffsetSeconds: minuteOffsetSchema("openOffsetSeconds").optional(),
     menuShortcutAccelerator: z.string().trim().min(1).max(80).nullable().optional(),
     launchAtLogin: z.boolean().optional(),
@@ -52,13 +52,16 @@ const settingsSchema = z
 const settingsUpdateSchema = settingsSchema
   .pick({
     autoJoinEnabled: true,
+    autoOpenEnabled: true,
     cameraBubbleChatMirrorEnabled: true,
     cameraBubbleEnabled: true,
     cameraBubbleScreenShareDanmakuEnabled: true,
     cameraBubbleSidebarHidden: true,
     cameraBubbleDisplaySpeedLevel: true,
     joinOffsetSeconds: true,
+    launchAtLogin: true,
     menuShortcutAccelerator: true,
+    notifyBeforeMinutes: true,
     openOffsetSeconds: true,
   })
   .strict();
@@ -67,13 +70,16 @@ type SettingsUpdate = Partial<
   Pick<
     AppSettings,
     | "autoJoinEnabled"
+    | "autoOpenEnabled"
     | "cameraBubbleChatMirrorEnabled"
     | "cameraBubbleEnabled"
     | "cameraBubbleScreenShareDanmakuEnabled"
     | "cameraBubbleSidebarHidden"
     | "cameraBubbleDisplaySpeedLevel"
     | "joinOffsetSeconds"
+    | "launchAtLogin"
     | "menuShortcutAccelerator"
+    | "notifyBeforeMinutes"
     | "openOffsetSeconds"
   >
 >;

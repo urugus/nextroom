@@ -175,7 +175,9 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /Next meeting is ready/ }));
 
-    const openingButton = await screen.findByRole("button", { name: /Opening/ });
+    const openingButton = await screen.findByRole("button", {
+      name: /Next meeting is ready.*Opening/,
+    });
     expect(openingButton).toBeDisabled();
 
     fireEvent.click(openingButton);

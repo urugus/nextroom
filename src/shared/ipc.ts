@@ -18,13 +18,16 @@ export type SettingsUpdate = Partial<
   Pick<
     AppSettings,
     | "autoJoinEnabled"
+    | "autoOpenEnabled"
     | "cameraBubbleChatMirrorEnabled"
     | "cameraBubbleEnabled"
     | "cameraBubbleScreenShareDanmakuEnabled"
     | "cameraBubbleSidebarHidden"
     | "cameraBubbleDisplaySpeedLevel"
     | "joinOffsetSeconds"
+    | "launchAtLogin"
     | "menuShortcutAccelerator"
+    | "notifyBeforeMinutes"
     | "openOffsetSeconds"
   >
 >;

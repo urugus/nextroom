@@ -9,7 +9,10 @@ import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState }
 
 type DashboardProps = {
   accountStatus: AccountStatus;
+  currentTime?: Date;
   errorMessage?: string;
+  loading?: boolean;
+  meetings?: MeetEvent[];
   nextMeetingNotification?: MeetEvent;
   menuShortcutStatus?: MenuShortcutStatus;
   openingMeetUrl?: string;
@@ -17,6 +20,7 @@ type DashboardProps = {
   settings: AppSettings;
   syncedAt?: string;
   onAutoJoinEnabledChange: (enabled: boolean) => Promise<unknown>;
+  onAutoOpenEnabledChange?: (enabled: boolean) => Promise<unknown>;
   onCameraBubbleChatMirrorEnabledChange: (enabled: boolean) => Promise<unknown>;
   onCameraBubbleEnabledChange: (enabled: boolean) => Promise<unknown>;
   onCameraBubbleScreenShareDanmakuEnabledChange: (enabled: boolean) => Promise<unknown>;
@@ -24,8 +28,11 @@ type DashboardProps = {
   onCheckForUpdates?: () => Promise<unknown>;
   onConnectAccount: () => Promise<unknown>;
   onDisconnectAccount: () => Promise<unknown>;
+  onDismissError?: () => void;
   onJoinOffsetMinutesChange: (minutes: number) => Promise<unknown>;
+  onLaunchAtLoginChange?: (enabled: boolean) => Promise<unknown>;
   onMenuShortcutAcceleratorChange: (accelerator: string | null) => Promise<unknown>;
+  onNotifyBeforeMinutesChange?: (minutes: number) => Promise<unknown>;
   onOpenMeeting: (meeting: MeetEvent) => Promise<unknown>;
   onOpenOffsetMinutesChange: (minutes: number) => Promise<unknown>;
   onRunHomebrewUpdate?: () => Promise<unknown>;
@@ -34,11 +41,53 @@ type DashboardProps = {
   updateStatus?: AppUpdateStatus;
 };
 
-const formatMeetingTime = (value: string) =>
-  new Intl.DateTimeFormat("ja-JP", {
+const formatMeetingTime = (value: string) => {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "--:--";
+
+  return new Intl.DateTimeFormat("ja-JP", {
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(date);
+};
+
+const isSameDay = (left: Date, right: Date) =>
+  left.getFullYear() === right.getFullYear() &&
+  left.getMonth() === right.getMonth() &&
+  left.getDate() === right.getDate();
+
+const formatMeetingDay = (value: string, now: Date): string => {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  if (isSameDay(date, now)) return "Today";
+
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  if (isSameDay(date, tomorrow)) return "Tomorrow";
+
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    month: "short",
+    weekday: "short",
+  }).format(date);
+};
+
+const formatSyncedAt = (value: string, now: Date): string => {
+  const date = new Date(value);
+  const time = formatMeetingTime(value);
+  return isSameDay(date, now) ? time : `${formatMeetingDay(value, now)} ${time}`;
+};
+
+const isMeetingInProgress = (meeting: MeetEvent, now: Date): boolean => {
+  const startAt = new Date(meeting.startAt).getTime();
+  const endAt = new Date(meeting.endAt).getTime();
+  const nowTime = now.getTime();
+
+  return (
+    Number.isFinite(startAt) && Number.isFinite(endAt) && startAt <= nowTime && nowTime <= endAt
+  );
+};
+
+const maxVisibleMeetings = 5;
 
 const formatUpdateSummary = (updateStatus?: AppUpdateStatus) => {
   if (updateStatus === undefined) return "Loading update status.";
@@ -236,10 +285,14 @@ const formatAccelerator = (accelerator: string | null): string => {
 
 export const Dashboard = ({
   accountStatus,
+  currentTime,
   errorMessage,
+  loading = false,
+  meetings = [],
   menuShortcutStatus,
   nextMeetingNotification,
   onAutoJoinEnabledChange,
+  onAutoOpenEnabledChange,
   onCameraBubbleChatMirrorEnabledChange,
   onCameraBubbleEnabledChange,
   onCameraBubbleScreenShareDanmakuEnabledChange,
@@ -247,8 +300,11 @@ export const Dashboard = ({
   onCheckForUpdates,
   onConnectAccount,
   onDisconnectAccount,
+  onDismissError,
   onJoinOffsetMinutesChange,
+  onLaunchAtLoginChange,
   onMenuShortcutAcceleratorChange,
+  onNotifyBeforeMinutesChange,
   onOpenMeeting,
   onRunHomebrewUpdate,
   onSyncCalendar,
@@ -262,19 +318,19 @@ export const Dashboard = ({
 }: DashboardProps) => {
   const [recordingShortcut, setRecordingShortcut] = useState(false);
   const shortcutRecordButtonRef = useRef<HTMLButtonElement>(null);
+  const now = currentTime ?? new Date();
   const actionInProgress = pendingAction !== undefined || accountStatus.syncing;
   const statusText = accountStatus.connected
     ? "Google Calendar connected"
     : "Google Calendar not connected";
   const helperText =
     syncedAt !== undefined
-      ? `Last synced ${new Intl.DateTimeFormat("ja-JP", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }).format(new Date(syncedAt))}`
+      ? `Last synced ${formatSyncedAt(syncedAt, now)}`
       : accountStatus.connected
         ? "Calendar sync is ready."
         : "Connect Google Calendar to enable Meet launching.";
+  const visibleMeetings = meetings.slice(0, maxVisibleMeetings);
+  const hiddenMeetingCount = meetings.length - visibleMeetings.length;
   const updateErrorText = updateErrorTextFor(updateStatus, updateErrorMessage);
   const notificationOpening =
     nextMeetingNotification !== undefined && openingMeetUrl === nextMeetingNotification.meetUrl;
@@ -282,6 +338,10 @@ export const Dashboard = ({
   const joinOffsetMinutes = Math.trunc(settings.joinOffsetSeconds / 60);
   const openOffsetLabel =
     openOffsetMinutes === 0 ? "Open at start time" : `Open ${openOffsetMinutes} min before`;
+  const notifyLabel =
+    settings.notifyBeforeMinutes === 0
+      ? "Off"
+      : `Notify ${settings.notifyBeforeMinutes} min before`;
   const joinOffsetLabel =
     joinOffsetMinutes === 0 ? "Join at start time" : `Join ${joinOffsetMinutes} min before`;
   const updateStatusMeta =
@@ -320,6 +380,21 @@ export const Dashboard = ({
     void onMenuShortcutAcceleratorChange(accelerator);
   };
 
+  if (loading) {
+    return (
+      <main className="preferences-shell">
+        <header className="preferences-header">
+          <p>NextRoom</p>
+          <h1>Settings</h1>
+        </header>
+        <div className="loading-state" role="status">
+          <span className="update-spinner" aria-hidden="true" />
+          <span>Loading settings…</span>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="preferences-shell">
       <header className="preferences-header">
@@ -327,7 +402,21 @@ export const Dashboard = ({
         <h1>Settings</h1>
       </header>
 
-      {errorMessage !== undefined ? <p className="error-banner">{errorMessage}</p> : null}
+      {errorMessage !== undefined ? (
+        <div className="error-banner" role="alert">
+          <p>{errorMessage}</p>
+          {onDismissError !== undefined ? (
+            <button
+              type="button"
+              className="error-banner-dismiss"
+              aria-label="Dismiss error"
+              onClick={onDismissError}
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {nextMeetingNotification !== undefined ? (
         <button
@@ -345,6 +434,55 @@ export const Dashboard = ({
           </span>
           <span>{notificationOpening ? "Opening" : "Join"}</span>
         </button>
+      ) : null}
+
+      {accountStatus.connected ? (
+        <section className="preferences-group" aria-labelledby="meetings-title">
+          <h2 id="meetings-title">Upcoming meetings</h2>
+          <div className="preference-list">
+            {visibleMeetings.length === 0 ? (
+              <p className="empty-state">No upcoming Google Meet meetings.</p>
+            ) : (
+              <>
+                {visibleMeetings.map((meeting) => {
+                  const inProgress = isMeetingInProgress(meeting, now);
+                  const opening = openingMeetUrl === meeting.meetUrl;
+                  return (
+                    <div className="preference-row meeting-row" key={meeting.occurrenceKey}>
+                      <div className="preference-copy">
+                        <strong>
+                          {meeting.summary.length > 0 ? meeting.summary : "(No title)"}
+                        </strong>
+                        <span>
+                          {formatMeetingDay(meeting.startAt, now)}{" "}
+                          {formatMeetingTime(meeting.startAt)}
+                          {" – "}
+                          {formatMeetingTime(meeting.endAt)}
+                          {inProgress ? <span className="meeting-badge">In progress</span> : null}
+                        </span>
+                      </div>
+                      <div className="preference-actions">
+                        <button
+                          type="button"
+                          aria-busy={opening}
+                          disabled={openingMeetUrl !== undefined}
+                          onClick={() => void onOpenMeeting(meeting)}
+                        >
+                          {opening ? "Opening" : "Join"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {hiddenMeetingCount > 0 ? (
+                  <p className="empty-state">
+                    {hiddenMeetingCount} more in the menu bar meeting list.
+                  </p>
+                ) : null}
+              </>
+            )}
+          </div>
+        </section>
       ) : null}
 
       <section className="preferences-group" aria-labelledby="account-title">
@@ -391,10 +529,70 @@ export const Dashboard = ({
         </div>
       </section>
 
+      <section className="preferences-group" aria-labelledby="general-title">
+        <h2 id="general-title">General</h2>
+        <div className="preference-list">
+          <div className="preference-row">
+            <div className="preference-copy">
+              <strong>Launch at login</strong>
+              <span>Start NextRoom automatically when you sign in to your Mac</span>
+            </div>
+            <label className="toggle-control">
+              <input
+                type="checkbox"
+                checked={settings.launchAtLogin}
+                aria-label="Launch at login"
+                onChange={(event) => void onLaunchAtLoginChange?.(event.currentTarget.checked)}
+              />
+            </label>
+          </div>
+          <div className="preference-row">
+            <div className="preference-copy">
+              <strong>Meeting notification</strong>
+              <span>{notifyLabel}</span>
+            </div>
+            <label className="range-control">
+              <input
+                type="range"
+                min="0"
+                max="10"
+                step="1"
+                value={settings.notifyBeforeMinutes}
+                aria-label="Meeting notification offset"
+                onChange={(event) =>
+                  void onNotifyBeforeMinutesChange?.(Number(event.currentTarget.value))
+                }
+              />
+              <span>
+                {settings.notifyBeforeMinutes === 0 ? "Off" : `${settings.notifyBeforeMinutes} min`}
+              </span>
+            </label>
+          </div>
+        </div>
+      </section>
+
       <section className="preferences-group" aria-labelledby="meet-title">
         <h2 id="meet-title">Meet</h2>
         <div className="preference-list">
           <div className="preference-row">
+            <div className="preference-copy">
+              <strong>Auto-open Meet window</strong>
+              <span>
+                {settings.autoOpenEnabled
+                  ? "Open the Meet window automatically before meetings"
+                  : "Off"}
+              </span>
+            </div>
+            <label className="toggle-control">
+              <input
+                type="checkbox"
+                checked={settings.autoOpenEnabled}
+                aria-label="Auto-open Meet window"
+                onChange={(event) => void onAutoOpenEnabledChange?.(event.currentTarget.checked)}
+              />
+            </label>
+          </div>
+          <div className="preference-row preference-sub-row">
             <div className="preference-copy">
               <strong>Open Meet window</strong>
               <span>{openOffsetLabel}</span>
@@ -406,6 +604,7 @@ export const Dashboard = ({
                 max="10"
                 step="1"
                 value={openOffsetMinutes}
+                disabled={!settings.autoOpenEnabled}
                 aria-label="Meet window open offset"
                 onChange={(event) =>
                   void onOpenOffsetMinutesChange(Number(event.currentTarget.value))
@@ -428,7 +627,7 @@ export const Dashboard = ({
               />
             </label>
           </div>
-          <div className="preference-row">
+          <div className="preference-row preference-sub-row">
             <div className="preference-copy">
               <strong>Auto-join offset</strong>
               <span>{joinOffsetLabel}</span>
