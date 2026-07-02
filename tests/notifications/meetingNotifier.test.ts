@@ -113,6 +113,22 @@ describe("createMeetingNotifier", () => {
     expect(showNotification).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps notified keys through a transient empty snapshot", () => {
+    const showNotification = vi.fn();
+    const notifier = createMeetingNotifier({
+      getNotifyBeforeMinutes: () => 5,
+      showNotification,
+    });
+    const meeting = meetingAt("2026-07-02T10:00:00.000Z");
+
+    notifier.updateSnapshot({ meetings: [meeting] }, new Date("2026-07-02T09:55:00.000Z"));
+    expect(showNotification).toHaveBeenCalledTimes(1);
+
+    notifier.updateSnapshot({ meetings: [] }, new Date("2026-07-02T09:56:00.000Z"));
+    notifier.updateSnapshot({ meetings: [meeting] }, new Date("2026-07-02T09:57:00.000Z"));
+    expect(showNotification).toHaveBeenCalledTimes(1);
+  });
+
   it("notifies again when a notified meeting is rescheduled", () => {
     const showNotification = vi.fn();
     const notifier = createMeetingNotifier({

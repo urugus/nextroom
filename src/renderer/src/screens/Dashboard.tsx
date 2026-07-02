@@ -5,7 +5,14 @@ import type {
   MeetEvent,
   MenuShortcutStatus,
 } from "@shared/types";
-import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { isMeetingActive } from "../lib/meetingTime";
 
 type DashboardProps = {
   accountStatus: AccountStatus;
@@ -20,7 +27,7 @@ type DashboardProps = {
   settings: AppSettings;
   syncedAt?: string;
   onAutoJoinEnabledChange: (enabled: boolean) => Promise<unknown>;
-  onAutoOpenEnabledChange?: (enabled: boolean) => Promise<unknown>;
+  onAutoOpenEnabledChange: (enabled: boolean) => Promise<unknown>;
   onCameraBubbleChatMirrorEnabledChange: (enabled: boolean) => Promise<unknown>;
   onCameraBubbleEnabledChange: (enabled: boolean) => Promise<unknown>;
   onCameraBubbleScreenShareDanmakuEnabledChange: (enabled: boolean) => Promise<unknown>;
@@ -28,11 +35,11 @@ type DashboardProps = {
   onCheckForUpdates?: () => Promise<unknown>;
   onConnectAccount: () => Promise<unknown>;
   onDisconnectAccount: () => Promise<unknown>;
-  onDismissError?: () => void;
+  onDismissError: () => void;
   onJoinOffsetMinutesChange: (minutes: number) => Promise<unknown>;
-  onLaunchAtLoginChange?: (enabled: boolean) => Promise<unknown>;
+  onLaunchAtLoginChange: (enabled: boolean) => Promise<unknown>;
   onMenuShortcutAcceleratorChange: (accelerator: string | null) => Promise<unknown>;
-  onNotifyBeforeMinutesChange?: (minutes: number) => Promise<unknown>;
+  onNotifyBeforeMinutesChange: (minutes: number) => Promise<unknown>;
   onOpenMeeting: (meeting: MeetEvent) => Promise<unknown>;
   onOpenOffsetMinutesChange: (minutes: number) => Promise<unknown>;
   onRunHomebrewUpdate?: () => Promise<unknown>;
@@ -41,14 +48,20 @@ type DashboardProps = {
   updateStatus?: AppUpdateStatus;
 };
 
+const meetingTimeFormat = new Intl.DateTimeFormat("ja-JP", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+const meetingDayFormat = new Intl.DateTimeFormat("en-US", {
+  day: "numeric",
+  month: "short",
+  weekday: "short",
+});
+
 const formatMeetingTime = (value: string) => {
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "--:--";
-
-  return new Intl.DateTimeFormat("ja-JP", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  return Number.isFinite(date.getTime()) ? meetingTimeFormat.format(date) : "--:--";
 };
 
 const isSameDay = (left: Date, right: Date) =>
@@ -64,11 +77,7 @@ const formatMeetingDay = (value: string, now: Date): string => {
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   if (isSameDay(date, tomorrow)) return "Tomorrow";
 
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    month: "short",
-    weekday: "short",
-  }).format(date);
+  return meetingDayFormat.format(date);
 };
 
 const formatSyncedAt = (value: string, now: Date): string => {
@@ -77,17 +86,8 @@ const formatSyncedAt = (value: string, now: Date): string => {
   return isSameDay(date, now) ? time : `${formatMeetingDay(value, now)} ${time}`;
 };
 
-const isMeetingInProgress = (meeting: MeetEvent, now: Date): boolean => {
-  const startAt = new Date(meeting.startAt).getTime();
-  const endAt = new Date(meeting.endAt).getTime();
-  const nowTime = now.getTime();
-
-  return (
-    Number.isFinite(startAt) && Number.isFinite(endAt) && startAt <= nowTime && nowTime <= endAt
-  );
-};
-
 const maxVisibleMeetings = 5;
+const maxNotifyBeforeMinutes = 10;
 
 const formatUpdateSummary = (updateStatus?: AppUpdateStatus) => {
   if (updateStatus === undefined) return "Loading update status.";
@@ -283,6 +283,16 @@ const formatAccelerator = (accelerator: string | null): string => {
     .join(" ");
 };
 
+const DashboardShell = ({ children }: { children: ReactNode }) => (
+  <main className="preferences-shell">
+    <header className="preferences-header">
+      <p>NextRoom</p>
+      <h1>Settings</h1>
+    </header>
+    {children}
+  </main>
+);
+
 export const Dashboard = ({
   accountStatus,
   currentTime,
@@ -382,39 +392,28 @@ export const Dashboard = ({
 
   if (loading) {
     return (
-      <main className="preferences-shell">
-        <header className="preferences-header">
-          <p>NextRoom</p>
-          <h1>Settings</h1>
-        </header>
+      <DashboardShell>
         <div className="loading-state" role="status">
           <span className="update-spinner" aria-hidden="true" />
           <span>Loading settings…</span>
         </div>
-      </main>
+      </DashboardShell>
     );
   }
 
   return (
-    <main className="preferences-shell">
-      <header className="preferences-header">
-        <p>NextRoom</p>
-        <h1>Settings</h1>
-      </header>
-
+    <DashboardShell>
       {errorMessage !== undefined ? (
         <div className="error-banner" role="alert">
           <p>{errorMessage}</p>
-          {onDismissError !== undefined ? (
-            <button
-              type="button"
-              className="error-banner-dismiss"
-              aria-label="Dismiss error"
-              onClick={onDismissError}
-            >
-              ✕
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="error-banner-dismiss"
+            aria-label="Dismiss error"
+            onClick={onDismissError}
+          >
+            ✕
+          </button>
         </div>
       ) : null}
 
@@ -445,7 +444,7 @@ export const Dashboard = ({
             ) : (
               <>
                 {visibleMeetings.map((meeting) => {
-                  const inProgress = isMeetingInProgress(meeting, now);
+                  const inProgress = isMeetingActive(meeting, now);
                   const opening = openingMeetUrl === meeting.meetUrl;
                   return (
                     <div className="preference-row meeting-row" key={meeting.occurrenceKey}>
@@ -542,7 +541,7 @@ export const Dashboard = ({
                 type="checkbox"
                 checked={settings.launchAtLogin}
                 aria-label="Launch at login"
-                onChange={(event) => void onLaunchAtLoginChange?.(event.currentTarget.checked)}
+                onChange={(event) => void onLaunchAtLoginChange(event.currentTarget.checked)}
               />
             </label>
           </div>
@@ -555,12 +554,12 @@ export const Dashboard = ({
               <input
                 type="range"
                 min="0"
-                max="10"
+                max={maxNotifyBeforeMinutes}
                 step="1"
-                value={settings.notifyBeforeMinutes}
+                value={Math.min(settings.notifyBeforeMinutes, maxNotifyBeforeMinutes)}
                 aria-label="Meeting notification offset"
                 onChange={(event) =>
-                  void onNotifyBeforeMinutesChange?.(Number(event.currentTarget.value))
+                  void onNotifyBeforeMinutesChange(Number(event.currentTarget.value))
                 }
               />
               <span>
@@ -588,7 +587,7 @@ export const Dashboard = ({
                 type="checkbox"
                 checked={settings.autoOpenEnabled}
                 aria-label="Auto-open Meet window"
-                onChange={(event) => void onAutoOpenEnabledChange?.(event.currentTarget.checked)}
+                onChange={(event) => void onAutoOpenEnabledChange(event.currentTarget.checked)}
               />
             </label>
           </div>
@@ -806,6 +805,6 @@ export const Dashboard = ({
           {updateErrorText !== undefined ? <p className="update-error">{updateErrorText}</p> : null}
         </div>
       </section>
-    </main>
+    </DashboardShell>
   );
 };

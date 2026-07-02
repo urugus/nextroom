@@ -1,4 +1,5 @@
 import type { AppError } from "@shared/errors";
+import type { SettingsUpdate } from "@shared/ipc";
 import type { AppSettings } from "@shared/types";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -40,7 +41,7 @@ const settingsSchema = z
     cameraBubbleSidebarHidden: z.boolean().optional(),
     cameraBubbleDisplaySpeedLevel: z.number().int().min(1).max(5).optional(),
     joinOffsetSeconds: minuteOffsetSchema("joinOffsetSeconds").optional(),
-    notifyBeforeMinutes: z.number().int().min(0).max(60).optional(),
+    notifyBeforeMinutes: z.number().int().min(0).optional(),
     openOffsetSeconds: minuteOffsetSchema("openOffsetSeconds").optional(),
     menuShortcutAccelerator: z.string().trim().min(1).max(80).nullable().optional(),
     launchAtLogin: z.boolean().optional(),
@@ -64,25 +65,12 @@ const settingsUpdateSchema = settingsSchema
     notifyBeforeMinutes: true,
     openOffsetSeconds: true,
   })
+  .extend({
+    // Bound new values without invalidating older stored settings files, which
+    // parseStoredAppSettings would otherwise reset to defaults wholesale.
+    notifyBeforeMinutes: z.number().int().min(0).max(60).optional(),
+  })
   .strict();
-
-type SettingsUpdate = Partial<
-  Pick<
-    AppSettings,
-    | "autoJoinEnabled"
-    | "autoOpenEnabled"
-    | "cameraBubbleChatMirrorEnabled"
-    | "cameraBubbleEnabled"
-    | "cameraBubbleScreenShareDanmakuEnabled"
-    | "cameraBubbleSidebarHidden"
-    | "cameraBubbleDisplaySpeedLevel"
-    | "joinOffsetSeconds"
-    | "launchAtLogin"
-    | "menuShortcutAccelerator"
-    | "notifyBeforeMinutes"
-    | "openOffsetSeconds"
-  >
->;
 
 export const parseStoredAppSettings = (value: unknown): AppSettings => {
   const parsed = settingsSchema.safeParse(value);

@@ -9,6 +9,7 @@ import type {
   MenuShortcutStatus,
 } from "@shared/types";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isMeetingActive } from "./lib/meetingTime";
 import { Dashboard } from "./screens/Dashboard";
 import "./styles.css";
 
@@ -33,16 +34,6 @@ const defaultSettings: AppSettings = {
 
 const caughtErrorMessage = (cause: unknown, fallback: string): string =>
   cause instanceof Error ? unknownToMessage(cause) : fallback;
-
-const isActiveMeeting = (meeting: MeetEvent, now: Date): boolean => {
-  const startAt = new Date(meeting.startAt).getTime();
-  const endAt = new Date(meeting.endAt).getTime();
-  const nowTime = now.getTime();
-
-  return (
-    Number.isFinite(startAt) && Number.isFinite(endAt) && startAt <= nowTime && nowTime <= endAt
-  );
-};
 
 export const App = () => {
   const [accountStatus, setAccountStatus] = useState<AccountStatus>(disconnectedStatus);
@@ -149,11 +140,18 @@ export const App = () => {
 
   useEffect(() => {
     void (async () => {
-      await refreshStatus();
-      await refreshMeetings();
-      await refreshSettings();
-      await refreshMenuShortcutStatus();
-      setInitialLoadComplete(true);
+      try {
+        await Promise.all([
+          refreshStatus(),
+          refreshMeetings(),
+          refreshSettings(),
+          refreshMenuShortcutStatus(),
+        ]);
+      } catch (cause) {
+        setErrorMessage(caughtErrorMessage(cause, "Failed to load settings."));
+      } finally {
+        setInitialLoadComplete(true);
+      }
     })();
 
     return window.meetLauncher.onCalendarUpdated((result) => {
@@ -337,7 +335,7 @@ export const App = () => {
   const runHomebrewUpdate = () => runUpdateAction(window.meetLauncher.runHomebrewUpdate);
   const nextMeetingNotification = meetingsSnapshot.meetings.find(
     (meeting) =>
-      !openedMeetingKeys.has(meeting.occurrenceKey) && isActiveMeeting(meeting, currentTime),
+      !openedMeetingKeys.has(meeting.occurrenceKey) && isMeetingActive(meeting, currentTime),
   );
 
   return (

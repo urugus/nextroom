@@ -40,7 +40,7 @@ export const decideNotification = (
 };
 
 export type MeetingNotifier = {
-  evaluate: (now?: Date) => MeetEvent[];
+  evaluate: (now?: Date) => void;
   start: () => void;
   stop: () => void;
   updateSnapshot: (snapshot: MeetEventsSnapshot, now?: Date) => void;
@@ -59,7 +59,9 @@ export const createMeetingNotifier = ({
   const notifiedKeys = new Set<string>();
   let timer: NodeJS.Timeout | undefined;
 
-  const evaluate = (now: Date = new Date()): MeetEvent[] => {
+  const evaluate = (now: Date = new Date()): void => {
+    if (meetings.length === 0) return;
+
     const notifyBeforeMinutes = getNotifyBeforeMinutes();
     const due = meetings.filter(
       (event) =>
@@ -70,16 +72,19 @@ export const createMeetingNotifier = ({
       notifiedKeys.add(notificationKeyFor(event));
       showNotification(event);
     }
-
-    return due;
   };
 
   const updateSnapshot = (snapshot: MeetEventsSnapshot, now: Date = new Date()): void => {
     meetings = snapshot.meetings;
 
-    const currentKeys = new Set(meetings.map(notificationKeyFor));
-    for (const key of notifiedKeys) {
-      if (!currentKeys.has(key)) notifiedKeys.delete(key);
+    // Calendar sync publishes an empty snapshot on transient auth failures and
+    // disconnects. Keep notified keys through those so a reconnect inside the
+    // notify window does not re-fire notifications for the same occurrence.
+    if (meetings.length > 0) {
+      const currentKeys = new Set(meetings.map(notificationKeyFor));
+      for (const key of notifiedKeys) {
+        if (!currentKeys.has(key)) notifiedKeys.delete(key);
+      }
     }
 
     evaluate(now);

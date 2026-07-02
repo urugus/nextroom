@@ -101,6 +101,10 @@ const meetingFor = (id: string, startAt: string, endAt: string, summary: string)
 
 const dashboardActions = () => ({
   onAutoJoinEnabledChange: vi.fn(),
+  onAutoOpenEnabledChange: vi.fn(),
+  onDismissError: vi.fn(),
+  onLaunchAtLoginChange: vi.fn(),
+  onNotifyBeforeMinutesChange: vi.fn(),
   onCameraBubbleChatMirrorEnabledChange: vi.fn(),
   onCameraBubbleEnabledChange: vi.fn(),
   onCameraBubbleScreenShareDanmakuEnabledChange: vi.fn(),
