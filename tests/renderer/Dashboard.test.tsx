@@ -373,6 +373,27 @@ describe("Dashboard", () => {
     expect(onJoinOffsetMinutesChange).toHaveBeenCalledWith(4);
   });
 
+  it("updates notification timing up to the stored settings maximum", () => {
+    const onNotifyBeforeMinutesChange = vi.fn();
+    render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        onNotifyBeforeMinutesChange={onNotifyBeforeMinutesChange}
+        settings={{ ...settings, notifyBeforeMinutes: 60 }}
+      />,
+    );
+
+    expect(screen.getByText("Notify 60 min before")).toBeInTheDocument();
+    const slider = screen.getByRole("slider", { name: "Meeting notification offset" });
+    expect(slider).toHaveValue("60");
+    expect(slider).toHaveAttribute("max", "60");
+
+    fireEvent.change(slider, { target: { value: "45" } });
+
+    expect(onNotifyBeforeMinutesChange).toHaveBeenCalledWith(45);
+  });
+
   it("updates camera bubble chat mirror setting", () => {
     const onCameraBubbleChatMirrorEnabledChange = vi.fn();
     render(

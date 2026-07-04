@@ -61,6 +61,18 @@ describe("app settings", () => {
     expect(parseSettingsUpdate({ notifyBeforeMinutes: 1.5 }).isErr()).toBe(true);
   });
 
+  it("clamps oversized stored notification offsets", () => {
+    expect(parseStoredAppSettings({ notifyBeforeMinutes: 120 })).toMatchObject({
+      notifyBeforeMinutes: 60,
+    });
+    expect(parseStoredAppSettings({ notifyBeforeMinutes: 60 })).toMatchObject({
+      notifyBeforeMinutes: 60,
+    });
+    expect(parseStoredAppSettings({})).toMatchObject({
+      notifyBeforeMinutes: 1,
+    });
+  });
+
   it("accepts camera bubble setting updates", () => {
     expect(parseSettingsUpdate({ cameraBubbleEnabled: true })._unsafeUnwrap()).toEqual({
       cameraBubbleEnabled: true,

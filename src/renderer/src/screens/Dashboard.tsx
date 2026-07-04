@@ -87,7 +87,7 @@ const formatSyncedAt = (value: string, now: Date): string => {
 };
 
 const maxVisibleMeetings = 5;
-const maxNotifyBeforeMinutes = 10;
+const maxNotifyBeforeMinutes = 60;
 
 const formatUpdateSummary = (updateStatus?: AppUpdateStatus) => {
   if (updateStatus === undefined) return "Loading update status.";

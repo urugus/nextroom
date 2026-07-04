@@ -21,6 +21,8 @@ export const defaultAppSettings: AppSettings = {
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
 };
 
+const maxNotifyBeforeMinutes = 60;
+
 const minuteOffsetSchema = (fieldName: string) =>
   z
     .number()
@@ -68,7 +70,7 @@ const settingsUpdateSchema = settingsSchema
   .extend({
     // Bound new values without invalidating older stored settings files, which
     // parseStoredAppSettings would otherwise reset to defaults wholesale.
-    notifyBeforeMinutes: z.number().int().min(0).max(60).optional(),
+    notifyBeforeMinutes: z.number().int().min(0).max(maxNotifyBeforeMinutes).optional(),
   })
   .strict();
 
@@ -76,7 +78,14 @@ export const parseStoredAppSettings = (value: unknown): AppSettings => {
   const parsed = settingsSchema.safeParse(value);
   if (!parsed.success) return { ...defaultAppSettings };
 
-  const settings = { ...defaultAppSettings, ...parsed.data };
+  const settings = {
+    ...defaultAppSettings,
+    ...parsed.data,
+    notifyBeforeMinutes: Math.min(
+      parsed.data.notifyBeforeMinutes ?? defaultAppSettings.notifyBeforeMinutes,
+      maxNotifyBeforeMinutes,
+    ),
+  };
   return settings.joinOffsetSeconds > settings.openOffsetSeconds
     ? { ...settings, joinOffsetSeconds: settings.openOffsetSeconds }
     : settings;

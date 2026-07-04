@@ -35,6 +35,10 @@ const defaultSettings: AppSettings = {
 const caughtErrorMessage = (cause: unknown, fallback: string): string =>
   cause instanceof Error ? unknownToMessage(cause) : fallback;
 
+type ApplyAccountStatusOptions = {
+  preserveExistingError?: boolean;
+};
+
 export const App = () => {
   const [accountStatus, setAccountStatus] = useState<AccountStatus>(disconnectedStatus);
   const [meetingsSnapshot, setMeetingsSnapshot] = useState<MeetEventsSnapshot>({ meetings: [] });
@@ -62,22 +66,35 @@ export const App = () => {
     return undefined;
   }, []);
 
-  const applyAccountStatus = useCallback((status: AccountStatus) => {
-    setAccountStatus(status);
-    setErrorMessage(status.error?.message);
-  }, []);
+  const applyAccountStatus = useCallback(
+    (status: AccountStatus, options: ApplyAccountStatusOptions = {}) => {
+      setAccountStatus(status);
+      if (status.error !== undefined) {
+        setErrorMessage(status.error.message);
+        return;
+      }
+
+      if (!options.preserveExistingError) {
+        setErrorMessage(undefined);
+      }
+    },
+    [],
+  );
 
   const applySettings = useCallback((nextSettings: AppSettings) => {
     latestSettingsRef.current = nextSettings;
     setSettings(nextSettings);
   }, []);
 
-  const refreshStatus = useCallback(async () => {
-    const status = applyResultError(await window.meetLauncher.getAccountStatus());
-    if (status !== undefined) {
-      applyAccountStatus(status);
-    }
-  }, [applyAccountStatus, applyResultError]);
+  const refreshStatus = useCallback(
+    async (options: ApplyAccountStatusOptions = {}) => {
+      const status = applyResultError(await window.meetLauncher.getAccountStatus());
+      if (status !== undefined) {
+        applyAccountStatus(status, options);
+      }
+    },
+    [applyAccountStatus, applyResultError],
+  );
 
   const refreshMeetings = useCallback(async () => {
     const snapshot = applyResultError(await window.meetLauncher.listUpcomingMeetings());
@@ -142,7 +159,7 @@ export const App = () => {
     void (async () => {
       try {
         await Promise.all([
-          refreshStatus(),
+          refreshStatus({ preserveExistingError: true }),
           refreshMeetings(),
           refreshSettings(),
           refreshMenuShortcutStatus(),
