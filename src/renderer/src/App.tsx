@@ -9,6 +9,7 @@ import type {
   MenuShortcutStatus,
 } from "@shared/types";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isMeetingActive } from "./lib/meetingTime";
 import { Dashboard } from "./screens/Dashboard";
 import "./styles.css";
 
@@ -34,14 +35,8 @@ const defaultSettings: AppSettings = {
 const caughtErrorMessage = (cause: unknown, fallback: string): string =>
   cause instanceof Error ? unknownToMessage(cause) : fallback;
 
-const isActiveMeeting = (meeting: MeetEvent, now: Date): boolean => {
-  const startAt = new Date(meeting.startAt).getTime();
-  const endAt = new Date(meeting.endAt).getTime();
-  const nowTime = now.getTime();
-
-  return (
-    Number.isFinite(startAt) && Number.isFinite(endAt) && startAt <= nowTime && nowTime <= endAt
-  );
+type ApplyAccountStatusOptions = {
+  preserveExistingError?: boolean;
 };
 
 export const App = () => {
@@ -60,6 +55,7 @@ export const App = () => {
   );
   const [updateErrorMessage, setUpdateErrorMessage] = useState<string | undefined>(undefined);
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | undefined>(undefined);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   const openingMeetingRef = useRef(false);
   const latestSettingsRef = useRef(defaultSettings);
   const latestSettingsSaveRef = useRef(0);
@@ -70,22 +66,35 @@ export const App = () => {
     return undefined;
   }, []);
 
-  const applyAccountStatus = useCallback((status: AccountStatus) => {
-    setAccountStatus(status);
-    setErrorMessage(status.error?.message);
-  }, []);
+  const applyAccountStatus = useCallback(
+    (status: AccountStatus, options: ApplyAccountStatusOptions = {}) => {
+      setAccountStatus(status);
+      if (status.error !== undefined) {
+        setErrorMessage(status.error.message);
+        return;
+      }
+
+      if (!options.preserveExistingError) {
+        setErrorMessage(undefined);
+      }
+    },
+    [],
+  );
 
   const applySettings = useCallback((nextSettings: AppSettings) => {
     latestSettingsRef.current = nextSettings;
     setSettings(nextSettings);
   }, []);
 
-  const refreshStatus = useCallback(async () => {
-    const status = applyResultError(await window.meetLauncher.getAccountStatus());
-    if (status !== undefined) {
-      applyAccountStatus(status);
-    }
-  }, [applyAccountStatus, applyResultError]);
+  const refreshStatus = useCallback(
+    async (options: ApplyAccountStatusOptions = {}) => {
+      const status = applyResultError(await window.meetLauncher.getAccountStatus());
+      if (status !== undefined) {
+        applyAccountStatus(status, options);
+      }
+    },
+    [applyAccountStatus, applyResultError],
+  );
 
   const refreshMeetings = useCallback(async () => {
     const snapshot = applyResultError(await window.meetLauncher.listUpcomingMeetings());
@@ -148,10 +157,18 @@ export const App = () => {
 
   useEffect(() => {
     void (async () => {
-      await refreshStatus();
-      await refreshMeetings();
-      await refreshSettings();
-      await refreshMenuShortcutStatus();
+      try {
+        await Promise.all([
+          refreshStatus({ preserveExistingError: true }),
+          refreshMeetings(),
+          refreshSettings(),
+          refreshMenuShortcutStatus(),
+        ]);
+      } catch (cause) {
+        setErrorMessage(caughtErrorMessage(cause, "Failed to load settings."));
+      } finally {
+        setInitialLoadComplete(true);
+      }
     })();
 
     return window.meetLauncher.onCalendarUpdated((result) => {
@@ -266,6 +283,13 @@ export const App = () => {
 
   const updateAutoJoinEnabled = (autoJoinEnabled: boolean) => updateSettings({ autoJoinEnabled });
 
+  const updateAutoOpenEnabled = (autoOpenEnabled: boolean) => updateSettings({ autoOpenEnabled });
+
+  const updateLaunchAtLogin = (launchAtLogin: boolean) => updateSettings({ launchAtLogin });
+
+  const updateNotifyBeforeMinutes = (notifyBeforeMinutes: number) =>
+    updateSettings({ notifyBeforeMinutes });
+
   const updateCameraBubbleEnabled = (cameraBubbleEnabled: boolean) =>
     updateSettings({ cameraBubbleEnabled });
 
@@ -328,13 +352,16 @@ export const App = () => {
   const runHomebrewUpdate = () => runUpdateAction(window.meetLauncher.runHomebrewUpdate);
   const nextMeetingNotification = meetingsSnapshot.meetings.find(
     (meeting) =>
-      !openedMeetingKeys.has(meeting.occurrenceKey) && isActiveMeeting(meeting, currentTime),
+      !openedMeetingKeys.has(meeting.occurrenceKey) && isMeetingActive(meeting, currentTime),
   );
 
   return (
     <Dashboard
       accountStatus={accountStatus}
+      currentTime={currentTime}
       errorMessage={errorMessage}
+      loading={!initialLoadComplete}
+      meetings={meetingsSnapshot.meetings}
       pendingAction={pendingAction}
       settings={settings}
       menuShortcutStatus={menuShortcutStatus}
@@ -344,8 +371,12 @@ export const App = () => {
       onCheckForUpdates={checkForUpdates}
       onConnectAccount={connectAccount}
       onDisconnectAccount={disconnectAccount}
+      onDismissError={() => setErrorMessage(undefined)}
       onRunHomebrewUpdate={runHomebrewUpdate}
       onAutoJoinEnabledChange={updateAutoJoinEnabled}
+      onAutoOpenEnabledChange={updateAutoOpenEnabled}
+      onLaunchAtLoginChange={updateLaunchAtLogin}
+      onNotifyBeforeMinutesChange={updateNotifyBeforeMinutes}
       onCameraBubbleChatMirrorEnabledChange={updateCameraBubbleChatMirrorEnabled}
       onCameraBubbleEnabledChange={updateCameraBubbleEnabled}
       onCameraBubbleScreenShareDanmakuEnabledChange={updateCameraBubbleScreenShareDanmakuEnabled}

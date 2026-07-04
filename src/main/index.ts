@@ -27,6 +27,7 @@ import {
 } from "@main/meet/meetWindowManager";
 import { createMenuBarController, type MenuBarController } from "@main/menuBar/menuBarController";
 import { createTrayIcon } from "@main/menuBar/trayIcon";
+import { createMeetingNotifier } from "@main/notifications/meetingNotifier";
 import { createGoogleAuthService } from "@main/oauth/googleAuthService";
 import { createOAuthClient } from "@main/oauth/oauthClient";
 import {
@@ -64,6 +65,7 @@ import type {
   CameraBubbleConfig,
   CameraBubbleMeetViewConfig,
   CameraBubbleShellState,
+  MeetEvent,
   MenuShortcutStatus,
   ScreenShareSource,
 } from "@shared/types";
@@ -89,6 +91,7 @@ const {
   globalShortcut,
   ipcMain,
   nativeImage,
+  Notification,
   session,
   shell,
   systemPreferences,
@@ -232,6 +235,33 @@ const updateMenuShortcutRegistration = (accelerator: string | null): Result<void
   return result;
 };
 
+const applyLaunchAtLogin = (launchAtLogin: boolean): void => {
+  // In development the login item would point at the bare Electron binary.
+  if (!app.isPackaged) return;
+
+  try {
+    app.setLoginItemSettings({ openAtLogin: launchAtLogin });
+  } catch (cause) {
+    logger.error("failed to update login item settings", { error: cause });
+  }
+};
+
+// The user can also manage the login item in macOS System Settings; treat the
+// OS as the source of truth on startup instead of re-asserting the stored flag.
+const syncLaunchAtLoginFromSystem = (): void => {
+  if (!app.isPackaged) return;
+
+  try {
+    const { openAtLogin } = app.getLoginItemSettings();
+    if (openAtLogin !== appSettings.launchAtLogin) {
+      appSettings.launchAtLogin = openAtLogin;
+      saveAppSettings(appSettings);
+    }
+  } catch (cause) {
+    logger.error("failed to read login item settings", { error: cause });
+  }
+};
+
 const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
   const parsed = parseSettingsUpdate(value);
   if (parsed.isErr()) return err(parsed.error);
@@ -242,6 +272,7 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
 
   const previousShortcutAccelerator = appSettings.menuShortcutAccelerator;
   const previousShortcutStatus = menuShortcutStatus;
+  const previousLaunchAtLogin = appSettings.launchAtLogin;
   const previousCameraBubbleChatMirrorEnabled = appSettings.cameraBubbleChatMirrorEnabled;
   const previousCameraBubbleEnabled = appSettings.cameraBubbleEnabled;
   const previousCameraBubbleScreenShareDanmakuEnabled =
@@ -286,6 +317,9 @@ const updateAppSettings = (value: unknown): Result<AppSettings, AppError> => {
   }
 
   Object.assign(appSettings, nextSettings);
+  if (appSettings.launchAtLogin !== previousLaunchAtLogin) {
+    applyLaunchAtLogin(appSettings.launchAtLogin);
+  }
   if (cameraBubbleChanged) {
     if (!appSettings.cameraBubbleEnabled && pinnedBubbleText !== undefined) {
       pinnedBubbleText = undefined;
@@ -310,6 +344,51 @@ const calendarSyncService = createCalendarSyncService({
   authService,
   calendarClient: createGoogleCalendarClient(),
   logger: logger.child("calendar"),
+});
+
+const notificationLogger = logger.child("notifications");
+const notificationTimeFormat = new Intl.DateTimeFormat("ja-JP", {
+  hour: "2-digit",
+  hour12: false,
+  minute: "2-digit",
+});
+// Keep notifications referenced until they are dismissed; otherwise GC can
+// collect them before the user clicks and the click handler never fires.
+const activeMeetingNotifications = new Set<Electron.Notification>();
+
+const showMeetingNotification = (event: MeetEvent): void => {
+  if (!Notification.isSupported()) return;
+
+  try {
+    const notification = new Notification({
+      body: `Starts at ${notificationTimeFormat.format(
+        new Date(event.startAt),
+      )}. Click to open Google Meet.`,
+      title: event.summary.length > 0 ? event.summary : "Google Meet meeting",
+    });
+    activeMeetingNotifications.add(notification);
+    notification.on("click", () => {
+      activeMeetingNotifications.delete(notification);
+      void openMeetUrl(event.meetUrl).then((result) => {
+        if (result.isErr()) {
+          notificationLogger.error("failed to open Meet from notification", {
+            error: result.error,
+          });
+        }
+      });
+    });
+    notification.on("close", () => {
+      activeMeetingNotifications.delete(notification);
+    });
+    notification.show();
+  } catch (cause) {
+    notificationLogger.error("failed to show meeting notification", { error: cause });
+  }
+};
+
+const meetingNotifier = createMeetingNotifier({
+  getNotifyBeforeMinutes: () => appSettings.notifyBeforeMinutes,
+  showNotification: showMeetingNotification,
 });
 
 const createBrowserWindow = (title: string, errorType: "MainWindowFailed" | "MeetWindowFailed") =>
@@ -1412,6 +1491,7 @@ const registerIpc = (scheduler: AutoOpenScheduler) => {
   calendarSyncService.subscribe((snapshot) => {
     const result = serializeResultForRenderer(ok(snapshot));
     menuBarController?.updateMeetings(snapshot);
+    meetingNotifier.updateSnapshot(snapshot);
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.calendarUpdated, result);
     }
@@ -1572,6 +1652,7 @@ if (!appCanStart) {
   void app.whenReady().then(() => {
     registerProtocolClient();
     appSettings = loadAppSettings();
+    syncLaunchAtLoginFromSystem();
     if (process.platform === "darwin") {
       app.dock?.hide();
     }
@@ -1616,6 +1697,7 @@ if (!appCanStart) {
       menuBarController?.updateUpdateStatus(status);
     });
     calendarSyncService.startPolling();
+    meetingNotifier.start();
 
     startDailyUpdateChecks();
 
@@ -1630,5 +1712,6 @@ app.on("will-quit", () => {
   if (updateCheckTimer !== undefined) {
     clearInterval(updateCheckTimer);
   }
+  meetingNotifier.stop();
   menuShortcutRegistrar?.unregister();
 });

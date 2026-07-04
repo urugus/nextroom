@@ -1,4 +1,5 @@
 import type { AppError } from "@shared/errors";
+import type { SettingsUpdate } from "@shared/ipc";
 import type { AppSettings } from "@shared/types";
 import { err, ok, type Result } from "neverthrow";
 import { z } from "zod";
@@ -19,6 +20,8 @@ export const defaultAppSettings: AppSettings = {
   calendarId: "primary",
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
 };
+
+const maxNotifyBeforeMinutes = 60;
 
 const minuteOffsetSchema = (fieldName: string) =>
   z
@@ -52,37 +55,37 @@ const settingsSchema = z
 const settingsUpdateSchema = settingsSchema
   .pick({
     autoJoinEnabled: true,
+    autoOpenEnabled: true,
     cameraBubbleChatMirrorEnabled: true,
     cameraBubbleEnabled: true,
     cameraBubbleScreenShareDanmakuEnabled: true,
     cameraBubbleSidebarHidden: true,
     cameraBubbleDisplaySpeedLevel: true,
     joinOffsetSeconds: true,
+    launchAtLogin: true,
     menuShortcutAccelerator: true,
+    notifyBeforeMinutes: true,
     openOffsetSeconds: true,
   })
+  .extend({
+    // Bound new values without invalidating older stored settings files, which
+    // parseStoredAppSettings would otherwise reset to defaults wholesale.
+    notifyBeforeMinutes: z.number().int().min(0).max(maxNotifyBeforeMinutes).optional(),
+  })
   .strict();
-
-type SettingsUpdate = Partial<
-  Pick<
-    AppSettings,
-    | "autoJoinEnabled"
-    | "cameraBubbleChatMirrorEnabled"
-    | "cameraBubbleEnabled"
-    | "cameraBubbleScreenShareDanmakuEnabled"
-    | "cameraBubbleSidebarHidden"
-    | "cameraBubbleDisplaySpeedLevel"
-    | "joinOffsetSeconds"
-    | "menuShortcutAccelerator"
-    | "openOffsetSeconds"
-  >
->;
 
 export const parseStoredAppSettings = (value: unknown): AppSettings => {
   const parsed = settingsSchema.safeParse(value);
   if (!parsed.success) return { ...defaultAppSettings };
 
-  const settings = { ...defaultAppSettings, ...parsed.data };
+  const settings = {
+    ...defaultAppSettings,
+    ...parsed.data,
+    notifyBeforeMinutes: Math.min(
+      parsed.data.notifyBeforeMinutes ?? defaultAppSettings.notifyBeforeMinutes,
+      maxNotifyBeforeMinutes,
+    ),
+  };
   return settings.joinOffsetSeconds > settings.openOffsetSeconds
     ? { ...settings, joinOffsetSeconds: settings.openOffsetSeconds }
     : settings;

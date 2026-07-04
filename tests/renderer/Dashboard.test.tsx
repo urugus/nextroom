@@ -1,6 +1,6 @@
 import { Dashboard } from "@renderer/screens/Dashboard";
 import type { AppSettings, AppUpdateStatus } from "@shared/types";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const updateAvailable: AppUpdateStatus = {
@@ -87,8 +87,24 @@ const settings: AppSettings = {
   timezone: "Asia/Tokyo",
 };
 
+const meetingFor = (id: string, startAt: string, endAt: string, summary: string) => ({
+  calendarId: "primary",
+  endAt,
+  eventId: id,
+  meetUrl: `https://meet.google.com/${id}`,
+  occurrenceKey: `primary:${id}:${startAt}`,
+  startAt,
+  status: "confirmed" as const,
+  summary,
+  updatedAt: startAt,
+});
+
 const dashboardActions = () => ({
   onAutoJoinEnabledChange: vi.fn(),
+  onAutoOpenEnabledChange: vi.fn(),
+  onDismissError: vi.fn(),
+  onLaunchAtLoginChange: vi.fn(),
+  onNotifyBeforeMinutesChange: vi.fn(),
   onCameraBubbleChatMirrorEnabledChange: vi.fn(),
   onCameraBubbleEnabledChange: vi.fn(),
   onCameraBubbleScreenShareDanmakuEnabledChange: vi.fn(),
@@ -357,6 +373,27 @@ describe("Dashboard", () => {
     expect(onJoinOffsetMinutesChange).toHaveBeenCalledWith(4);
   });
 
+  it("updates notification timing up to the stored settings maximum", () => {
+    const onNotifyBeforeMinutesChange = vi.fn();
+    render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        onNotifyBeforeMinutesChange={onNotifyBeforeMinutesChange}
+        settings={{ ...settings, notifyBeforeMinutes: 60 }}
+      />,
+    );
+
+    expect(screen.getByText("Notify 60 min before")).toBeInTheDocument();
+    const slider = screen.getByRole("slider", { name: "Meeting notification offset" });
+    expect(slider).toHaveValue("60");
+    expect(slider).toHaveAttribute("max", "60");
+
+    fireEvent.change(slider, { target: { value: "45" } });
+
+    expect(onNotifyBeforeMinutesChange).toHaveBeenCalledWith(45);
+  });
+
   it("updates camera bubble chat mirror setting", () => {
     const onCameraBubbleChatMirrorEnabledChange = vi.fn();
     render(
@@ -618,5 +655,149 @@ describe("Dashboard", () => {
     expect(screen.getByText("Opening")).toBeInTheDocument();
     fireEvent.click(notification);
     expect(onOpenMeeting).not.toHaveBeenCalled();
+  });
+
+  it("renders a loading state before the initial data arrives", () => {
+    render(
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        {...dashboardActions()}
+        loading
+        settings={settings}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Loading settings…");
+    expect(screen.queryByText("Google Calendar not connected")).not.toBeInTheDocument();
+  });
+
+  it("dismisses the error banner", () => {
+    const onDismissError = vi.fn();
+    render(
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        {...dashboardActions()}
+        errorMessage="Sync failed"
+        onDismissError={onDismissError}
+        settings={settings}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Sync failed");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
+    expect(onDismissError).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves general settings from the General section", () => {
+    const onLaunchAtLoginChange = vi.fn();
+    const onNotifyBeforeMinutesChange = vi.fn();
+    render(
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        {...dashboardActions()}
+        onLaunchAtLoginChange={onLaunchAtLoginChange}
+        onNotifyBeforeMinutesChange={onNotifyBeforeMinutesChange}
+        settings={settings}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Launch at login" }));
+    expect(onLaunchAtLoginChange).toHaveBeenCalledWith(true);
+
+    fireEvent.change(screen.getByRole("slider", { name: "Meeting notification offset" }), {
+      target: { value: "5" },
+    });
+    expect(onNotifyBeforeMinutesChange).toHaveBeenCalledWith(5);
+    expect(screen.getByText("Notify 1 min before")).toBeInTheDocument();
+  });
+
+  it("shows the meeting notification setting as off at zero minutes", () => {
+    render(
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        {...dashboardActions()}
+        settings={{ ...settings, notifyBeforeMinutes: 0 }}
+      />,
+    );
+
+    const generalSection = screen.getByRole("region", { name: "General" });
+    expect(within(generalSection).getAllByText("Off").length).toBeGreaterThan(0);
+  });
+
+  it("toggles auto-open and disables its offset slider while off", () => {
+    const onAutoOpenEnabledChange = vi.fn();
+    render(
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        {...dashboardActions()}
+        onAutoOpenEnabledChange={onAutoOpenEnabledChange}
+        settings={{ ...settings, autoOpenEnabled: false }}
+      />,
+    );
+
+    expect(screen.getByRole("slider", { name: "Meet window open offset" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Auto-open Meet window" }));
+    expect(onAutoOpenEnabledChange).toHaveBeenCalledWith(true);
+  });
+
+  it("lists upcoming meetings with an empty state when connected", () => {
+    const onOpenMeeting = vi.fn();
+    const now = new Date("2026-05-28T09:50:00+09:00");
+    const inProgress = meetingFor(
+      "event-1",
+      "2026-05-28T09:30:00+09:00",
+      "2026-05-28T10:30:00+09:00",
+      "Product sync",
+    );
+    const later = meetingFor(
+      "event-2",
+      "2026-05-29T14:00:00+09:00",
+      "2026-05-29T15:00:00+09:00",
+      "Design review",
+    );
+
+    const { rerender } = render(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        currentTime={now}
+        meetings={[inProgress, later]}
+        onOpenMeeting={onOpenMeeting}
+        settings={settings}
+      />,
+    );
+
+    const meetingsSection = screen.getByRole("region", { name: "Upcoming meetings" });
+    expect(within(meetingsSection).getByText("Product sync")).toBeInTheDocument();
+    expect(within(meetingsSection).getByText("In progress")).toBeInTheDocument();
+    expect(within(meetingsSection).getByText("Design review")).toBeInTheDocument();
+
+    fireEvent.click(within(meetingsSection).getAllByRole("button", { name: "Join" })[0]);
+    expect(onOpenMeeting).toHaveBeenCalledWith(inProgress);
+
+    rerender(
+      <Dashboard
+        accountStatus={{ connected: true, syncing: false }}
+        {...dashboardActions()}
+        currentTime={now}
+        meetings={[]}
+        onOpenMeeting={onOpenMeeting}
+        settings={settings}
+      />,
+    );
+    expect(screen.getByText("No upcoming Google Meet meetings.")).toBeInTheDocument();
+
+    rerender(
+      <Dashboard
+        accountStatus={{ connected: false, syncing: false }}
+        {...dashboardActions()}
+        currentTime={now}
+        meetings={[]}
+        onOpenMeeting={onOpenMeeting}
+        settings={settings}
+      />,
+    );
+    expect(screen.queryByRole("region", { name: "Upcoming meetings" })).not.toBeInTheDocument();
   });
 });

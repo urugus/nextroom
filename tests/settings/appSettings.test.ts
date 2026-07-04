@@ -40,6 +40,39 @@ describe("app settings", () => {
     });
   });
 
+  it("accepts launch-at-login, auto-open, and notification updates", () => {
+    expect(parseSettingsUpdate({ launchAtLogin: true })._unsafeUnwrap()).toEqual({
+      launchAtLogin: true,
+    });
+    expect(parseSettingsUpdate({ autoOpenEnabled: false })._unsafeUnwrap()).toEqual({
+      autoOpenEnabled: false,
+    });
+    expect(parseSettingsUpdate({ notifyBeforeMinutes: 5 })._unsafeUnwrap()).toEqual({
+      notifyBeforeMinutes: 5,
+    });
+    expect(parseSettingsUpdate({ notifyBeforeMinutes: 0 })._unsafeUnwrap()).toEqual({
+      notifyBeforeMinutes: 0,
+    });
+  });
+
+  it("rejects out-of-range notification offsets", () => {
+    expect(parseSettingsUpdate({ notifyBeforeMinutes: -1 }).isErr()).toBe(true);
+    expect(parseSettingsUpdate({ notifyBeforeMinutes: 61 }).isErr()).toBe(true);
+    expect(parseSettingsUpdate({ notifyBeforeMinutes: 1.5 }).isErr()).toBe(true);
+  });
+
+  it("clamps oversized stored notification offsets", () => {
+    expect(parseStoredAppSettings({ notifyBeforeMinutes: 120 })).toMatchObject({
+      notifyBeforeMinutes: 60,
+    });
+    expect(parseStoredAppSettings({ notifyBeforeMinutes: 60 })).toMatchObject({
+      notifyBeforeMinutes: 60,
+    });
+    expect(parseStoredAppSettings({})).toMatchObject({
+      notifyBeforeMinutes: 1,
+    });
+  });
+
   it("accepts camera bubble setting updates", () => {
     expect(parseSettingsUpdate({ cameraBubbleEnabled: true })._unsafeUnwrap()).toEqual({
       cameraBubbleEnabled: true,

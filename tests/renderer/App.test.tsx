@@ -175,7 +175,9 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /Next meeting is ready/ }));
 
-    const openingButton = await screen.findByRole("button", { name: /Opening/ });
+    const openingButton = await screen.findByRole("button", {
+      name: /Next meeting is ready.*Opening/,
+    });
     expect(openingButton).toBeDisabled();
 
     fireEvent.click(openingButton);
@@ -451,6 +453,31 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Next meeting is ready/ }));
 
     expect(await screen.findByText("Google Meet window failed: network error")).toBeInTheDocument();
+  });
+
+  it("keeps initial load errors after a later successful status response", async () => {
+    let resolveStatus!: (value: ApiResult<AccountStatus>) => void;
+    installMeetLauncher(vi.fn(), {
+      ok: false,
+      error: {
+        message: "Calendar list failed",
+        recoverable: true,
+        type: "DatabaseFailed",
+      },
+    });
+    vi.mocked(window.meetLauncher.getAccountStatus).mockReturnValue(
+      new Promise<ApiResult<AccountStatus>>((resolve) => {
+        resolveStatus = resolve;
+      }),
+    );
+
+    render(<App />);
+
+    await act(async () => {
+      resolveStatus({ ok: true, value: { connected: true, syncing: false } });
+    });
+
+    expect(await screen.findByText("Calendar list failed")).toBeInTheDocument();
   });
 
   it("renders thrown preload errors", async () => {
