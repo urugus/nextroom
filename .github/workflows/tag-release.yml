@@ -1,0 +1,41 @@
+name: Tag release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Create release tag
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Create and push tag from package.json version
+        run: |
+          version="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)"
+          if [ -z "$version" ]; then
+            echo "::error title=Version not found::Could not read version from package.json"
+            exit 1
+          fi
+
+          tag="v${version}"
+          if git ls-remote --tags origin "refs/tags/${tag}" | grep -q .; then
+            echo "Tag ${tag} already exists on origin. Nothing to do."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${tag}" -m "Release ${version}"
+          git push origin "${tag}"
+          echo "Pushed tag ${tag}. Note: run the Release workflow (workflow_dispatch) with tag=${tag} to publish, because tags pushed with GITHUB_TOKEN do not trigger tag-push workflows."
